@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install ripgrep and shellcheck
+        run: sudo apt-get update && sudo apt-get install -y ripgrep shellcheck
+      - name: Unit, integration, launcher and hygiene tests
+        env:
+          AFTERPROMPT_PYTHON: python
+        run: python -m unittest discover -s tests -t . -v
+
+  macos:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install ripgrep and shellcheck
+        run: brew install ripgrep shellcheck
+      - name: Full test suite
+        env:
+          AFTERPROMPT_PYTHON: python
+        run: python -m unittest discover -s tests -t . -v
+      - name: Launcher under the system bash (3.2)
+        env:
+          AFTERPROMPT_PYTHON: python
+          AFTERPROMPT_TEST_BASH: /bin/bash
+        run: |
+          /bin/bash --version | head -n 1
+          /bin/bash afterprompt.sh --version
+          python -m unittest tests.test_launcher tests.test_integration -v
+
+  wsl:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: wsl-bash {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Vampire/setup-wsl@v5
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: python3 ripgrep shellcheck
+      - name: Full test suite inside WSL, including real Windows profile detection
+        env:
+          AFTERPROMPT_TEST_REAL_WSL: "1"
+          WSLENV: AFTERPROMPT_TEST_REAL_WSL
+        run: |
+          cp -r . ~/afterprompt
+          cd ~/afterprompt
+          python3 -m unittest discover -s tests -t . -v

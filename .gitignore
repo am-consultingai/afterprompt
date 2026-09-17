@@ -1,0 +1,19 @@
+# Private: market research, mock report, and this machine's scan report
+marketing/
+
+# Internal planning documents (BRD, implementation plan, original design notes)
+docs/
+
+# The original single-machine scanner and everything it produced: masked findings, file paths,
+# decoded plaintext, and the round-5 regression baseline. Superseded by afterprompt/; kept locally only.
+scanner/
+
+# Local backup of the superseded MIT-licensed git history
+archive/
+
+# Work folders from local runs
+.afterprompt/
+
+__pycache__/
+*.pyc
+.DS_Store

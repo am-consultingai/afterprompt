@@ -1,0 +1,151 @@
+/* ==========================================================================
+   AM Consulting — brand.css
+   Tokens and shared components for AM Consulting pages.
+
+   Pair with the brand font import (put this in <head> BEFORE brand.css):
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+   Values are authoritative, from brand-tokens.json and the Brand Guide.
+   Page-specific layout does NOT belong here — keep this file brand-level.
+   ========================================================================== */
+
+/* --- tokens --------------------------------------------------------------- */
+:root{
+  /* backgrounds */
+  --bg:#0b0f19; --deep:#070b13; --card:#0d1321; --tile:#0b101c;
+
+  /* text */
+  --ink:#f3f4f6; --s2:#cbd5e1; --s3:#94a3b8; --s4:#64748b;
+
+  /* lines */
+  --line:rgba(148,163,184,.16); --line-soft:rgba(148,163,184,.09);
+
+  /* accents */
+  --cyan:#22d3ee; --sky:#38bdf8; --indigo:#818cf8;
+  --good:#10b981; --bad:#ef4444; --warn:#f2c811;
+  --grad:linear-gradient(to right,#22d3ee,#38bdf8,#818cf8);
+
+  /* type */
+  --display:"Space Grotesk","Helvetica Neue",Arial,sans-serif;
+  --sans:"Inter","Helvetica Neue",Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  /* metrics */
+  --maxw:1120px; --pad:28px; --ls:.16em;
+}
+@media(max-width:640px){:root{--pad:18px}}
+
+/* --- base ----------------------------------------------------------------- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:17px;line-height:1.65;font-weight:300;-webkit-font-smoothing:antialiased;
+  overflow-x:hidden;overflow-wrap:break-word}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;line-height:1.14;letter-spacing:-.02em;margin:0;text-wrap:balance}
+p{margin:0}
+a{color:inherit}
+::selection{background:rgba(34,211,238,.28)}
+img{max-width:100%}
+
+/* --- helpers -------------------------------------------------------------- */
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+code{font-family:var(--mono);font-size:.86em;padding:1px 6px;border-radius:4px;background:var(--tile);color:var(--cyan)}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--sky);outline-offset:3px;border-radius:9px}
+
+/* --- layout --------------------------------------------------------------- */
+.sec{max-width:var(--maxw);margin:0 auto;padding:62px var(--pad) 8px}
+@media(max-width:640px){.sec{padding-top:44px}}
+
+/* --- section headings ----------------------------------------------------- */
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:var(--ls);text-transform:uppercase;
+  color:var(--cyan);display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:"";width:22px;height:1px;background:var(--cyan);opacity:.8;flex:none}
+h2{font-size:clamp(25px,5.2vw,38px);margin-top:18px;max-width:22ch}
+.sub{margin-top:16px;font-size:clamp(16px,3.6vw,18px);color:var(--s2);max-width:62ch;line-height:1.62}
+.sub+.sub{margin-top:14px}
+.sub b{color:var(--ink);font-weight:500}
+
+/* --- nav ------------------------------------------------------------------ */
+.nav{position:sticky;top:0;z-index:80;background:rgba(7,11,19,.86);
+  backdrop-filter:saturate(150%) blur(14px);border-bottom:1px solid var(--line-soft)}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:0 var(--pad);min-height:70px;
+  display:flex;align-items:center;gap:16px}
+.wordmark{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:-.02em;
+  text-decoration:none;flex:none;display:inline-flex;align-items:center;gap:9px;color:var(--ink)}
+.wordmark .mk{width:30px;height:30px;border-radius:8px;background:var(--grad);display:grid;place-items:center;
+  font-family:var(--display);font-weight:700;font-size:12.5px;color:#06121a;letter-spacing:.02em}
+/* On the dark nav use the WHITE logo — the blue wordmark has too little contrast. */
+.nav-logo{height:34px;width:auto;flex:none}
+@media(max-width:640px){.wordmark span.nm{display:none}}
+.nav-links{display:flex;gap:22px;margin-left:auto;font-family:var(--mono);font-size:11.5px;
+  letter-spacing:var(--ls);color:var(--s3);text-transform:uppercase}
+.nav-links a{text-decoration:none;padding:6px 0;border-bottom:1px solid transparent;transition:.15s}
+.nav-links a:hover{color:var(--ink);border-bottom-color:var(--cyan)}
+.nav .btn{margin-left:24px}
+@media(max-width:1000px){.nav-links{display:none}.nav .btn{margin-left:auto}}
+
+/* --- buttons -------------------------------------------------------------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;text-decoration:none;
+  font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.04em;
+  padding:13px 18px;min-height:46px;border-radius:9px;border:1px solid transparent;
+  transition:.18s;text-align:center}
+.btn svg{width:16px;height:16px;flex:none}
+.btn-pri{background:var(--grad);color:#06121a;font-weight:600}
+.btn-pri:hover{filter:brightness(1.12)}
+.btn-sec{background:var(--tile);color:var(--ink);border-color:var(--line)}
+.btn-sec:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn-sm{padding:10px 14px;min-height:38px;font-size:11.5px}
+
+/* --- question bridge ------------------------------------------------------ */
+.bridge{max-width:var(--maxw);margin:0 auto;padding:44px var(--pad) 10px;
+  display:flex;flex-direction:column;align-items:center}
+.bridge .stem{width:1px;height:26px;background:linear-gradient(var(--line),rgba(34,211,238,.55))}
+.bridge .stem.b{background:linear-gradient(rgba(34,211,238,.55),var(--line))}
+.bq{display:flex;align-items:center;gap:14px;max-width:640px;padding:15px 22px;border-radius:14px;
+  background:var(--card);border:1px solid rgba(34,211,238,.32);
+  box-shadow:0 0 0 5px rgba(34,211,238,.045),0 22px 44px -34px #000}
+.bq .qm{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+  background:var(--grad);color:#06121a;font-family:var(--display);font-weight:700;font-size:16px}
+.bq q{quotes:none;font-family:var(--display);font-size:clamp(15.5px,3.6vw,18px);
+  font-weight:500;color:var(--ink);line-height:1.4}
+@media(max-width:640px){.bridge{padding-top:32px}.bq{padding:14px 16px;gap:11px}}
+
+/* --- cards and callouts --------------------------------------------------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px}
+.rule{display:flex;gap:14px;align-items:flex-start;background:var(--tile);border:1px solid var(--line);
+  border-left:2px solid var(--cyan);border-radius:12px;padding:18px 20px}
+.rule .ic{flex:none;width:26px;height:26px;border-radius:7px;background:rgba(34,211,238,.14);
+  display:grid;place-items:center;color:var(--cyan);font-size:14px}
+.rule p{font-size:15.5px;color:var(--s2);line-height:1.55}
+.rule b{color:var(--ink);font-weight:500}
+
+/* --- accordion / FAQ ------------------------------------------------------ */
+.acc{border-bottom:1px solid var(--line-soft)}
+.acc summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:14px;padding:18px 0;
+  font-family:var(--display);font-size:16.5px;font-weight:500;color:var(--ink)}
+.acc summary::-webkit-details-marker{display:none}
+.acc .chev{margin-left:auto;flex:none;width:18px;height:18px;stroke:var(--s4);fill:none;
+  stroke-width:1.8;transition:.2s}
+.acc[open] .chev{transform:rotate(180deg);stroke:var(--cyan)}
+.acc-b{padding:0 0 18px 0;font-size:15.5px;color:var(--s2);line-height:1.6;max-width:70ch}
+
+/* --- bio block / credentials / footer ------------------------------------- */
+.bio{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.bio .av{width:52px;height:52px;border-radius:50%;flex:none;background:var(--tile);
+  border:1px solid var(--line);object-fit:cover;display:block}
+.bio .who b{display:block;font-family:var(--display);font-size:15.5px;font-weight:500}
+.bio .who span{font-family:var(--mono);font-size:11px;color:var(--s4);letter-spacing:.04em}
+img.av{object-fit:cover}
+.biotext{max-width:62ch;font-size:15.5px;color:var(--s2);line-height:1.6}
+.creds{display:flex;gap:26px;flex-wrap:wrap}
+.creds div b{font-family:var(--display);font-size:19px;font-weight:600;display:block}
+.creds div span{font-family:var(--mono);font-size:10.5px;letter-spacing:var(--ls);
+  text-transform:uppercase;color:var(--s4)}
+.flinks{display:flex;gap:20px;justify-content:center;flex-wrap:wrap}
+.flinks a{text-decoration:none;transition:.15s}
+.flinks a:hover{color:var(--cyan)}
+footer{border-top:1px solid var(--line-soft);padding:22px var(--pad);text-align:center;
+  font-family:var(--mono);font-size:11px;color:var(--s4);letter-spacing:.04em}

@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Afterprompt: find the credentials in your AI history</title>
+<meta name="description" content="Every key your AI assistant read is sitting in a plain-text transcript on your disk, and was sent to the model provider. Afterprompt finds those credentials on your machine and tells you which to rotate.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0f19">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Your credentials are in your AI history.">
+<meta property="og:description" content="Afterprompt scans your AI coding assistants' history on your own machine and tells you which credentials to rotate. Local, free to use, source available.">
+<meta property="og:url" content="https://am-consultingai.github.io/afterprompt/">
+<meta property="og:image" content="https://am-consultingai.github.io/afterprompt/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="img/afterprompt-mark.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/am-consultingai/am-assets@v2/brand.css">
+<link rel="stylesheet" href="site.css">
+<script src="site.js" defer></script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="ap-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/><stop offset=".55" stop-color="#38bdf8"/><stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18.5h10.2a4.3 4.3 0 0 0 .6-8.55A6.2 6.2 0 0 0 5.9 9.4 4.6 4.6 0 0 0 7 18.5z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20.5 20.5-4.8-4.8"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4"/><path d="m10.4 12.6 9.1-9.1M16.5 6.5l3 3M13.5 9.5l2 2"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20.5 3.5v5h-5"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.6"/><path d="M2 19.5h20"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/></symbol>
+    <symbol id="i-mask" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A9.7 9.7 0 0 1 12 5c5 0 9 4.5 10 7-.4 1-1.2 2.3-2.4 3.5M6.2 6.2C4.1 7.6 2.6 9.8 2 12c1 2.5 5 7 10 7 1.7 0 3.3-.5 4.6-1.3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="m7 9 3 3-3 3M12.5 15H17"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></symbol>
+    <symbol id="i-bug" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M12 11v9M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2M9 7a3 3 0 0 1 6 0"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-dash" viewBox="0 0 24 24"><path d="M7 12h10"/></symbol>
+  </defs>
+</svg>
+
+<!-- BRAND ---------------------------------------------------------------->
+<section class="brand-band" aria-label="Afterprompt">
+  <svg class="ap-logo" viewBox="0 0 640 128" role="img" aria-labelledby="ap-logo-title">
+    <title id="ap-logo-title">Afterprompt</title>
+    <g transform="translate(4 4)">
+      <rect x="2" y="2" width="116" height="116" rx="30" fill="#0d1321" stroke="url(#ap-grad)" stroke-width="3"/>
+      <path d="M28 36 L52 60 L28 84" fill="none" stroke="url(#ap-grad)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+      <g fill="none" stroke="#f87171" stroke-linecap="round" stroke-width="8">
+        <circle cx="64" cy="84" r="9"/>
+        <path d="M73 84 H97 M88 84 V94 M97 84 V92"/>
+      </g>
+    </g>
+    <text x="156" y="88" font-family="Space Grotesk, Helvetica Neue, Arial, sans-serif" font-size="72" letter-spacing="-2.5"><tspan fill="#94a3b8" font-weight="500">after</tspan><tspan fill="#f3f4f6" font-weight="700">prompt</tspan></text>
+  </svg>
+  <p class="brand-tag">Find the keys your AI tools kept.</p>
+</section>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="nav-mark" href="#top" aria-label="Afterprompt, back to top"><img src="img/afterprompt-mark.svg" alt="" width="30" height="30"><span>afterprompt</span></a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#tools">Tools</a>
+      <a href="#how">How it works</a>
+      <a href="#report">Report</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-sec btn-sm nav-cta" href="https://github.com/am-consultingai/afterprompt">GitHub</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- HERO ---------------------------------------------------------------->
+  <section class="hero" id="top">
+    <picture class="hero-bg" aria-hidden="true">
+      <source media="(max-width: 700px)" srcset="img/hero-hacker-sm.webp">
+      <img src="img/hero-hacker.webp" width="3200" height="1200" alt="" fetchpriority="high">
+    </picture>
+    <div class="hero-in">
+      <div class="hero-text">
+        <p class="eyebrow">Free credential scanner for AI assistants</p>
+        <h1>Your credentials are in your AI&nbsp;history.</h1>
+        <p class="lede">Every key your assistant read is in a plain-text transcript on your disk, and on the model provider’s servers. Find them before someone else does.</p>
+        <div class="hero-actions">
+          <a class="btn btn-pri" href="#start">Scan your machine free</a>
+          <a class="btn btn-sec" href="#how">See how it works</a>
+        </div>
+        <p class="hero-meta">Free to use · source available · runs locally · no account · macOS, Linux, Windows</p>
+      </div>
+      <figure class="stolen" aria-label="Illustration of a stolen credential. Not a real key.">
+        <div class="stolen-top">
+          <svg class="ic"><use href="#i-key"/></svg>
+          <span>Credential exposed</span>
+          <em>ANTHROPIC_API_KEY</em>
+        </div>
+        <p class="stolen-key">sk-ant-api03-7Kq2Xw9mDEMO</p>
+        <dl>
+          <dt>Found in</dt><dd>~/.claude/projects/…/5b1e0c.jsonl</dd>
+          <dt>Also sent to</dt><dd>model provider</dd>
+        </dl>
+        <figcaption>Illustration. Not a real key.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- TOOLS CAROUSEL ------------------------------------------------------->
+  <section class="tools" id="tools">
+    <div class="tools-head">
+      <p class="eyebrow">The AI tools on your machine</p>
+      <h2>Agents, IDEs, harnesses and local models.</h2>
+      <p class="legend"><span class="st on">Scanned today</span><span class="st soon">Coming soon</span></p>
+    </div>
+    <div class="marquee" role="list" aria-label="AI tools">
+      <div class="track">
+        <div class="tool on" role="listitem"><img src="img/logos/claude.svg" alt="" width="22" height="22">Claude Code<b>Scanned</b></div>
+        <div class="tool on" role="listitem"><img src="img/logos/cursor.svg" alt="" width="22" height="22">Cursor<b>Scanned</b></div>
+        <div class="tool" role="listitem"><span class="mono-mark">O</span>OpenAI Codex</div>
+        <div class="tool" role="listitem"><img src="img/logos/googlegemini.svg" alt="" width="22" height="22">Gemini CLI</div>
+        <div class="tool" role="listitem"><span class="mono-mark">A</span>Google Antigravity</div>
+        <div class="tool" role="listitem"><img src="img/logos/githubcopilot.svg" alt="" width="22" height="22">GitHub Copilot</div>
+        <div class="tool" role="listitem"><img src="img/logos/windsurf.svg" alt="" width="22" height="22">Windsurf</div>
+        <div class="tool" role="listitem"><img src="img/logos/opencode.svg" alt="" width="22" height="22">OpenCode</div>
+        <div class="tool" role="listitem"><span class="mono-mark">OC</span>OpenClaw</div>
+        <div class="tool" role="listitem"><span class="mono-mark">H</span>Hermes Agent</div>
+        <div class="tool" role="listitem"><img src="img/logos/ollama.svg" alt="" width="22" height="22">Ollama</div>
+        <div class="tool" role="listitem"><img src="img/logos/lmstudio.svg" alt="" width="22" height="22">LM Studio</div>
+        <div class="tool" role="listitem"><img src="img/logos/claude.svg" alt="" width="22" height="22">Claude Desktop</div>
+        <div class="tool" role="listitem"><span class="mono-mark">C</span>ChatGPT desktop</div>
+      </div>
+      <div class="track" aria-hidden="true">
+        <div class="tool on"><img src="img/logos/claude.svg" alt="" width="22" height="22">Claude Code<b>Scanned</b></div>
+        <div class="tool on"><img src="img/logos/cursor.svg" alt="" width="22" height="22">Cursor<b>Scanned</b></div>
+        <div class="tool"><span class="mono-mark">O</span>OpenAI Codex</div>
+        <div class="tool"><img src="img/logos/googlegemini.svg" alt="" width="22" height="22">Gemini CLI</div>
+        <div class="tool"><span class="mono-mark">A</span>Google Antigravity</div>
+        <div class="tool"><img src="img/logos/githubcopilot.svg" alt="" width="22" height="22">GitHub Copilot</div>
+        <div class="tool"><img src="img/logos/windsurf.svg" alt="" width="22" height="22">Windsurf</div>
+        <div class="tool"><img src="img/logos/opencode.svg" alt="" width="22" height="22">OpenCode</div>
+        <div class="tool"><span class="mono-mark">OC</span>OpenClaw</div>
+        <div class="tool"><span class="mono-mark">H</span>Hermes Agent</div>
+        <div class="tool"><img src="img/logos/ollama.svg" alt="" width="22" height="22">Ollama</div>
+        <div class="tool"><img src="img/logos/lmstudio.svg" alt="" width="22" height="22">LM Studio</div>
+        <div class="tool"><img src="img/logos/claude.svg" alt="" width="22" height="22">Claude Desktop</div>
+        <div class="tool"><span class="mono-mark">C</span>ChatGPT desktop</div>
+      </div>
+    </div>
+    <div class="marquee reverse" role="list" aria-label="More AI tools">
+      <div class="track">
+        <div class="tool" role="listitem"><img src="img/logos/cline.svg" alt="" width="22" height="22">Cline</div>
+        <div class="tool" role="listitem"><span class="mono-mark">R</span>Roo Code</div>
+        <div class="tool" role="listitem"><span class="mono-mark">C</span>Continue</div>
+        <div class="tool" role="listitem"><span class="mono-mark">A</span>Aider</div>
+        <div class="tool" role="listitem"><span class="mono-mark">G</span>Goose</div>
+        <div class="tool" role="listitem"><img src="img/logos/amp.svg" alt="" width="22" height="22">Amp</div>
+        <div class="tool" role="listitem"><img src="img/logos/zedindustries.svg" alt="" width="22" height="22">Zed</div>
+        <div class="tool" role="listitem"><img src="img/logos/jetbrains.svg" alt="" width="22" height="22">JetBrains AI</div>
+        <div class="tool" role="listitem"><span class="mono-mark">K</span>Kiro</div>
+        <div class="tool" role="listitem"><img src="img/logos/qwen.svg" alt="" width="22" height="22">Qwen Code</div>
+        <div class="tool" role="listitem"><img src="img/logos/trae.svg" alt="" width="22" height="22">Trae</div>
+        <div class="tool" role="listitem"><span class="mono-mark">C</span>Crush</div>
+        <div class="tool" role="listitem"><span class="mono-mark">W</span>Open WebUI</div>
+      </div>
+      <div class="track" aria-hidden="true">
+        <div class="tool"><img src="img/logos/cline.svg" alt="" width="22" height="22">Cline</div>
+        <div class="tool"><span class="mono-mark">R</span>Roo Code</div>
+        <div class="tool"><span class="mono-mark">C</span>Continue</div>
+        <div class="tool"><span class="mono-mark">A</span>Aider</div>
+        <div class="tool"><span class="mono-mark">G</span>Goose</div>
+        <div class="tool"><img src="img/logos/amp.svg" alt="" width="22" height="22">Amp</div>
+        <div class="tool"><img src="img/logos/zedindustries.svg" alt="" width="22" height="22">Zed</div>
+        <div class="tool"><img src="img/logos/jetbrains.svg" alt="" width="22" height="22">JetBrains AI</div>
+        <div class="tool"><span class="mono-mark">K</span>Kiro</div>
+        <div class="tool"><img src="img/logos/qwen.svg" alt="" width="22" height="22">Qwen Code</div>
+        <div class="tool"><img src="img/logos/trae.svg" alt="" width="22" height="22">Trae</div>
+        <div class="tool"><span class="mono-mark">C</span>Crush</div>
+        <div class="tool"><span class="mono-mark">W</span>Open WebUI</div>
+      </div>
+    </div>
+    <p class="tools-note">Today Afterprompt scans Claude Code and Cursor, on macOS, Linux and Windows (WSL). The rest are on the roadmap. <a href="https://github.com/am-consultingai/afterprompt/issues">Vote for the next one</a>.</p>
+  </section>
+
+  <!-- STATS --------------------------------------------------------------->
+  <section class="stats" aria-label="At a glance">
+    <div><b data-patterns>140</b><span>credential formats recognised</span></div>
+    <div><b>6 min</b><span>to scan 3.5 GB of AI history</span></div>
+    <div><b>3</b><span>platforms: macOS, Linux, Windows</span></div>
+    <div><b>0</b><span>network calls while scanning</span></div>
+  </section>
+
+  <!-- RISK ---------------------------------------------------------------->
+  <section class="risk-band" id="risk">
+    <img class="risk-bg" src="img/desk.webp" width="2000" height="1200" alt="" loading="lazy" aria-hidden="true">
+    <div class="risk-in">
+      <p class="eyebrow">The problem</p>
+      <h2>One key. Two copies.</h2>
+      <div class="copies">
+        <article class="copy-card">
+          <svg class="ic big"><use href="#i-cloud"/></svg>
+          <h3>Sent to the provider</h3>
+          <ul class="tags">
+            <li>Under their logging</li>
+            <li>Their retention, not yours</li>
+            <li>At risk in a breach</li>
+            <li>Can’t be unsent</li>
+          </ul>
+        </article>
+        <article class="copy-card">
+          <svg class="ic big"><use href="#i-file"/></svg>
+          <h3>Saved on your disk</h3>
+          <ul class="tags">
+            <li>Plain text, for weeks or months</li>
+            <li>Copied into backups</li>
+            <li>Readable by malware</li>
+            <li>Readable by other agents</li>
+          </ul>
+        </article>
+      </div>
+      <p class="punch">Deleting the chat fixes neither. <span>Rotating the key fixes both.</span></p>
+    </div>
+  </section>
+
+  <!-- LEAKS --------------------------------------------------------------->
+  <section class="sec leaks" id="leaks">
+    <p class="eyebrow">How keys get there</p>
+    <h2>Six ordinary moments. Six leaked keys.</h2>
+    <div class="leak-grid">
+      <article class="leak"><svg class="ic"><use href="#i-terminal"/></svg><h3>The agent reads your .env</h3><pre><span class="p">$</span> cat .env
+OPENAI_API_KEY=<mark>sk-proj-…DEMO</mark></pre></article>
+      <article class="leak"><svg class="ic"><use href="#i-terminal"/></svg><h3>It dumps the environment</h3><pre><span class="p">$</span> printenv | grep TOKEN
+GITHUB_TOKEN=<mark>ghp_Xq…DEMO</mark></pre></article>
+      <article class="leak"><svg class="ic"><use href="#i-chat"/></svg><h3>You paste a key to get unstuck</h3><pre>you: still 401, here’s the key
+<mark>sk-ant-api03-…DEMO</mark></pre></article>
+      <article class="leak"><svg class="ic"><use href="#i-plug"/></svg><h3>An MCP server needs a token</h3><pre>"env": {
+  "SLACK_TOKEN": "<mark>xoxb-…DEMO</mark>" }</pre></article>
+      <article class="leak"><svg class="ic"><use href="#i-code"/></svg><h3>It writes a curl command</h3><pre>curl -H "Authorization: Bearer
+  <mark>eyJhbGc…DEMO</mark>" api/v1/…</pre></article>
+      <article class="leak"><svg class="ic"><use href="#i-bug"/></svg><h3>An error prints a connection string</h3><pre>connect failed: postgres://app:
+<mark>••••••DEMO</mark>@db.prod:5432</pre></article>
+    </div>
+  </section>
+
+  <!-- HOW ----------------------------------------------------------------->
+  <section class="sec how" id="how">
+    <p class="eyebrow">How it works</p>
+    <h2>Every leaked key, in minutes.</h2>
+    <ol class="steps">
+      <li>
+        <span class="step-ic"><svg class="ic"><use href="#i-scan"/></svg></span>
+        <h3>Scan</h3>
+        <p>Transcripts, chat databases and caches, on both sides of WSL</p>
+      </li>
+      <li>
+        <span class="step-ic"><svg class="ic"><use href="#i-key"/></svg></span>
+        <h3>Match</h3>
+        <p>Your own live keys, <span data-patterns>140</span> vendor formats, hidden payloads</p>
+      </li>
+      <li>
+        <span class="step-ic"><svg class="ic"><use href="#i-rotate"/></svg></span>
+        <h3>Rotate</h3>
+        <p>A short list, with where to revoke each key</p>
+      </li>
+    </ol>
+    <div class="signals">
+      <article><b>Your real keys</b><p>Reads the keys set up on your machine (<code>.env</code> files, AWS, Azure, gcloud, SSH, npm, PyPI, kube) and finds those exact values in AI history. No guessing.</p></article>
+      <article><b>Known formats</b><p><span data-patterns>140</span> patterns for vendor keys, private keys, JWTs, auth headers and connection strings.</p></article>
+      <article><b>Hidden payloads</b><p>Deep mode decodes base64, escaped JSON, gzip and JWTs, then checks again.</p></article>
+    </div>
+  </section>
+
+  <!-- DETECTS ------------------------------------------------------------->
+  <section class="sec detects" id="detects">
+    <p class="eyebrow">What it catches</p>
+    <h2><span data-patterns>140</span> credential formats, and your own keys.</h2>
+    <ul class="chips">
+      <li>Anthropic</li><li>OpenAI</li><li>Google Cloud</li><li>Gemini</li><li>AWS</li><li>Azure</li><li>GitHub</li><li>GitLab</li>
+      <li>Hugging Face</li><li>xAI</li><li>Groq</li><li>OpenRouter</li><li>Stripe</li><li>Slack</li><li>Atlassian</li><li>Notion</li>
+      <li>Linear</li><li>npm</li><li>PyPI</li><li>Docker Hub</li><li>Cloudflare</li><li>Vercel</li><li>DigitalOcean</li><li>Supabase</li>
+      <li>Twilio</li><li>SendGrid</li><li>Sentry</li><li>Datadog</li><li>Discord</li><li>Telegram</li><li>Shopify</li><li>Mailgun</li>
+      <li class="kind">Private keys</li><li class="kind">JWTs</li><li class="kind">Bearer tokens</li><li class="kind">Database URLs</li>
+      <li class="kind">Webhooks</li><li class="kind">Passwords in prompts</li>
+    </ul>
+    <p class="chips-note">False alarms are set aside automatically: placeholders, example files, expired tokens, local databases and code shipped inside plugins.</p>
+  </section>
+
+  <!-- REPORT -------------------------------------------------------------->
+  <section class="sec report" id="report">
+    <p class="eyebrow">The report</p>
+    <h2>Know exactly what to rotate.</h2>
+    <div class="shot">
+      <div class="shot-bar"><i></i><i></i><i></i><span>report.html</span><em class="demo">Demo data</em></div>
+      <img src="img/report.webp" width="1600" height="1486" loading="lazy"
+           alt="An Afterprompt report listing three credentials to rotate, each with a masked value, where it leaked, where it is still on disk, and a revoke link. Demo data.">
+    </div>
+    <ul class="callouts">
+      <li><b>Masked</b> first 6 and last 4 characters only</li>
+      <li><b>Where it leaked</b> tool, session and file</li>
+      <li><b>Still on disk</b> the .env that holds it</li>
+      <li><b>Revoke link</b> straight to the right console</li>
+    </ul>
+  </section>
+
+  <!-- COMPARE ------------------------------------------------------------->
+  <section class="sec compare" id="compare">
+    <p class="eyebrow">Why another scanner</p>
+    <h2>Repo scanners watch git. Nobody watches the chat.</h2>
+    <div class="table-wrap">
+      <table class="vs">
+        <thead><tr><th scope="col"><span class="sr">Capability</span></th><th scope="col">Repository secret scanners</th><th scope="col" class="us">Afterprompt</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Scans commits and repositories</th><td><svg class="ic"><use href="#i-check"/></svg></td><td class="us"><svg class="ic"><use href="#i-dash"/></svg></td></tr>
+          <tr><th scope="row">Scans AI assistant transcripts and chat databases</th><td><svg class="ic"><use href="#i-dash"/></svg></td><td class="us"><svg class="ic"><use href="#i-check"/></svg></td></tr>
+          <tr><th scope="row">Checks your live keys against that history</th><td><svg class="ic"><use href="#i-dash"/></svg></td><td class="us"><svg class="ic"><use href="#i-check"/></svg></td></tr>
+          <tr><th scope="row">Decodes keys hidden inside chat payloads</th><td><svg class="ic"><use href="#i-dash"/></svg></td><td class="us"><svg class="ic"><use href="#i-check"/></svg></td></tr>
+          <tr><th scope="row">Runs entirely on your machine, no account</th><td>varies</td><td class="us"><svg class="ic"><use href="#i-check"/></svg></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="chips-note">Use both: keep your repository scanner, and add Afterprompt for what your AI tools remember.</p>
+  </section>
+
+  <!-- SAFE ---------------------------------------------------------------->
+  <section class="sec safe" id="safe">
+    <p class="eyebrow">Trust</p>
+    <h2>Safe to run on your own machine.</h2>
+    <div class="tiles">
+      <div class="tile"><svg class="ic"><use href="#i-laptop"/></svg><b>Runs locally</b><span>Nothing leaves your machine</span></div>
+      <div class="tile"><svg class="ic"><use href="#i-lock"/></svg><b>Read-only</b><span>Never edits your files</span></div>
+      <div class="tile"><svg class="ic"><use href="#i-mask"/></svg><b>Masked output</b><span>Full keys never written out</span></div>
+      <div class="tile"><svg class="ic"><use href="#i-code"/></svg><b>Source available</b><span>Read every line before you run it</span></div>
+    </div>
+  </section>
+
+  <!-- FAQ ----------------------------------------------------------------->
+  <section class="sec faq" id="faq">
+    <p class="eyebrow">Questions</p>
+    <h2>FAQ</h2>
+    <div class="faq-list">
+      <details class="acc"><summary>Does Afterprompt upload anything?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="acc-b">No. It runs on your machine and makes no network calls while scanning. The only download is ripgrep, if you don’t have it, verified against a pinned checksum.</div></details>
+      <details class="acc"><summary>Will it delete or change my AI history?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="acc-b">No. It only reads. You decide what to rotate and what to clean up.</div></details>
+      <details class="acc"><summary>Which AI tools does it scan today?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="acc-b">Claude Code and Cursor, on macOS, Linux and Windows through WSL, including both the Linux and Windows sides. The tools marked “coming soon” above are on the roadmap.</div></details>
+      <details class="acc"><summary>It found a key. What should I do?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="acc-b">Revoke it and issue a new one. The report links to the right console. Then remove the copies still on disk and move secrets into environment variables or a secrets manager.</div></details>
+      <details class="acc"><summary>Isn’t deleting the transcript enough?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="acc-b">No. The key was already sent to the model provider as chat context. Only rotating it makes the old value useless.</div></details>
+      <details class="acc"><summary>Is it free?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <div class="acc-b">Yes. Use it on your own machines, at work and for your clients. The source is public under FSL-1.1-ALv2: the only thing it rules out is selling a competing product or service. Each release becomes Apache 2.0 after two years.</div></details>
+    </div>
+  </section>
+
+  <!-- START --------------------------------------------------------------->
+  <section class="sec start" id="start">
+    <img class="start-mark" src="img/afterprompt-mark.svg" alt="" width="64" height="64">
+    <h2>Check your machine.</h2>
+    <p class="start-sub">Three commands. A few minutes. A list of what to rotate.</p>
+    <div class="term">
+      <div class="term-bar"><i></i><i></i><i></i>
+        <button class="copy" type="button" data-copy="quickstart" hidden><svg class="ic"><use href="#i-copy"/></svg><span>Copy</span></button>
+      </div>
+<pre id="quickstart"><code>git clone https://github.com/am-consultingai/afterprompt.git
+cd afterprompt
+./afterprompt.sh</code></pre>
+    </div>
+    <p class="req">Python 3.9+ · macOS, Linux, or Windows via WSL · <a href="https://github.com/am-consultingai/afterprompt#options">all options</a></p>
+    <p class="limits">It can’t tell whether a key still works, or delete the provider’s copy. Rotating does that.</p>
+  </section>
+
+</main>
+
+<footer>
+  afterprompt <span data-version>0.1.0</span> · <a href="https://github.com/am-consultingai/afterprompt/blob/main/LICENSE">FSL-1.1-ALv2</a> · <a href="https://github.com/am-consultingai/afterprompt">GitHub</a> · Built by AM Consulting
+</footer>
+</body>
+</html>
