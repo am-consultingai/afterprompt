@@ -15,7 +15,6 @@ detect keys (all optional):
 import glob
 import os
 import re
-import shutil
 import sys
 
 from afterprompt import catalogue
@@ -109,7 +108,7 @@ class Probe:
                 p = os.path.join(d, name + ext)
                 if os.path.isfile(p):
                     return p
-        return shutil.which(name, path=os.pathsep.join(dirs)) if dirs else None
+        return None
 
 
 def evidence(tool, probe):
