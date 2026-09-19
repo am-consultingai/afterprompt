@@ -168,8 +168,9 @@ def discover(cfg):
                 self_exclude.append(os.path.join(proj_root, name))
 
     installed = detect.installed([homes["unix"], homes["windows"]], cfg.platform)
+    unknown = detect.unknown_tools([homes["unix"], homes["windows"]])
     out = {"platform": cfg.platform, "home": cfg.home, "windows_home": win_path, "windows_home_source": win_source,
-           "installed": installed, "roots": roots, "databases": dbs, "project_dirs": projects, "self_exclude": self_exclude,
+           "installed": installed, "unknown_tools": unknown, "roots": roots, "databases": dbs, "project_dirs": projects, "self_exclude": self_exclude,
            "missing": missing, "walk_truncated": walk_truncated}
     write_json(cfg.w("sources.json"), out)
     log(f"discover: {len(roots)} roots, {len(dbs)} databases, {len(projects)} project dirs, "

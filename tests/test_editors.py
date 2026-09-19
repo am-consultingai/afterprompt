@@ -94,7 +94,7 @@ class ExpansionTests(TempDirTest):
 
     def test_validation(self):  # U-ED-2
         base = {"schema": 1, "editors": [{"name": "Code"}], "tools": [
-            {"product": "T", "kind": "extension", "status": "scanned", "locations": [{"path": "$EDITOR_USER/x", "side": "unix"}]}]}
+            {"product": "T", "kind": "extension", "status": "scanned", "store": ["json"], "locations": [{"path": "$EDITOR_USER/x", "side": "unix"}]}]}
         self.assertEqual(catalogue.validate(base), [])
         cases = {
             "unknown editors": lambda d: d["tools"][0]["locations"][0].update(editors=["Notepad"]),

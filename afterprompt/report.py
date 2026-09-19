@@ -9,7 +9,7 @@ import shutil
 
 from afterprompt import __version__, envs, merge
 from afterprompt.triage import CAPS
-from afterprompt.util import human_bytes, read_json, write_json
+from afterprompt.util import display_path, human_bytes, read_json, write_json
 
 THEMES = {
     "neutral": {"assets": ("report.css",), "css": "report.css", "icon": None, "scheme": "light dark",
@@ -63,6 +63,8 @@ def coverage(cfg, sources):
         "windows_home_source": sources.get("windows_home_source"),
         "other_homes": envs.other_homes(cfg.home),
         "installed": sources.get("installed", []),
+        "unknown_tools": [display_path(u["folder"], cfg.home, sources.get("windows_home"))
+                          for u in sources.get("unknown_tools", [])],
         "sources": man.get("per_source", []),
         "files": man.get("files", 0), "bytes": man.get("bytes", 0),
         "missing_locations": sources.get("missing", []),
@@ -227,6 +229,10 @@ def coverage_rows(data):
     if uncovered:
         # Silence here would be a lie of omission: a clean report says nothing about a tool it cannot read.
         rows.append(("Installed but NOT scanned", "; ".join(f"{_env_name(i)}: {i['note']}" for i in uncovered)))
+    if c.get("unknown_tools"):
+        rows.append(("Possible AI tool data, NOT scanned",
+                     ", ".join(c["unknown_tools"]) + " (looks like an AI tool's history, but no tool Afterprompt "
+                                                     "knows keeps it there)"))
     cd = c["databases"]
     rows.append(("Chat databases", f"{cd['ok']} of {cd['total']} read"))
     for f in cd["failed"]:

@@ -171,3 +171,89 @@ def installed(homes, platform, probe=None, tools=None):
                         "status": t["status"], "note": t.get("note"), "evidence": ev[:3]})
     log("installed: " + ", ".join(f"{i['product']} ({i['status']})" for i in out))
     return out
+
+
+# ------------------------------------------------------------------ X12: tools the catalogue does not know
+PARENTS = ("", ".config", ".local/share", "Library/Application Support", "AppData/Roaming", "AppData/Local")
+# Short words need a word boundary ("email", "maintain" must not match "ai"); camelCase counts as one ("NewAI").
+AI_SHORT = re.compile(r"(?:^|[^a-z])(?:ai|gpt|llms?)(?:[^a-z]|$)")
+AI_LONG = re.compile(r"agent|assistant|copilot|claude|codex|gemini|chatbot|cody|tabnine|codeium|ollama|mistral|"
+                     r"deepseek|grok|perplexity|anthropic|openai")
+
+
+def ai_named(name):
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name).lower()
+    return bool(AI_SHORT.search(spaced) or AI_LONG.search(spaced))
+
+
+HISTORY_NAME = re.compile(r"^(?:chats?|conversations?|sessions?|threads?|transcripts?|messages|history)"
+                          r"(?:\.(?:jsonl?|db|sqlite|txt|md))?$|\.(?:chat|conversation|transcript)\.(?:jsonl?|md)$", re.I)
+MAX_ENTRIES = 2000
+
+
+def _known_prefixes(home):
+    """Every folder the catalogue already covers or uses as evidence, under this home."""
+    out = set()
+    for loc in catalogue.REGISTRY:
+        out.add(os.path.normcase(os.path.join(home, *loc.path.split("/"))))
+    for t in catalogue.DATA["tools"]:
+        for rel in (t.get("detect") or {}).get("home", []):
+            out.add(os.path.normcase(os.path.join(home, *rel.split("/"))))
+    return out
+
+
+def _covered(path, known):
+    p = os.path.normcase(path)
+    return any(p == k or p.startswith(k + os.sep) or k.startswith(p + os.sep) for k in known)
+
+
+CHROMIUM = {"Sessions", "Session Storage", "Local Storage", "IndexedDB", "Service Worker", "GPUCache", "Code Cache"}
+
+
+def _product_names():
+    return {re.sub(r"[^a-z0-9]", "", t["product"].lower()) for t in catalogue.DATA["tools"]} - {""}
+
+
+def _history_inside(folder, depth=3):
+    seen = 0
+    for dp, dns, fns in os.walk(folder):
+        if dp[len(folder):].count(os.sep) >= depth:
+            dns[:] = []
+        # Chromium/Electron profile folders ("Sessions" is its tab state) are not chat history.
+        dns[:] = [d for d in dns if d not in ("node_modules", ".git", "models", "cache", "Cache", "blobs")
+                  and d not in CHROMIUM]
+        for n in dns + fns:
+            seen += 1
+            if HISTORY_NAME.search(n):
+                return os.path.join(dp, n)
+            if seen > MAX_ENTRIES:
+                return None
+    return None
+
+
+def unknown_tools(homes):
+    """Folders that look like an AI tool's history but match no catalogue entry: [{"folder", "evidence"}].
+    A hint for the report, never scanned (a guess must not read what nobody listed)."""
+    out = []
+    products = _product_names()
+    for home in [h for h in homes if h]:
+        known = _known_prefixes(home)
+        for parent in PARENTS:
+            base = os.path.join(home, *parent.split("/")) if parent else home
+            try:
+                names = sorted(os.listdir(base))
+            except OSError:
+                continue
+            for n in names:
+                if parent == "" and not n.startswith("."):
+                    continue
+                folder = os.path.join(base, n)
+                if not ai_named(n.lstrip(".")) or not os.path.isdir(folder) or os.path.islink(folder):
+                    continue
+                flat = re.sub(r"[^a-z0-9]", "", n.lower())
+                if _covered(folder, known) or any(flat.startswith(p) for p in products):
+                    continue        # a catalogued product's own folder, even an unlisted one
+                hit = _history_inside(folder)
+                if hit:
+                    out.append({"folder": folder, "evidence": hit})
+    return out[:20]

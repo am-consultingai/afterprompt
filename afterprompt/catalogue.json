@@ -92,7 +92,11 @@
           ".claude",
           ".claude.json"
         ]
-      }
+      },
+      "store": [
+        "jsonl",
+        "json"
+      ]
     },
     {
       "product": "Cursor",
@@ -199,7 +203,12 @@
         "linux_desktop": [
           "cursor"
         ]
-      }
+      },
+      "store": [
+        "sqlite",
+        "jsonl",
+        "markdown"
+      ]
     },
     {
       "product": "Codex CLI",
@@ -337,7 +346,12 @@
         "home": [
           ".codex"
         ]
-      }
+      },
+      "store": [
+        "jsonl",
+        "sqlite",
+        "text"
+      ]
     },
     {
       "product": "Gemini CLI",
@@ -394,7 +408,11 @@
           ".gemini/settings.json",
           ".gemini/tmp"
         ]
-      }
+      },
+      "store": [
+        "jsonl",
+        "json"
+      ]
     },
     {
       "product": "OpenCode",
@@ -514,7 +532,12 @@
           ".local/share/opencode",
           ".config/opencode"
         ]
-      }
+      },
+      "store": [
+        "sqlite",
+        "json",
+        "text"
+      ]
     },
     {
       "product": "Ollama",
@@ -619,7 +642,11 @@
         "windows_apps": [
           "^Ollama\\b"
         ]
-      }
+      },
+      "store": [
+        "text",
+        "sqlite"
+      ]
     },
     {
       "product": "Windsurf",
@@ -646,7 +673,10 @@
         "linux_desktop": [
           "windsurf"
         ]
-      }
+      },
+      "store": [
+        "protobuf-encrypted"
+      ]
     },
     {
       "product": "Claude Desktop",
@@ -721,7 +751,12 @@
         ]
       },
       "source": "claude.com/docs/third-party/claude-desktop/data-storage; seen on disk",
-      "note": "Standard chats are kept on Anthropic's servers; only agent-mode sessions, logs and MCP configuration are local."
+      "note": "Standard chats are kept on Anthropic's servers; only agent-mode sessions, logs and MCP configuration are local.",
+      "store": [
+        "jsonl",
+        "json",
+        "text"
+      ]
     },
     {
       "product": "ChatGPT desktop",
@@ -737,7 +772,10 @@
           "^ChatGPT\\b"
         ]
       },
-      "note": "Conversations on macOS are encrypted with a Keychain key since July 2024; Windows storage not yet mapped."
+      "note": "Conversations on macOS are encrypted with a Keychain key since July 2024; Windows storage not yet mapped.",
+      "store": [
+        "encrypted"
+      ]
     },
     {
       "product": "Google Antigravity",
@@ -865,6 +903,11 @@
       ],
       "vendored": [
         "/antigravity-cli/(?:bin|builtin|updater)/"
+      ],
+      "store": [
+        "jsonl",
+        "sqlite",
+        "text"
       ]
     },
     {
@@ -903,7 +946,11 @@
           ".copilot"
         ]
       },
-      "source": "github.com/microsoft/vscode (workbench/contrib/chat/common/model/chatSessionStore.ts; extensions/copilot chatSessionMetadataStoreImpl.ts)"
+      "source": "github.com/microsoft/vscode (workbench/contrib/chat/common/model/chatSessionStore.ts; extensions/copilot chatSessionMetadataStoreImpl.ts)",
+      "store": [
+        "jsonl",
+        "json"
+      ]
     },
     {
       "product": "Cline",
@@ -942,6 +989,9 @@
       ],
       "config_files": [
         "cline_mcp_settings\\.json"
+      ],
+      "store": [
+        "json"
       ]
     },
     {
@@ -964,6 +1014,9 @@
       "source": "github.com/RooCodeInc/Roo-Code (src/shared/globalFileNames.ts, src/utils/storage.ts, TaskHistoryStore.ts)",
       "config_files": [
         "rooveterinaryinc\\.roo-cline/settings/mcp_settings\\.json"
+      ],
+      "store": [
+        "json"
       ]
     },
     {
@@ -1025,6 +1078,10 @@
       "config_files": [
         "\\.continue/config\\.(?:ya?ml|json)",
         "\\.continue/\\.env"
+      ],
+      "store": [
+        "json",
+        "yaml"
       ]
     },
     {
@@ -1063,7 +1120,10 @@
           ".aws/amazonq"
         ]
       },
-      "source": "github.com/aws/aws-toolkit-vscode (packages/core/src/shared/db/chatDb/util.ts, chatDb.ts)"
+      "source": "github.com/aws/aws-toolkit-vscode (packages/core/src/shared/db/chatDb/util.ts, chatDb.ts)",
+      "store": [
+        "json"
+      ]
     },
     {
       "product": "Augment",
@@ -1139,6 +1199,10 @@
       ],
       "credential_files": [
         "\\.aider/oauth-keys\\.env"
+      ],
+      "store": [
+        "markdown",
+        "text"
       ]
     },
     {
@@ -1215,6 +1279,11 @@
       ],
       "credential_files": [
         "goose/(?:config/)?secrets\\.yaml"
+      ],
+      "store": [
+        "sqlite",
+        "jsonl",
+        "text"
       ]
     },
     {
@@ -1302,6 +1371,10 @@
       ],
       "vendored": [
         "/\\.qwen/(?:bin|ide)/"
+      ],
+      "store": [
+        "jsonl",
+        "json"
       ]
     },
     {
@@ -1350,6 +1423,9 @@
       "source": "lmstudio.ai/docs/app/basics/chat",
       "config_files": [
         "\\.lmstudio/mcp\\.json"
+      ],
+      "store": [
+        "json"
       ]
     },
     {
@@ -1369,7 +1445,10 @@
           ".config/zed"
         ]
       },
-      "note": "Agent threads are stored zstd-compressed (threads.db), which Python's standard library cannot read before 3.14."
+      "note": "Agent threads are stored zstd-compressed (threads.db), which Python's standard library cannot read before 3.14.",
+      "store": [
+        "sqlite-zstd"
+      ]
     },
     {
       "product": "Kiro",
@@ -1458,6 +1537,10 @@
       ],
       "credential_files": [
         "devin/credentials\\.toml"
+      ],
+      "store": [
+        "sqlite",
+        "text"
       ]
     },
     {
@@ -1515,7 +1598,11 @@
         "home": [
           ".local/share/kilo"
         ]
-      }
+      },
+      "store": [
+        "sqlite",
+        "json"
+      ]
     },
     {
       "product": "Jan",
@@ -1591,7 +1678,11 @@
           ".local/share/Jan/data",
           "AppData/Roaming/Jan/data"
         ]
-      }
+      },
+      "store": [
+        "jsonl",
+        "json"
+      ]
     },
     {
       "product": "Amp",
@@ -1622,7 +1713,10 @@
         "home": [
           ".local/share/amp"
         ]
-      }
+      },
+      "store": [
+        "json"
+      ]
     },
     {
       "product": "Junie",
@@ -1658,7 +1752,59 @@
         "home": [
           ".junie"
         ]
-      }
+      },
+      "store": [
+        "jsonl",
+        "json"
+      ]
+    },
+    {
+      "product": "Devin",
+      "vendor": "Cognition",
+      "kind": "cloud",
+      "status": "cloud",
+      "locations": [],
+      "note": "Runs in the vendor's cloud: there is no local history to scan. Rotate anything you pasted into it."
+    },
+    {
+      "product": "Replit Agent",
+      "vendor": "Replit",
+      "kind": "cloud",
+      "status": "cloud",
+      "locations": [],
+      "note": "Runs in the vendor's cloud: there is no local history to scan."
+    },
+    {
+      "product": "v0",
+      "vendor": "Vercel",
+      "kind": "cloud",
+      "status": "cloud",
+      "locations": [],
+      "note": "Runs in the vendor's cloud: there is no local history to scan."
+    },
+    {
+      "product": "Bolt",
+      "vendor": "StackBlitz",
+      "kind": "cloud",
+      "status": "cloud",
+      "locations": [],
+      "note": "Runs in the vendor's cloud: there is no local history to scan."
+    },
+    {
+      "product": "Lovable",
+      "vendor": "Lovable",
+      "kind": "cloud",
+      "status": "cloud",
+      "locations": [],
+      "note": "Runs in the vendor's cloud: there is no local history to scan."
+    },
+    {
+      "product": "Jules",
+      "vendor": "Google",
+      "kind": "cloud",
+      "status": "cloud",
+      "locations": [],
+      "note": "Runs in the vendor's cloud: there is no local history to scan."
     }
   ],
   "editors": [

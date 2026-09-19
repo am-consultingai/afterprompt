@@ -79,7 +79,7 @@ class RegressionTests(unittest.TestCase):
 class SchemaTests(unittest.TestCase):
     def good(self):
         return {"schema": 1, "tools": [{"product": "Tool", "vendor": "V", "kind": "cli", "status": "scanned",
-                                        "locations": [{"path": ".tool", "side": "unix"}]}]}
+                                        "store": ["jsonl"], "locations": [{"path": ".tool", "side": "unix"}]}]}
 
     def test_shipped_catalogue_is_valid(self):  # U-CAT-3
         with open(catalogue.PATH, encoding="utf-8") as fh:
@@ -116,6 +116,10 @@ class SchemaTests(unittest.TestCase):
             "detect.windows_apps: bad regex": lambda d: t(d).update(detect={"windows_apps": ["("]}),
             "detect.home paths": lambda d: t(d).update(detect={"home": ["../x"]}),
             "match is a non-empty": lambda d: loc(d).update(match=[]),
+            "names its store formats": lambda d: t(d).pop("store"),
+            "store must be a list": lambda d: t(d).update(store="jsonl"),
+            "a cloud tool has a note": lambda d: d["tools"].append({"product": "C", "kind": "cloud", "status": "cloud",
+                                                                    "locations": [{"path": ".c", "side": "unix"}]}),
         }
         for want, fn in cases.items():
             with self.subTest(mistake=want):
@@ -169,3 +173,13 @@ class ExcludedTablesTests(TempDirTest):
 def databases_ledger(cfg):
     with open(cfg.w("extracted", "_ledger.json"), encoding="utf-8") as fh:
         return json.load(fh)
+
+
+class CloudTests(unittest.TestCase):
+    def test_cloud_only_products_are_listed_with_a_reason(self):  # U-CAT-8
+        cloud = [t for t in catalogue.DATA["tools"] if t["status"] == "cloud"]
+        self.assertTrue({"Devin", "v0", "Bolt", "Lovable"} <= {t["product"] for t in cloud})
+        for t in cloud:
+            self.assertIn("cloud", t["note"])
+            self.assertEqual(t["locations"], [])
+        self.assertFalse({t["product"] for t in cloud} & {l.tool for l in catalogue.REGISTRY})

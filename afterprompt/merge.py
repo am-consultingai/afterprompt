@@ -122,6 +122,7 @@ def merge_coverage(host_cov, others):
             continue
         cov["sources"] = cov.get("sources", []) + [dict(s, side=side) for s in c.get("sources", [])]
         cov["installed"] = cov.get("installed", []) + [dict(i, env=prefix) for i in c.get("installed", [])]
+        cov["unknown_tools"] = cov.get("unknown_tools", []) + [f"[{prefix}] {u}" for u in c.get("unknown_tools", [])]
         for k in ("files", "bytes", "unreadable_files", "excluded_files", "vendored_files", "scan_session_files"):
             cov[k] = _sum(cov.get(k), c.get(k))
         cd, od = cov.setdefault("databases", {"total": 0, "ok": 0, "failed": []}), c.get("databases") or {}

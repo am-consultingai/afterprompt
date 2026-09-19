@@ -1,8 +1,11 @@
 """The tool catalogue (catalogue.json): where each AI tool keeps its data. Adding a tool is a data edit.
 
 Each tool:
-  product, vendor, kind (cli | ide | extension | desktop | runner)
-  status        scanned (supported and tested) | planned (listed, not scanned)
+  product, vendor, kind (cli | ide | extension | desktop | runner | cloud)
+  status        scanned (supported and tested) | planned (listed, not scanned) | cloud (runs in the vendor's cloud:
+                nothing local to scan, listed so its absence is explained rather than silent)
+  store         the formats its data is kept in (jsonl, json, sqlite, markdown, yaml, text, or an unreadable one
+                such as protobuf-encrypted), for whoever maps the next version
   locations     [{path, side, platforms?, role?, match?}]
                   path    relative to the side's home; "$CLAUDE_DIR" is Claude Code's config dir
                   side    unix (the macOS/Linux/WSL home) | windows (the Windows profile: this machine's own
@@ -42,8 +45,8 @@ from collections import namedtuple
 PLATFORMS = ("macos", "linux", "wsl", "windows")
 SIDES = {"unix": ("macos", "linux", "wsl"), "windows": ("wsl", "windows")}
 ROLES = ("root", "sqlite_glob", "sqlite_dir")
-KINDS = ("cli", "ide", "extension", "desktop", "runner")
-STATUSES = ("scanned", "planned")
+KINDS = ("cli", "ide", "extension", "desktop", "runner", "cloud")
+STATUSES = ("scanned", "planned", "cloud")
 DETECT_KEYS = ("bins", "home", "vscode_extensions", "mac_bundles", "windows_apps", "linux_desktop")
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalogue.json")
 
@@ -110,6 +113,12 @@ def validate(data):
                     errors.append(f"{name}: detect.bins are bare program names")
         if t.get("status") == "planned" and not (t.get("note") and det):
             errors.append(f"{name}: a planned tool needs a note (why it is not scanned) and a detect block")
+        if t.get("status") == "cloud" and (not t.get("note") or t.get("locations")):
+            errors.append(f"{name}: a cloud tool has a note and no locations")
+        if t.get("status") == "scanned" and not t.get("store"):
+            errors.append(f"{name}: a scanned tool names its store formats")
+        if "store" in t and (not isinstance(t["store"], list) or not all(isinstance(x, str) and x for x in t["store"])):
+            errors.append(f"{name}: store must be a list of format names")
         locs = t.get("locations")
         if not isinstance(locs, list) or (t.get("status") == "scanned" and not locs):
             errors.append(f"{name}: a scanned tool needs locations")

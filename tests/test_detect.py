@@ -115,6 +115,8 @@ class DetectTests(TempDirTest):
     def test_shipped_catalogue_detects(self):  # U-DET-12
         """Every product can be detected, and every planned one explains why it is not scanned."""
         for t in catalogue.DATA["tools"]:
+            if t["status"] == "cloud":          # nothing is installed locally; the catalogue says so instead
+                continue
             with self.subTest(product=t["product"]):
                 self.assertTrue(t.get("detect"), "no way to tell it is installed")
                 if t["status"] == "planned":
@@ -156,3 +158,59 @@ class SimulatedMachineTests(TempDirTest):
         self.assertEqual((p.path_env, p.apps, p.bundles, p.desktop_dirs), ("", [], {}, ()))
         real = detect.machine_probe([home], "linux", env={})
         self.assertEqual(real.path_env, os.environ.get("PATH", ""))
+
+
+class UnknownToolTests(TempDirTest):
+    """X12: history-shaped data in an AI-named folder that no catalogue entry covers is pointed out, not scanned."""
+
+    def home(self):
+        h = os.path.join(self.tmp, "home")
+        os.makedirs(h, exist_ok=True)
+        return h
+
+    def found(self, h):
+        return [os.path.relpath(u["folder"], h).replace(os.sep, "/") for u in detect.unknown_tools([h])]
+
+    def test_flags_an_unknown_ai_folder(self):  # U-DET-17
+        h = self.home()
+        write(os.path.join(h, ".superagent", "chats", "c1.jsonl"), "{}\n")
+        write(os.path.join(h, ".config", "my-llm-app", "data", "conversations.db"), "x")
+        write(os.path.join(h, "AppData", "Roaming", "NewAI Studio", "threads", "t.json"), "{}")
+        self.assertEqual(sorted(self.found(h)), [".config/my-llm-app", ".superagent", "AppData/Roaming/NewAI Studio"])
+
+    def test_leaves_the_rest_alone(self):  # U-DET-18
+        h = self.home()
+        write(os.path.join(h, ".mozilla", "firefox", "sessions", "x"), "x")          # no AI in the name
+        write(os.path.join(h, ".codex", "sessions", "r.jsonl"), "{}\n")               # catalogued
+        write(os.path.join(h, ".gemini", "somethingnew", "chats", "c.json"), "{}")    # under a catalogued home
+        write(os.path.join(h, "AppData", "Roaming", "ollama app.exe", "Sessions", "x"), "x")  # a product's WebView
+        write(os.path.join(h, ".my-agent", "Session Storage", "000003.log"), "x")      # Chromium storage only
+        write(os.path.join(h, ".aitools", "README.md"), "no history here")
+        write(os.path.join(h, "agent-notes", "chats", "c.md"), "x")                    # not a dot-folder in ~
+        self.assertEqual(self.found(h), [])
+
+    def test_bounded(self):  # U-DET-19
+        h = self.home()
+        deep = os.path.join(h, ".deepai", "a", "b", "c", "d", "chats")
+        os.makedirs(deep)
+        self.assertEqual(self.found(h), [])                                           # below the depth limit
+        many = os.path.join(h, ".bigai")
+        for i in range(detect.MAX_ENTRIES + 50):
+            write(os.path.join(many, f"f{i:05d}.bin"), "")
+        write(os.path.join(many, "zzz", "sessions", "s"), "")
+        self.assertNotIn(".bigai", self.found(h))                                     # gave up, did not crawl
+
+    def test_reported_as_a_hint(self):  # U-DET-20
+        rows = ReportTests().rows([])
+        cov = {"platform": "linux", "sources": [], "databases": {"total": 0, "ok": 0, "failed": []},
+               "unreadable_files": 0, "excluded_files": 0, "vendored_files": 0, "scan_session_files": 0,
+               "live_values": {}, "prompts": {}, "limits": [], "missing_locations": [], "pattern_truncations": [],
+               "keychain": "not requested", "unknown_tools": ["~/.superagent"]}
+        rows = dict(report.coverage_rows({"coverage": cov}))
+        self.assertIn("~/.superagent", rows["Possible AI tool data, NOT scanned"])
+
+    def test_ai_names(self):  # U-DET-21
+        for yes in ("superagent", "NewAI Studio", "my-llm-app", "gpt4all", "OpenAI", "ai", "Cody-x", "chatbot-ui"):
+            self.assertTrue(detect.ai_named(yes), yes)
+        for no in ("email", "maintain", "Mail", "paint", "chrome", "notes", "detail"):
+            self.assertFalse(detect.ai_named(no), no)
