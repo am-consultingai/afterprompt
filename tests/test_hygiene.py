@@ -132,3 +132,19 @@ class HygieneTests(unittest.TestCase):
         self.assertIn("$env:USERPROFILE", ps1)
         # The cmdlets it relies on arrived in PowerShell 5; an older machine gets a clear message.
         self.assertIn("$PSVersionTable.PSVersion.Major -lt 5", ps1)
+
+    def test_python_override_accepts_a_bare_command_name(self):  # S-10 (W4)
+        """AFTERPROMPT_PYTHON=python must work in both launchers.
+
+        afterprompt.sh resolves it with `command -v`; the PowerShell launcher must resolve it with
+        Get-Command rather than only Test-Path, or a bare name is rejected and the scan never runs.
+        CI passes exactly that, and it is the failure this test exists to prevent.
+        """
+        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
+        block = re.search(r"function Find-Python \{.*?\n\}", ps1, re.S)
+        self.assertTrue(block, "Find-Python not found in afterprompt.ps1")
+        body = block.group(0)
+        self.assertIn("AFTERPROMPT_PYTHON", body)
+        override = body[body.index("AFTERPROMPT_PYTHON"):]
+        self.assertIn("Get-Command $override", override,
+                      "a bare command name in AFTERPROMPT_PYTHON must be resolved, not only path-tested")

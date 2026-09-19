@@ -53,7 +53,14 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 function Find-Python {
     $override = Env-Or 'AFTERPROMPT_PYTHON' ''
     $candidates = New-Object System.Collections.Generic.List[string]
-    if ($override) { $candidates.Add($override) }
+    if ($override) {
+        # The override may be a full path or a bare command name ("python"), which is what
+        # afterprompt.sh accepts through command -v and what CI passes.
+        $candidates.Add($override)
+        foreach ($c in (Get-Command $override -All -ErrorAction SilentlyContinue)) {
+            if ($c.Source) { $candidates.Add($c.Source) }
+        }
+    }
     else {
         foreach ($n in @('py.exe', 'python3.exe', 'python.exe')) {
             foreach ($c in (Get-Command $n -All -ErrorAction SilentlyContinue)) { $candidates.Add($c.Source) }
