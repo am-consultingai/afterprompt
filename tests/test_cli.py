@@ -91,7 +91,7 @@ class EnvironmentCliTests(TempDirTest):
         fx = Fixture(os.path.join(self.tmp, "host"), "linux", clean=clean)
         return fx, fx.env(AFTERPROMPT_TEST_ENVS=f"Box={os.path.join(self.tmp, 'box')}")
 
-    def failing_scan(self, e, cfg, worker_args, say, state_dir):
+    def failing_scan(self, e, cfg, worker_args, say, state_dir, stdin=None):
         return envs.save_result(state_dir, dict(envs.skipped(e, None), status="not_scanned",
                                                 reason="Python 3.9+ or ripgrep is not available there"))
 
@@ -193,7 +193,7 @@ class EnvironmentCliTests(TempDirTest):
         env["AFTERPROMPT_TEST_ENVS"] += f";Other={os.path.join(self.tmp, 'other')}"
         scanned = []
 
-        def first(e, cfg, worker_args, say, state_dir):
+        def first(e, cfg, worker_args, say, state_dir, stdin=None):
             if e.name == "Other":
                 raise KeyboardInterrupt
             scanned.append(e.name)
@@ -202,11 +202,13 @@ class EnvironmentCliTests(TempDirTest):
             code, _, _ = run_main([], env)
         self.assertEqual(code, cli.EXIT_INTERRUPTED)
 
-        def second(e, cfg, worker_args, say, state_dir):
+        def second(e, cfg, worker_args, say, state_dir, stdin=None):
             scanned.append(e.name)
             return envs.save_result(state_dir, dict(envs.skipped(e, None), status="scanned", findings=None))
-        with mock.patch.object(envs, "scan", side_effect=second):
+        with mock.patch.object(envs, "scan", side_effect=second), \
+                mock.patch.object(envs, "fetch_values", return_value=[]) as fetched:
             code, out, _ = run_main([], env)
+        self.assertEqual([c.args[0].name for c in fetched.call_args_list], ["Box"])   # values re-fetched, not stored
         self.assertEqual(code, cli.EXIT_OK, out)
         self.assertEqual(scanned, ["Box", "Other"])
         self.assertIn("Box … already done", out)

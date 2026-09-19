@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tarfile
+import threading
 from dataclasses import asdict, dataclass
 
 from afterprompt import platforms, worker
@@ -138,8 +139,9 @@ def load_result(state_dir, e):
 
 
 def save_result(state_dir, res):
+    """Saved so a resumed run skips this environment. Never with its live values: those stay in memory."""
     os.makedirs(state_dir, exist_ok=True)
-    write_json(result_path(state_dir, Environment.from_dict(res)), res)
+    write_json(result_path(state_dir, Environment.from_dict(res)), {k: v for k, v in res.items() if k != "values"})
     return res
 
 
@@ -147,13 +149,15 @@ def skipped(e, reason):
     return dict(e.to_dict(), status="skipped", reason=reason, notice=None, other_homes=[], findings=None, exit=None)
 
 
-def scan(e, cfg, worker_args, say, state_dir):
-    """Scan one environment and return its result record (also saved in state_dir, so a resumed run skips it)."""
+def scan(e, cfg, worker_args, say, state_dir, stdin=None):
+    """Scan one environment and return its result record (also saved in state_dir, so a resumed run skips it).
+    stdin: bytes for the worker's stdin (the host's live values, M5); the record's "values" holds the worker's
+    own, in memory only."""
     os.makedirs(state_dir, exist_ok=True)
     if e.kind == "wsl":
-        res = _scan_wsl(e, cfg, worker_args, say, state_dir)
+        res = _scan_wsl(e, cfg, worker_args, say, state_dir, stdin)
     elif e.kind == "folder":
-        res = _record(e, run_local(e, e.home, cfg, worker_args, say, state_dir), "scanned")
+        res = _record(e, run_local(e, e.home, cfg, worker_args, say, state_dir, stdin), "scanned")
     else:
         raise ValueError(f"cannot scan a {e.kind} environment with a worker")
     return save_result(state_dir, res)
@@ -165,6 +169,7 @@ def _record(e, run, ok_status, notice=None):
     if run.get("result") and isinstance(run["result"].get("findings"), dict):
         res["findings"] = run["result"]["findings"]
         res["exit"] = run["result"].get("exit", run.get("exit"))
+        res["values"] = run["result"].get("values") or []
         return res
     res["status"] = "not_scanned"
     res["reason"] = failure_reason(run)
@@ -188,7 +193,7 @@ def failure_reason(run):
     return why + (f": {tail}" if tail else "")
 
 
-def _scan_wsl(e, cfg, worker_args, say, state_dir):
+def _scan_wsl(e, cfg, worker_args, say, state_dir, stdin=None):
     exe = platforms.wsl_exe()
     if not exe:
         return dict(skipped(e, None), status="not_scanned", reason="wsl.exe is no longer available")
@@ -201,7 +206,7 @@ def _scan_wsl(e, cfg, worker_args, say, state_dir):
     run = {"exit": shipped.get("exit"), "stderr_tail": shipped.get("stderr_tail")}
     if shipped.get("ok"):
         cmd = [exe, "-d", e.name, "-e", "sh", "-c", RUN, "sh"] + worker_args
-        run = run_worker(cmd, None, os.path.join(state_dir, e.slug + ".stderr.log"), say)
+        run = run_worker(cmd, None, os.path.join(state_dir, e.slug + ".stderr.log"), say, stdin)
         if run.get("result"):
             return _record(e, run, "scanned", notice)
     # The distro cannot run the scanner itself. From Windows it can still be read over \\wsl.localhost:
@@ -210,7 +215,7 @@ def _scan_wsl(e, cfg, worker_args, say, state_dir):
         unc = distro_home_unc(exe, e.name)
         if unc and os.path.isdir(unc):
             say(f"{e.label}: {failure_reason(run)}; scanning it over the network share instead (slower).")
-            share = run_local(e, unc, cfg, worker_args, say, state_dir)
+            share = run_local(e, unc, cfg, worker_args, say, state_dir, stdin)
             res = _record(e, share, "scanned_share", notice)
             if res["status"] == "not_scanned":
                 res["reason"] = f"{failure_reason(run)}; the network-share fallback failed too: {res['reason']}"
@@ -278,20 +283,49 @@ def local_env(e, home, cfg, state_dir, base_env=None):
     return env
 
 
-def run_local(e, home, cfg, worker_args, say, state_dir):
+def run_local(e, home, cfg, worker_args, say, state_dir, stdin=None):
     """A worker on this machine for a home that is only reachable as a folder (the network-share fallback, and
     the test hook). Its own base folder keeps it from touching the host's run."""
     cmd = [sys.executable, "-X", "utf8", "-m", "afterprompt"] + worker_args
-    return run_worker(cmd, local_env(e, home, cfg, state_dir), os.path.join(state_dir, e.slug + ".stderr.log"), say)
+    return run_worker(cmd, local_env(e, home, cfg, state_dir), os.path.join(state_dir, e.slug + ".stderr.log"), say,
+                      stdin)
 
 
-def run_worker(cmd, env, stderr_path, say):
-    """Run a worker to completion. {"hello", "result", "error", "exit", "stderr_tail"}."""
+def fetch_values(e, cfg, state_dir, share=False):
+    """One environment's live values, collected again (a resumed run never reads them from disk)."""
+    args = ["--worker", "--values-only", "--windows-home", "none"]
+    quiet = lambda m: None  # noqa: E731
+    if e.kind == "wsl" and not share:
+        exe = platforms.wsl_exe()
+        run = run_worker([exe, "-d", e.name, "-e", "sh", "-c", RUN, "sh"] + args, None,
+                         os.path.join(state_dir, e.slug + ".values.log"), quiet) if exe else {}
+    else:
+        home = e.home or (distro_home_unc(platforms.wsl_exe(), e.name) if e.kind == "wsl" else None)
+        run = run_local(e, home, cfg, args, quiet, state_dir) if home else {}
+    return ((run or {}).get("result") or {}).get("values") or []
+
+
+def run_worker(cmd, env, stderr_path, say, stdin=None):
+    """Run a worker to completion. {"hello", "result", "error", "exit", "stderr_tail"}. stdin, when given, is
+    written to the worker's stdin and closed (the host's live values: a pipe, never argv or a file)."""
     out = {"hello": None, "result": None, "error": None, "exit": None, "stderr_tail": ""}
     log("environments: worker " + " ".join(cmd[:8]) + (" …" if len(cmd) > 8 else ""))
     try:
         with open(stderr_path, "wb") as err, \
-                subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=err, env=env) as p:
+                subprocess.Popen(cmd, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=err, env=env) as p:
+            if stdin is not None:
+                def feed():
+                    try:
+                        p.stdin.write(stdin)
+                    except (OSError, ValueError):
+                        pass
+                    finally:
+                        try:
+                            p.stdin.close()
+                        except OSError:
+                            pass
+                threading.Thread(target=feed, daemon=True).start()
             try:
                 for raw in p.stdout:
                     msg = worker.decode(raw)

@@ -1,4 +1,6 @@
 """Search AI-tool data for the live credential values collected by stores.py."""
+import base64
+import binascii
 import json
 import os
 import subprocess
@@ -58,11 +60,46 @@ def search(cfg, values, pref, paths):
     return n
 
 
-def run(cfg, sources, paths):
-    values, stats = stores.collect(cfg, sources)
+def run(cfg, sources, paths, foreign=None, collected=None):
+    """Search AI data for this machine's live values, plus `foreign` ones: the live values of the other
+    environments in a multi-environment scan (M5), held in memory only. `collected` reuses a collection made
+    earlier in the same process."""
+    values, stats = collected if collected is not None else stores.collect(cfg, sources)
+    values = {b: list(e) for b, e in values.items()}
+    for b, entries in (foreign or {}).items():
+        lst = values.setdefault(b, [])
+        lst.extend(e for e in entries if e not in lst)
+    stats = dict(stats, foreign_values=len(foreign or {}))
     pref = stores.prefixes(values)
     stores.write_index(cfg, values, pref)
     n = search(cfg, values, pref, paths)
     stats.update(prefix_keys=len(pref), occurrences=n)
-    log(f"known: {n} occurrences")
+    log(f"known: {n} occurrences ({len(foreign or {})} values from other environments)")
     return stats
+
+
+def export_values(values, home=None, windows_home=None):
+    """This environment's live values for another environment's search, with display paths for their stores.
+    Plaintext: only ever sent over a worker's pipes, never written to disk or argv."""
+    from afterprompt.util import display_path
+    out = []
+    for b, entries in values.items():
+        out.append({"v": base64.b64encode(b).decode("ascii"),
+                    "e": [[display_path(s, home, windows_home), k, bool(d)] for s, k, d in entries]})
+    return out
+
+
+def import_values(items, prefix, limit=100000):
+    """The inverse of export_values, naming each store "[<prefix>] <path>". Defensive about what arrives on a
+    pipe: malformed items are dropped, sizes bounded."""
+    out = {}
+    for it in (items or [])[:limit]:
+        try:
+            b = base64.b64decode(it["v"], validate=True)
+            entries = [(f"[{prefix}] {s}", str(k), bool(d)) for s, k, d in it["e"]][:50]
+        except (KeyError, TypeError, ValueError, binascii.Error):
+            continue
+        if 12 <= len(b) <= 8000 and entries:
+            lst = out.setdefault(b, [])
+            lst.extend(e for e in entries if e not in lst)
+    return out

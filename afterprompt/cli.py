@@ -100,6 +100,9 @@ def parser():
     p.add_argument("--version", action="store_true", help="print the version and exit")
     # Started by another Afterprompt run to scan the environment it runs in; speaks worker.py's protocol.
     p.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    # Worker only: read the host's live values from stdin first (M5), or only collect and return this one's.
+    p.add_argument("--import-values", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--values-only", action="store_true", help=argparse.SUPPRESS)
     return p
 
 
@@ -183,7 +186,8 @@ def stop_ui(view):
 def stage_list(deep, other_envs):
     stages = list(DEEP if deep else QUICK)
     if other_envs:
-        stages.insert(stages.index("report"), "environments")
+        # Right after discovery: the other environments' live values must be known before this one's search.
+        stages.insert(stages.index("discover") + 1, "environments")
     return stages
 
 
@@ -201,25 +205,75 @@ def worker_args(cfg, args):
 
 
 def scan_environments(cfg, ctx):
+    from afterprompt import known, stores
     state_dir = os.path.join(cfg.run_dir, "envs")
     results = []
+    # M5: this machine's live values go to each worker over its stdin, and each worker's come back on its
+    # stdout, so a key stored in one environment is found wherever it leaked. Memory and pipes only.
+    host_collected = ctx["host_collected"] = stores.collect(cfg, ctx["sources"])
+    payload = json.dumps({"from": ctx["envs"][0].name, "values": known.export_values(
+        host_collected[0], cfg.home, ctx["sources"].get("windows_home"))}).encode() + b"\n"
+    env_vals = ctx.setdefault("env_values", {})
     for e in ctx["envs"][1:]:
         prev = envs.load_result(state_dir, e)
         if prev:
             say(f"      {e.label} … already done")
             results.append(prev)
+            if prev["status"] in ("scanned", "scanned_share"):
+                vals = envs.fetch_values(e, cfg, state_dir, share=prev["status"] == "scanned_share")
+                for b, entries in known.import_values(vals, e.name).items():
+                    env_vals.setdefault(b, []).extend(entries)
             continue
         if cfg.no_wsl and e.kind == "wsl":
             r = envs.save_result(state_dir, envs.skipped(e, "--no-wsl was given"))
         else:
             say(f"      {e.label}")
-            r = envs.scan(e, cfg, ctx["worker_args"], lambda m: say("        " + m), state_dir)
+            r = envs.scan(e, cfg, ctx["worker_args"] + ["--import-values"], lambda m: say("        " + m),
+                          state_dir, stdin=payload)
+            for b, entries in known.import_values(r.pop("values", None), e.name).items():
+                env_vals.setdefault(b, []).extend(entries)
         if r["status"] == "not_scanned":
             say(f"      {e.label}: not scanned — {r['reason']}")
         results.append(r)
     ctx["env_results"] = results
     counts = {s: sum(1 for r in results if r["status"] == s) for s in envs.FINAL}
     return dict(counts, environments=len(results))
+
+
+def env_values(cfg, ctx):
+    """The other environments' live values for this machine's search (M5). Held in memory only: after a resume
+    they are fetched again from each environment rather than read from anywhere on disk."""
+    if "env_values" in ctx:
+        return ctx["env_values"]
+    from afterprompt import known
+    out = {}
+    for r in env_results(cfg, ctx) if len(ctx.get("envs") or []) > 1 else []:
+        if r["status"] in ("scanned", "scanned_share"):
+            e = envs.Environment.from_dict(r)
+            vals = known.import_values(envs.fetch_values(e, cfg, os.path.join(cfg.run_dir, "envs"),
+                                                         share=r["status"] == "scanned_share"), e.name)
+            for b, entries in vals.items():
+                out.setdefault(b, []).extend(entries)
+    ctx["env_values"] = out
+    return out
+
+
+def values_only(args, base, emit):
+    """--worker --values-only: this environment's live values and nothing else; no run folder is kept."""
+    import tempfile
+    from afterprompt import known, sources, stores
+    tmp = tempfile.mkdtemp(prefix="values-", dir=base)
+    try:
+        cfg = config.from_args(args, tmp)
+        makedirs(cfg.w("state"))
+        src = sources.discover(cfg)
+        values, _ = stores.collect(cfg, src)
+        emit("result", exit=EXIT_OK, findings=None,
+             values=known.export_values(values, cfg.home, src.get("windows_home")))
+        emit.finished = True
+        return EXIT_OK
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def env_results(cfg, ctx):
@@ -246,6 +300,8 @@ def run_stage(cfg, name, ctx):
         return {"roots": len(s["roots"]), "databases": len(s["databases"]), "project_dirs": len(s["project_dirs"]),
                 "windows_home": s["windows_home"], "windows_home_source": s["windows_home_source"]}
     src = ctx["sources"]
+    if name == "environments":
+        return scan_environments(cfg, ctx)
     if name == "databases":
         return databases.extract(cfg, src)
     if name == "manifest":
@@ -263,7 +319,12 @@ def run_stage(cfg, name, ctx):
     if name == "entropy_store":
         return entropy.run(cfg, "store", rows)
     if name == "known":
-        info = known.run(cfg, src, raw_paths + ([cfg.w("store")] if cfg.deep else []))
+        from afterprompt import stores
+        collected = ctx.pop("host_collected", None) or stores.collect(cfg, src)
+        if cfg.worker:
+            ctx["own_values"] = collected[0]
+        info = known.run(cfg, src, raw_paths + ([cfg.w("store")] if cfg.deep else []),
+                         foreign=ctx.get("foreign") or env_values(cfg, ctx), collected=collected)
         # The decoded plaintext has no reader after this stage: remove it now rather than at the end of the run,
         # which in a multi-environment scan can be a long time later.
         info["decoded_removed"] = discard_plaintext(cfg, cfg.w("store"))
@@ -279,8 +340,6 @@ def run_stage(cfg, name, ctx):
         return {"rotate": len(t["rotate"]),
                 "review": sum(n for c, n in t["review_totals"].items() if c != "entropy"),
                 "dismissed": sum(t["dismissed"].values())}
-    if name == "environments":
-        return scan_environments(cfg, ctx)
     if name == "report":
         data = report.write(cfg, src, ctx["meta"], host_env=ctx["envs"][0].to_dict(), env_results=env_results(cfg, ctx))
         ctx["summary"] = data["summary"]
@@ -383,6 +442,18 @@ def run(argv, emit):
         print(f"afterprompt.sh: {err}", file=sys.stderr)
         return EXIT_USAGE
 
+    foreign = None
+    if args.worker and args.import_values:
+        from afterprompt import known
+        line = sys.stdin.buffer.readline(256 * 1024 ** 2)
+        try:
+            payload = json.loads(line or b"{}")
+            foreign = known.import_values(payload.get("values"), str(payload.get("from") or "host")[:60])
+        except (ValueError, AttributeError):
+            foreign = {}
+    if args.worker and args.values_only:
+        return values_only(args, base, emit)
+
     rid, run_dir = read_current(base)
     probe = config.from_args(args, run_dir or os.path.join(base, "runs", "probe"))
     fp = probe.fingerprint()
@@ -441,7 +512,7 @@ def run(argv, emit):
             say(f"Only {human_bytes(free)} free: decoded data capped at {human_bytes(cfg.max_disk_bytes)}.")
 
     stages = stage_list(cfg.deep, len(env_list) > 1)
-    ctx = {"meta": meta, "envs": env_list, "worker_args": worker_args(cfg, args)}
+    ctx = {"meta": meta, "envs": env_list, "worker_args": worker_args(cfg, args), "foreign": foreign}
     view = start_ui(base) if args.ui and not emit else None
     if view:
         view.state.set_stages(stages, DESCRIPTIONS)
@@ -501,7 +572,12 @@ def run(argv, emit):
     code = EXIT_ROTATE if summary.get("rotate", 0) else (EXIT_PARTIAL if summary.get("environments_not_scanned")
                                                         else EXIT_OK)
     if emit:
-        emit("result", exit=code, findings=read_json(os.path.join(cfg.report_dir, "findings.json"), {}))
+        from afterprompt import known, stores
+        own = ctx.get("own_values")
+        if own is None:     # resumed after the known stage: collect again rather than ever store them
+            own = stores.collect(cfg, ctx["sources"])[0]
+        emit("result", exit=code, findings=read_json(os.path.join(cfg.report_dir, "findings.json"), {}),
+             values=known.export_values(own, cfg.home, ctx["sources"].get("windows_home")))
         emit.finished = True
         return code
     say("")

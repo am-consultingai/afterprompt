@@ -1,5 +1,6 @@
 """M4 / W8: environment discovery and the workers that scan each environment."""
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -246,16 +247,17 @@ class ScanWslTests(TempDirTest):
     FINDINGS = {"rotate": [], "review": [], "coverage": {"files": 3}}
 
     def go(self, platform="windows", running=("Ubuntu",), ship_ok=True, worker_run=None, share_run=None,
-           unc=r"\\wsl.localhost\Ubuntu\home\me", exe="wsl.exe"):
+           unc=r"\\wsl.localhost\Ubuntu\home\me", exe="wsl.exe", stdin=None):
         self.calls = {"worker": [], "share": []}
         said = []
 
-        def fake_worker(cmd, env, err, say):
+        def fake_worker(cmd, env, err, say, stdin=None):
             self.calls["worker"].append(cmd)
+            self.calls.setdefault("stdin", []).append(stdin)
             return worker_run or {"result": {"exit": 0, "findings": self.FINDINGS}, "exit": 0,
                                   "hello": {"other_homes": ["bob"]}}
 
-        def fake_local(e, home, cfg, args, say, state_dir):
+        def fake_local(e, home, cfg, args, say, state_dir, stdin=None):
             self.calls["share"].append(home)
             return share_run or {"result": {"exit": 0, "findings": self.FINDINGS}, "exit": 0}
         with mock.patch.object(envs.platforms, "wsl_exe", return_value=exe), \
@@ -266,7 +268,7 @@ class ScanWslTests(TempDirTest):
                 mock.patch.object(envs, "run_local", side_effect=fake_local), \
                 mock.patch.object(envs, "distro_home_unc", return_value=unc), \
                 mock.patch.object(envs.os.path, "isdir", return_value=True):
-            res = envs.scan(self.E, fake_cfg(platform), ["--worker", "--deep"], said.append, self.tmp)
+            res = envs.scan(self.E, fake_cfg(platform), ["--worker", "--deep"], said.append, self.tmp, stdin=stdin)
         self.said = said
         return res
 
@@ -372,3 +374,15 @@ class PlainTextTests(unittest.TestCase):
         self.assertEqual(envs.plain_text("downloading… ✓".encode("utf-8")), "downloading… ✓")
         with mock.patch("locale.getpreferredencoding", return_value="cp1252"):
             self.assertEqual(envs.plain_text("downloading…".encode("cp1252")), "downloading…")
+
+
+class ValuesTravelOnStdinTests(ScanWslTests):
+    def test_payload_on_stdin_never_argv_never_disk(self):  # U-ENV-33 (M5)
+        payload = b'{"values": [{"v": "U0VDUkVULVZBTFVF"}]}\n'
+        worker = {"result": {"exit": 0, "findings": self.FINDINGS, "values": [{"v": "T1dO", "e": []}]}, "exit": 0}
+        res = self.go(stdin=payload, worker_run=worker)
+        self.assertEqual(self.calls["stdin"], [payload])
+        self.assertFalse([a for a in self.calls["worker"][0] if "U0VDUkVU" in a])
+        self.assertEqual(res["values"], [{"v": "T1dO", "e": []}])            # kept in memory for the host
+        with open(envs.result_path(self.tmp, self.E), encoding="utf-8") as fh:
+            self.assertNotIn("values", json.load(fh))                        # never saved
