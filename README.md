@@ -69,6 +69,11 @@ setting: it runs the unsigned script under a policy scoped to that one process.
 | **Cline, Roo Code, Kilo Code** | Task history in every VS Code-family editor they run in (VS Code, Insiders, VSCodium, Cursor, Windsurf, Kiro, Antigravity and others, including remote `~/.vscode-server` profiles), `~/.cline/data`, Kilo's `kilo.db` (login tables skipped) |
 | **Continue** | `~/.continue` sessions, dev data, `config.yaml`/`config.json`, `.env` |
 | **Amazon Q Developer** | Chat history under `~/.aws/amazonq/history` |
+| **Google Antigravity** | CLI prompt history, per-conversation transcripts and raw step output (`brain/`), conversation databases and summaries, logs, MCP config; the IDE's `brain`, `knowledge` and conversation databases |
+| **Aider** | `.aider.chat.history.md`, `.aider.input.history`, `.aider.llm.history` and `.aider.conf.yml`, in your home and in every project the scan finds |
+| **Goose, Qwen Code, Amp, Junie, Devin CLI** | Session databases and transcripts, prompt history, logs and config for each |
+| **LM Studio, Jan** | Saved conversations and MCP configuration |
+| **Claude Desktop** | Local agent-mode sessions (Claude Code-format transcripts), logs and `claude_desktop_config.json`. Ordinary chats live on Anthropic's servers, not on your machine |
 | **Ollama** | `ollama run` prompt history, logs, the desktop app's chat database (macOS and Windows), and the config backups it keeps |
 
 A native Windows run scans the profile it runs as: `%USERPROFILE%\.claude`, `%APPDATA%\Cursor`,

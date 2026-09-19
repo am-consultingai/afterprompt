@@ -116,11 +116,13 @@ class BothDirectionsTests(TempDirTest):
         box_leak = rotate[mask(self.box_key)]               # stored in Box, leaked on the host
         self.assertEqual(box_leak["category"], "live_credential")
         self.assertEqual(box_leak["sides"], ["linux"])
-        self.assertIn("[Box] ~/.config/gh/hosts.yml", [s["store"] for s in box_leak["still_on_disk"]])
+        stores = [s["store"].replace("\\", "/") for s in box_leak["still_on_disk"]]   # "~\\" on Windows hosts
+        self.assertIn("[Box] ~/.config/gh/hosts.yml", stores)
         host_leak = rotate[mask(self.host_key)]             # stored on the host, leaked in Box
         self.assertEqual(host_leak["category"], "live_credential")
         self.assertEqual(host_leak["sides"], ["env:Box"])
-        self.assertTrue(any(s["store"].endswith("~/.config/gh/hosts.yml") for s in host_leak["still_on_disk"]))
+        self.assertTrue(any(s["store"].replace("\\", "/").endswith("~/.config/gh/hosts.yml")
+                            for s in host_leak["still_on_disk"]))
         run = os.path.join(self.host.base, "runs", run_dirs(self.host.base)[-1])
         for dp, _, fns in os.walk(run):
             for fn in fns:

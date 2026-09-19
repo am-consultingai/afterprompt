@@ -652,8 +652,61 @@
       "product": "Claude Desktop",
       "vendor": "Anthropic",
       "kind": "desktop",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": "Library/Application Support/Claude/local-agent-mode-sessions",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": "Library/Application Support/Claude/logs",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": "Library/Application Support/Claude/claude_desktop_config.json",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": "AppData/Roaming/Claude/local-agent-mode-sessions",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/Claude/logs",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/Claude/claude_desktop_config.json",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/local-agent-mode-sessions",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/logs",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/claude_desktop_config.json",
+          "side": "windows"
+        },
+        {
+          "path": "Library/Logs/Claude",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        }
+      ],
       "detect": {
         "mac_bundles": [
           "com.anthropic.claudefordesktop"
@@ -663,10 +716,12 @@
         ],
         "home": [
           "Library/Application Support/Claude",
-          "AppData/Roaming/Claude"
+          "AppData/Roaming/Claude",
+          "AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude"
         ]
       },
-      "note": "Electron app: conversations are kept in LevelDB/IndexedDB, which needs a reader first (decision D2)."
+      "source": "claude.com/docs/third-party/claude-desktop/data-storage; seen on disk",
+      "note": "Standard chats are kept on Anthropic's servers; only agent-mode sessions, logs and MCP configuration are local."
     },
     {
       "product": "ChatGPT desktop",
@@ -682,14 +737,113 @@
           "^ChatGPT\\b"
         ]
       },
-      "note": "Desktop app: its local conversation store has not been researched yet."
+      "note": "Conversations on macOS are encrypted with a Keychain key since July 2024; Windows storage not yet mapped."
     },
     {
       "product": "Google Antigravity",
       "vendor": "Google",
       "kind": "ide",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".gemini/antigravity-cli/history.jsonl",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/antigravity-cli/history.jsonl",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/antigravity-cli/brain",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/antigravity-cli/brain",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/antigravity-cli/cli.log",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/antigravity-cli/cli.log",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/antigravity-cli/log",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/antigravity-cli/log",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/antigravity-cli",
+          "side": "unix",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "conversations/*.db",
+            "conversation_summaries.db"
+          ]
+        },
+        {
+          "path": ".gemini/antigravity-cli",
+          "side": "windows",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "conversations/*.db",
+            "conversation_summaries.db"
+          ]
+        },
+        {
+          "path": ".gemini/antigravity/brain",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/antigravity/brain",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/antigravity/knowledge",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/antigravity/knowledge",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/antigravity/mcp_config.json",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/antigravity/mcp_config.json",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/config/mcp_config.json",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/config/mcp_config.json",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/antigravity",
+          "side": "unix",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "conversations/*.db"
+          ]
+        },
+        {
+          "path": ".gemini/antigravity",
+          "side": "windows",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "conversations/*.db"
+          ]
+        }
+      ],
       "detect": {
         "bins": [
           "antigravity"
@@ -699,7 +853,19 @@
           ".gemini/antigravity-cli"
         ]
       },
-      "note": "Has JSONL transcripts under ~/.gemini/antigravity*/brain, not yet mapped and tested."
+      "source": "seen on disk (CLI ~/.gemini/antigravity-cli; IDE ~/.gemini/antigravity), github.com/Ali-Nadhir/antigravity-chat-recovery",
+      "config_files": [
+        "\\.gemini/(?:antigravity/|config/)mcp_config\\.json"
+      ],
+      "credential_files": [
+        "antigravity-cli/antigravity-oauth-token"
+      ],
+      "credential_stores": [
+        ".gemini/antigravity-cli/antigravity-oauth-token"
+      ],
+      "vendored": [
+        "/antigravity-cli/(?:bin|builtin|updater)/"
+      ]
     },
     {
       "product": "GitHub Copilot",
@@ -916,37 +1082,204 @@
       "product": "Aider",
       "vendor": "Aider",
       "kind": "cli",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".aider.chat.history.md",
+          "side": "unix"
+        },
+        {
+          "path": ".aider.chat.history.md",
+          "side": "windows"
+        },
+        {
+          "path": ".aider.input.history",
+          "side": "unix"
+        },
+        {
+          "path": ".aider.input.history",
+          "side": "windows"
+        },
+        {
+          "path": ".aider.llm.history",
+          "side": "unix"
+        },
+        {
+          "path": ".aider.llm.history",
+          "side": "windows"
+        },
+        {
+          "path": ".aider.conf.yml",
+          "side": "unix"
+        },
+        {
+          "path": ".aider.conf.yml",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "bins": [
           "aider"
+        ],
+        "home": [
+          ".aider.chat.history.md",
+          ".aider.input.history",
+          ".aider"
         ]
       },
-      "note": "Keeps .aider.chat.history.md in each project; not yet mapped."
+      "source": "github.com/Aider-AI/aider (aider/args.py, aider/main.py)",
+      "project_files": [
+        ".aider.chat.history.md",
+        ".aider.input.history",
+        ".aider.llm.history",
+        ".aider.conf.yml"
+      ],
+      "config_files": [
+        "\\.aider\\.conf\\.yml"
+      ],
+      "credential_files": [
+        "\\.aider/oauth-keys\\.env"
+      ]
     },
     {
       "product": "Goose",
       "vendor": "Block",
       "kind": "cli",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".local/share/goose/sessions",
+          "side": "unix",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "sessions.db"
+          ]
+        },
+        {
+          "path": ".local/share/goose/sessions",
+          "side": "unix",
+          "match": [
+            "*.jsonl"
+          ]
+        },
+        {
+          "path": ".local/state/goose/history.txt",
+          "side": "unix"
+        },
+        {
+          "path": ".config/goose/history.txt",
+          "side": "unix"
+        },
+        {
+          "path": ".config/goose/config.yaml",
+          "side": "unix"
+        },
+        {
+          "path": "AppData/Roaming/Block/goose/data/sessions",
+          "side": "windows",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "sessions.db"
+          ]
+        },
+        {
+          "path": "AppData/Roaming/Block/goose/data/sessions",
+          "side": "windows",
+          "match": [
+            "*.jsonl"
+          ]
+        },
+        {
+          "path": "AppData/Roaming/Block/goose/data/history.txt",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/Block/goose/config/config.yaml",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "bins": [
           "goose"
         ],
         "home": [
-          ".config/goose"
+          ".config/goose",
+          ".local/share/goose",
+          "AppData/Roaming/Block/goose"
         ]
       },
-      "note": "Not yet mapped."
+      "source": "github.com/aaif-goose/goose (paths, session storage, config)",
+      "config_files": [
+        "goose/config/config\\.yaml",
+        "\\.config/goose/config\\.yaml"
+      ],
+      "credential_files": [
+        "goose/(?:config/)?secrets\\.yaml"
+      ]
     },
     {
       "product": "Qwen Code",
       "vendor": "Alibaba",
       "kind": "cli",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".qwen/projects",
+          "side": "unix"
+        },
+        {
+          "path": ".qwen/projects",
+          "side": "windows"
+        },
+        {
+          "path": ".qwen/tmp",
+          "side": "unix"
+        },
+        {
+          "path": ".qwen/tmp",
+          "side": "windows"
+        },
+        {
+          "path": ".qwen/debug",
+          "side": "unix"
+        },
+        {
+          "path": ".qwen/debug",
+          "side": "windows"
+        },
+        {
+          "path": ".qwen/plans",
+          "side": "unix"
+        },
+        {
+          "path": ".qwen/plans",
+          "side": "windows"
+        },
+        {
+          "path": ".qwen/memory.md",
+          "side": "unix"
+        },
+        {
+          "path": ".qwen/memory.md",
+          "side": "windows"
+        },
+        {
+          "path": ".qwen/settings.json",
+          "side": "unix"
+        },
+        {
+          "path": ".qwen/settings.json",
+          "side": "windows"
+        },
+        {
+          "path": ".qwen/.env",
+          "side": "unix"
+        },
+        {
+          "path": ".qwen/.env",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "bins": [
           "qwen"
@@ -955,14 +1288,53 @@
           ".qwen"
         ]
       },
-      "note": "Gemini CLI fork; not yet mapped."
+      "source": "github.com/QwenLM/qwen-code (packages/core/src/config/storage.ts)",
+      "config_files": [
+        "\\.qwen/settings\\.json",
+        "\\.qwen/\\.env"
+      ],
+      "credential_files": [
+        "\\.qwen/(?:oauth_creds|mcp-oauth-tokens|google_accounts)\\.json"
+      ],
+      "credential_stores": [
+        ".qwen/oauth_creds.json",
+        ".qwen/mcp-oauth-tokens.json"
+      ],
+      "vendored": [
+        "/\\.qwen/(?:bin|ide)/"
+      ]
     },
     {
       "product": "LM Studio",
       "vendor": "Element Labs",
       "kind": "runner",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".lmstudio/conversations",
+          "side": "unix"
+        },
+        {
+          "path": ".lmstudio/conversations",
+          "side": "windows"
+        },
+        {
+          "path": ".lmstudio/mcp.json",
+          "side": "unix"
+        },
+        {
+          "path": ".lmstudio/mcp.json",
+          "side": "windows"
+        },
+        {
+          "path": ".cache/lm-studio/conversations",
+          "side": "unix"
+        },
+        {
+          "path": ".cache/lm-studio/conversations",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "home": [
           ".lmstudio",
@@ -975,7 +1347,10 @@
           "^LM Studio\\b"
         ]
       },
-      "note": "Keeps chats as JSON under ~/.lmstudio; not yet mapped."
+      "source": "lmstudio.ai/docs/app/basics/chat",
+      "config_files": [
+        "\\.lmstudio/mcp\\.json"
+      ]
     },
     {
       "product": "Zed",
@@ -994,7 +1369,7 @@
           ".config/zed"
         ]
       },
-      "note": "Not yet mapped."
+      "note": "Agent threads are stored zstd-compressed (threads.db), which Python's standard library cannot read before 3.14."
     },
     {
       "product": "Kiro",
@@ -1032,14 +1407,58 @@
       "product": "Devin CLI",
       "vendor": "Cognition",
       "kind": "cli",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".local/share/devin/cli/logs",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/devin/cli",
+          "side": "unix",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "*.db"
+          ]
+        },
+        {
+          "path": ".config/devin/config.json",
+          "side": "unix"
+        },
+        {
+          "path": ".config/devin/mcp_config.json",
+          "side": "unix"
+        },
+        {
+          "path": "AppData/Roaming/devin/cli",
+          "side": "windows",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "*.db"
+          ]
+        },
+        {
+          "path": "AppData/Roaming/devin/config.json",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/devin/mcp_config.json",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "home": [
-          ".local/share/devin"
+          ".local/share/devin",
+          "AppData/Roaming/devin"
         ]
       },
-      "note": "Plaintext sessions.db; not yet mapped and tested."
+      "source": "docs.devin.ai/cli (enterprise/devin-auth, reference/configuration)",
+      "config_files": [
+        "devin/(?:mcp_)?config\\.json"
+      ],
+      "credential_files": [
+        "devin/credentials\\.toml"
+      ]
     },
     {
       "product": "Kilo Code",
@@ -1095,6 +1514,149 @@
         ],
         "home": [
           ".local/share/kilo"
+        ]
+      }
+    },
+    {
+      "product": "Jan",
+      "vendor": "Menlo Research",
+      "kind": "runner",
+      "status": "scanned",
+      "source": "github.com/janhq/jan (src-tauri/src/core)",
+      "locations": [
+        {
+          "path": "Library/Application Support/Jan/data/threads",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": "Library/Application Support/Jan/data/mcp_config.json",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": "Library/Application Support/Jan/data/logs",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": ".local/share/Jan/data/threads",
+          "side": "unix",
+          "platforms": [
+            "linux",
+            "wsl"
+          ]
+        },
+        {
+          "path": ".local/share/Jan/data/mcp_config.json",
+          "side": "unix",
+          "platforms": [
+            "linux",
+            "wsl"
+          ]
+        },
+        {
+          "path": ".local/share/Jan/data/logs",
+          "side": "unix",
+          "platforms": [
+            "linux",
+            "wsl"
+          ]
+        },
+        {
+          "path": "AppData/Roaming/Jan/data/threads",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/Jan/data/mcp_config.json",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/Jan/data/logs",
+          "side": "windows"
+        }
+      ],
+      "config_files": [
+        "Jan/data/mcp_config\\.json"
+      ],
+      "detect": {
+        "home": [
+          "Library/Application Support/Jan/data",
+          ".local/share/Jan/data",
+          "AppData/Roaming/Jan/data"
+        ]
+      }
+    },
+    {
+      "product": "Amp",
+      "vendor": "Sourcegraph",
+      "kind": "cli",
+      "status": "scanned",
+      "source": "ampcode.com/security; local thread cache per github.com/vshulcz/deja-vu#3797",
+      "locations": [
+        {
+          "path": ".local/share/amp/threads",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/amp/threads",
+          "side": "windows"
+        }
+      ],
+      "credential_files": [
+        "\\.local/share/amp/secrets\\.json"
+      ],
+      "credential_stores": [
+        ".local/share/amp/secrets.json"
+      ],
+      "detect": {
+        "bins": [
+          "amp"
+        ],
+        "home": [
+          ".local/share/amp"
+        ]
+      }
+    },
+    {
+      "product": "Junie",
+      "vendor": "JetBrains",
+      "kind": "cli",
+      "status": "scanned",
+      "source": "junie.jetbrains.com/docs/junie-cli-configuration.html; sessions per github.com/stablyai/orca#16471",
+      "locations": [
+        {
+          "path": ".junie/sessions",
+          "side": "unix"
+        },
+        {
+          "path": ".junie/sessions",
+          "side": "windows"
+        },
+        {
+          "path": ".junie/config.json",
+          "side": "unix"
+        },
+        {
+          "path": ".junie/config.json",
+          "side": "windows"
+        }
+      ],
+      "config_files": [
+        "\\.junie/config\\.json"
+      ],
+      "detect": {
+        "bins": [
+          "junie"
+        ],
+        "home": [
+          ".junie"
         ]
       }
     }

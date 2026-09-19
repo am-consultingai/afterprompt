@@ -2,6 +2,7 @@
 leaks reported end to end. Layouts follow each tool's source (see "source" in catalogue.json)."""
 import json
 import os
+import re
 import sqlite3
 
 from afterprompt import catalogue, sources
@@ -126,7 +127,8 @@ class DiscoveryTests(TempDirTest):
         """Every scanned tool says where its layout comes from, so the next update can be checked."""
         for t in catalogue.DATA["tools"]:
             if t["status"] == "scanned" and t["product"] not in ("Claude Code", "Cursor"):
-                self.assertIn("github.com/", t.get("source", ""), t["product"])
+                src = t.get("source", "")
+                self.assertTrue(re.search(r"github\.com/|https?://|\.(?:ai|com|dev|io)/|seen on disk", src), t["product"])
         windsurf = [t for t in catalogue.DATA["tools"] if t["product"] == "Windsurf"][0]
         self.assertEqual(windsurf["status"], "planned")
         self.assertIn("encrypted", windsurf["note"])

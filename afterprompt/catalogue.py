@@ -19,6 +19,8 @@ A path starting with $EDITOR_USER/ is inside a VS Code-family editor's profile (
 every editor in the catalogue's "editors" list, on every platform: Library/Application Support/<name>/User on macOS,
 .config/<name>/User on Linux and WSL, AppData/Roaming/<name>/User on Windows.
   sqlite_globs      for sqlite_glob locations
+  project_files     file names the tool writes into each project folder it works in (Aider's chat history);
+                    looked for in every project folder discovery finds
   exclude_tables    SQLite tables never extracted (the tool's own login, embeddings)
   config_files      regexes: the tool's configuration files. A secret there is "stored in configuration"
   credential_files  regexes: the tool's own login store. A secret only there is its intended home, not a leak
@@ -85,7 +87,7 @@ def validate(data):
             errors.append(f"{name}: status must be one of {', '.join(STATUSES)}")
         for key in ("config_files", "credential_files", "vendored"):
             _regexes(t, key, errors)
-        for key in ("sqlite_globs", "exclude_tables", "credential_stores"):
+        for key in ("sqlite_globs", "exclude_tables", "credential_stores", "project_files"):
             if key in t and (not isinstance(t[key], list) or not all(isinstance(x, str) for x in t[key])):
                 errors.append(f"{name}: {key} must be a list of strings")
         det = t.get("detect", {})
@@ -230,6 +232,11 @@ def exclude_tables(tool):
 def credential_stores():
     """[(tool, relative path)] of the JSON login files every scanned tool keeps."""
     return [(t["product"], p) for t in DATA["tools"] if t["status"] == "scanned" for p in t.get("credential_stores", [])]
+
+
+def project_files():
+    """[(tool, file name)] every scanned tool writes into project folders."""
+    return [(t["product"], f) for t in DATA["tools"] if t["status"] == "scanned" for f in t.get("project_files", [])]
 
 
 def scanned_products():

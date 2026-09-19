@@ -131,6 +131,10 @@ def discover(cfg):
         pm = os.path.join(p, ".mcp.json")
         if os.path.isfile(pm):
             add_root(pm, "Claude Code", side, "file")
+        for tool, fn in catalogue.project_files():
+            pf = os.path.join(p, fn)
+            if os.path.isfile(pf):
+                add_root(pf, tool, side, "file")
 
     walk_truncated = []
     for side_key in ("unix", "windows"):

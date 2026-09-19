@@ -120,3 +120,8 @@ class SiteTests(unittest.TestCase):
                                  r'([^<]+)<b>Scanned</b>', self.html))
         self.assertEqual(scanned, set(catalogue.scanned_products()))
 
+
+    def test_tool_count_in_copy_matches(self):  # W-11
+        n = len(catalogue.scanned_products())
+        self.assertIn(f"scans the {n} tools marked Scanned above", self.html)
+        self.assertIn(f"The {n} tools marked “Scanned” above", self.html)
