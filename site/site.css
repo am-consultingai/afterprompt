@@ -122,6 +122,10 @@ em{font-style:normal;color:var(--ink)}
 footer{margin-top:110px;line-height:1.9}
 footer a{color:var(--s3);text-decoration:none;border-bottom:1px solid var(--line)}
 footer a:hover{color:var(--ink)}
+.powered{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;border:0!important;
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--s4)!important}
+.powered img{height:30px;width:auto;opacity:.85;transition:opacity .2s}
+.powered:hover img{opacity:1}
 
 /* ---- responsive ---- */
 

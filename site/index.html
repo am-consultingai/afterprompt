@@ -185,7 +185,7 @@
         <div class="tool"><span class="mono-mark">W</span>Open WebUI</div>
       </div>
     </div>
-    <p class="tools-note">Today Afterprompt scans Claude Code and Cursor, on macOS, Linux and Windows (WSL). The rest are on the roadmap. <a href="https://github.com/am-consultingai/afterprompt/issues">Vote for the next one</a>.</p>
+    <p class="tools-note">Today Afterprompt scans Claude Code and Cursor, on macOS, Linux and Windows (natively, WSL optional). The rest are on the roadmap. <a href="https://github.com/am-consultingai/afterprompt/issues">Vote for the next one</a>.</p>
   </section>
 
   <!-- STATS --------------------------------------------------------------->
@@ -256,7 +256,7 @@ GITHUB_TOKEN=<mark>ghp_Xq…DEMO</mark></pre></article>
       <li>
         <span class="step-ic"><svg class="ic"><use href="#i-scan"/></svg></span>
         <h3>Scan</h3>
-        <p>Transcripts, chat databases and caches, on both sides of WSL</p>
+        <p>Transcripts, chat databases and caches — on Windows, and on both sides of WSL when you use it</p>
       </li>
       <li>
         <span class="step-ic"><svg class="ic"><use href="#i-key"/></svg></span>
@@ -349,7 +349,7 @@ GITHUB_TOKEN=<mark>ghp_Xq…DEMO</mark></pre></article>
       <details class="acc"><summary>Will it delete or change my AI history?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
         <div class="acc-b">No. It only reads. You decide what to rotate and what to clean up.</div></details>
       <details class="acc"><summary>Which AI tools does it scan today?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
-        <div class="acc-b">Claude Code and Cursor, on macOS, Linux and Windows through WSL, including both the Linux and Windows sides. The tools marked “coming soon” above are on the roadmap.</div></details>
+        <div class="acc-b">Claude Code and Cursor, on macOS, Linux and Windows. On Windows it runs natively — WSL is not required — and if you do use WSL, running it there covers the Linux and Windows sides in one pass. The tools marked “coming soon” above are on the roadmap.</div></details>
       <details class="acc"><summary>It found a key. What should I do?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
         <div class="acc-b">Revoke it and issue a new one. The report links to the right console. Then remove the copies still on disk and move secrets into environment variables or a secrets manager.</div></details>
       <details class="acc"><summary>Isn’t deleting the transcript enough?<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
@@ -372,14 +372,19 @@ GITHUB_TOKEN=<mark>ghp_Xq…DEMO</mark></pre></article>
 cd afterprompt
 ./afterprompt.sh</code></pre>
     </div>
-    <p class="req">Python 3.9+ · macOS, Linux, or Windows via WSL · <a href="https://github.com/am-consultingai/afterprompt#options">all options</a></p>
+    <p class="req">On Windows run <code>afterprompt.cmd</code> instead of the last line — no WSL needed.</p>
+    <p class="req">Python 3.9+ · macOS, Linux, Windows (WSL not required) · <a href="https://github.com/am-consultingai/afterprompt#options">all options</a></p>
     <p class="limits">It can’t tell whether a key still works, or delete the provider’s copy. Rotating does that.</p>
   </section>
 
 </main>
 
 <footer>
-  afterprompt <span data-version>0.1.0</span> · <a href="https://github.com/am-consultingai/afterprompt/blob/main/LICENSE">FSL-1.1-ALv2</a> · <a href="https://github.com/am-consultingai/afterprompt">GitHub</a> · Built by AM Consulting
+  afterprompt <span data-version>0.1.0</span> · <a href="https://github.com/am-consultingai/afterprompt/blob/main/LICENSE">FSL-1.1-ALv2</a> · <a href="https://github.com/am-consultingai/afterprompt">GitHub</a>
+  <a class="powered" href="https://www.amconsultingai.com" aria-label="Powered by AM Consulting">
+    <span>Powered by</span>
+    <img src="https://cdn.jsdelivr.net/gh/am-consultingai/am-assets@v2/logo/am-logo-white-600.png" alt="AM Consulting" width="111" height="30" loading="lazy">
+  </a>
 </footer>
 </body>
 </html>

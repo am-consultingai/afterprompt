@@ -86,6 +86,16 @@ class SiteTests(unittest.TestCase):
                   "img/desk.webp", "img/afterprompt-mark.svg"):
             self.assertTrue(os.path.exists(os.path.join(SITE, f)), f)
 
+    def test_am_branding_footer_only(self):
+        # Product page rule: the product's mark leads; AM appears only as "Powered by" in the footer.
+        footer = re.search(r"<footer.*?</footer>", self.html, re.S).group(0)
+        body = self.html.replace(footer, "")
+        self.assertIn("Powered by", footer)
+        self.assertIn("am-assets@v2/logo/am-logo-white-600.png", footer)
+        self.assertNotIn("am-logo", body)
+        self.assertNotIn("am-favicon", body)
+        self.assertIn('rel="icon" type="image/svg+xml" href="img/afterprompt-mark.svg"', self.html)
+
     def test_head(self):  # W-7
         self.assertIn('<html lang="en">', self.html)
         self.assertEqual(self.page.tags.count("h1"), 1)
