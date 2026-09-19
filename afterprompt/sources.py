@@ -2,47 +2,13 @@
 import glob
 import os
 import time
-from collections import namedtuple
 
-from afterprompt import platforms
+from afterprompt import catalogue, platforms
 from afterprompt.util import Walker, is_under, log, read_json, write_json
 
-# side: "unix" (the macOS/Linux/WSL home) or "windows" (the Windows profile: this machine's own home on
-# Windows, the profile reached across /mnt/c from WSL)
-# role: root | cursor_db_glob | cursor_sqlite_dir
-Loc = namedtuple("Loc", "tool platforms side path role")
-
-ALL = ("macos", "linux", "wsl")
-WIN = ("wsl", "windows")
-REGISTRY = [
-    Loc("Claude Code", ALL, "unix", "$CLAUDE_DIR", "root"),
-    Loc("Claude Code", ALL, "unix", ".claude.json", "root"),
-    Loc("Claude Code", ALL, "unix", ".claude.json.backup", "root"),
-    Loc("Claude Code", ("linux", "wsl"), "unix", ".cache/claude-cli-nodejs", "root"),
-    Loc("Claude Code", ("macos",), "unix", "Library/Caches/claude-cli-nodejs", "root"),
-    Loc("Claude Code", ALL, "unix", ".cache/claude", "root"),
-    Loc("Claude Code", ALL, "unix", ".local/state/claude", "root"),
-    Loc("Claude Code", ALL, "unix", ".local/share/claude", "root"),
-    Loc("Claude Code", WIN, "windows", ".claude", "root"),
-    Loc("Claude Code", WIN, "windows", ".claude.json", "root"),
-    Loc("Claude Code", WIN, "windows", ".claude.json.backup", "root"),
-    Loc("Claude Code", WIN, "windows", "AppData/Local/claude-cli-nodejs", "root"),
-    Loc("Claude Code", WIN, "windows", ".local/share/claude", "root"),
-    Loc("Cursor", ("macos",), "unix", "Library/Application Support/Cursor/User", "cursor_db_glob"),
-    Loc("Cursor", ("linux", "wsl"), "unix", ".config/Cursor/User", "cursor_db_glob"),
-    Loc("Cursor", WIN, "windows", "AppData/Roaming/Cursor/User", "cursor_db_glob"),
-    Loc("Cursor", ALL, "unix", ".cursor/projects", "root"),
-    Loc("Cursor", ALL, "unix", ".cursor/plans", "root"),
-    Loc("Cursor", ALL, "unix", ".cursor/mcp.json", "root"),
-    Loc("Cursor", ALL, "unix", ".cursor/ai-tracking", "cursor_sqlite_dir"),
-    Loc("Cursor", WIN, "windows", ".cursor/projects", "root"),
-    Loc("Cursor", WIN, "windows", ".cursor/plans", "root"),
-    Loc("Cursor", WIN, "windows", ".cursor/mcp.json", "root"),
-    Loc("Cursor", WIN, "windows", ".cursor/ai-tracking", "cursor_sqlite_dir"),
-]
-
-CURSOR_DB_GLOBS = ("globalStorage/state.vscdb", "globalStorage/state.vscdb.backup",
-                   "workspaceStorage/*/state.vscdb", "workspaceStorage/*/state.vscdb.backup")
+# Where each tool keeps its data lives in catalogue.json; see catalogue.py for the fields.
+Loc = catalogue.Loc
+REGISTRY = catalogue.REGISTRY
 
 
 def claude_dir(home, env=None):
@@ -134,19 +100,19 @@ def discover(cfg):
             continue
         if loc.role == "root":
             add_root(path, loc.tool, side)
-        elif loc.role == "cursor_db_glob":
-            found = sorted(p for g in CURSOR_DB_GLOBS for p in glob.glob(os.path.join(glob.escape(path), g)))
+        elif loc.role == "sqlite_glob":
+            found = sorted(p for g in loc.globs for p in glob.glob(os.path.join(glob.escape(path), g)))
             for p in found:
                 if os.path.isfile(p):
-                    dbs.append({"path": p, "side": side})
-        elif loc.role == "cursor_sqlite_dir":
+                    dbs.append({"path": p, "side": side, "tool": loc.tool})
+        elif loc.role == "sqlite_dir":
             for dp, _, fns in os.walk(path):
                 for fn in sorted(fns):
                     p = os.path.join(dp, fn)
                     if not os.path.isfile(p) or os.path.islink(p):
                         continue
                     if _is_sqlite(p):
-                        dbs.append({"path": p, "side": side})
+                        dbs.append({"path": p, "side": side, "tool": loc.tool})
                     elif not fn.endswith(("-wal", "-shm", "-journal")):
                         add_root(p, loc.tool, side, "file")
 
@@ -194,10 +160,10 @@ def discover(cfg):
                 self_exclude.append(os.path.join(proj_root, name))
 
     out = {"platform": cfg.platform, "home": cfg.home, "windows_home": win_path, "windows_home_source": win_source,
-           "roots": roots, "cursor_dbs": dbs, "project_dirs": projects, "self_exclude": self_exclude,
+           "roots": roots, "databases": dbs, "project_dirs": projects, "self_exclude": self_exclude,
            "missing": missing, "walk_truncated": walk_truncated}
     write_json(cfg.w("sources.json"), out)
-    log(f"discover: {len(roots)} roots, {len(dbs)} Cursor databases, {len(projects)} project dirs, "
+    log(f"discover: {len(roots)} roots, {len(dbs)} databases, {len(projects)} project dirs, "
         f"windows home: {win_path or '-'} ({win_source}), "
         f"{time.monotonic() - t0:.1f}s")
     return out

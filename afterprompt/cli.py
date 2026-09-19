@@ -16,12 +16,12 @@ from afterprompt.util import (human_bytes, human_duration, log, makedirs, read_j
 EXIT_OK, EXIT_ROTATE, EXIT_USAGE, EXIT_DEPENDENCY, EXIT_UNSUPPORTED, EXIT_FAILED, EXIT_DISK, EXIT_PARTIAL, \
     EXIT_INTERRUPTED = 0, 10, 2, 3, 4, 5, 6, 7, 130
 
-QUICK = ["discover", "cursor", "manifest", "vendor_raw", "known", "prompts", "triage", "report", "cleanup"]
-DEEP = ["discover", "cursor", "manifest", "vendor_raw", "expand", "vendor_store", "entropy_raw", "entropy_store",
+QUICK = ["discover", "databases", "manifest", "vendor_raw", "known", "prompts", "triage", "report", "cleanup"]
+DEEP = ["discover", "databases", "manifest", "vendor_raw", "expand", "vendor_store", "entropy_raw", "entropy_store",
         "known", "prompts", "triage", "report", "cleanup"]
 DESCRIPTIONS = {
     "discover": "Finding AI tool data",
-    "cursor": "Reading Cursor chat databases",
+    "databases": "Reading chat databases",
     "manifest": "Listing files",
     "vendor_raw": "Matching 140 credential patterns",
     "expand": "Decoding nested payloads",
@@ -202,15 +202,15 @@ def env_results(cfg, ctx):
 
 
 def run_stage(cfg, name, ctx):
-    from afterprompt import cursor, decode, entropy, known, manifest, prompts, report, sources, triage, vendor
+    from afterprompt import databases, decode, entropy, known, manifest, prompts, report, sources, triage, vendor
     if name == "discover":
         ctx["sources"] = sources.discover(cfg)
         s = ctx["sources"]
-        return {"roots": len(s["roots"]), "cursor_dbs": len(s["cursor_dbs"]), "project_dirs": len(s["project_dirs"]),
+        return {"roots": len(s["roots"]), "databases": len(s["databases"]), "project_dirs": len(s["project_dirs"]),
                 "windows_home": s["windows_home"], "windows_home_source": s["windows_home_source"]}
     src = ctx["sources"]
-    if name == "cursor":
-        return cursor.extract(cfg, src)
+    if name == "databases":
+        return databases.extract(cfg, src)
     if name == "manifest":
         return manifest.build(cfg, src)
     rows = manifest.load(cfg)
@@ -254,8 +254,8 @@ def stage_result_line(name, info):
         extra = ""
         if info.get("windows_home_source") not in ("not applicable", "disabled"):
             extra = f" · Windows profile: {info.get('windows_home') or 'not found'} ({info.get('windows_home_source')})"
-        return f"{info['roots']} locations, {info['cursor_dbs']} Cursor databases{extra}"
-    if name == "cursor":
+        return f"{info['roots']} locations, {info['databases']} chat databases{extra}"
+    if name == "databases":
         failed = len(info.get("failed", []))
         return f"{info['ok']} of {info['databases']} read" + (f" ({failed} could not be read)" if failed else "")
     if name == "manifest":

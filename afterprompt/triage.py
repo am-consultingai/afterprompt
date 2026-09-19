@@ -5,7 +5,7 @@ import os
 import re
 import time
 
-from afterprompt import manifest
+from afterprompt import catalogue, manifest
 from afterprompt.entropy import KEEP as ENTROPY_KEEP
 from afterprompt.patterns import HEADER_ONLY, LABELS, REVOKE, ROTATE_B, SESSION_COOKIE, TIERS
 from afterprompt.util import display_path, is_under, read_json, write_json
@@ -13,9 +13,8 @@ from afterprompt.util import display_path, is_under, read_json, write_json
 CAPS = {"configuration": 20, "pattern": 60, "session_cookie": 20, "entropy": 30, "prompt": 30}
 ENTROPY_KEEP_MAX = 500      # entropy candidates kept in findings.json; the total is still counted
 REVIEW_ORDER = ["configuration", "pattern", "session_cookie", "entropy", "prompt"]
-CONFIG_NAMES = re.compile(r"(?:^|/)(?:\.cursor/mcp\.json|\.mcp\.json|\.claude/settings(?:\.local)?\.json|"
-                          r"\.claude/config\.json|claude_desktop_config\.json)$")
-DESIGNED = re.compile(r"(?:^|/)\.credentials\.json$")
+CONFIG_NAMES = catalogue.CONFIG_FILES      # a tool's configuration: secrets there are "stored in configuration"
+DESIGNED = catalogue.CREDENTIAL_FILES      # a tool's own login store: its intended home, not a leak
 
 REASONS = {
     "live_credential": "A credential that is set up on this machine appears in AI assistant history.",
@@ -58,7 +57,7 @@ class Resolver:
         self.by_idx = {r.idx: r for r in self.rows}
         self.by_path = {r.path: r for r in self.rows}
         self.store = cfg.w("store")
-        self.ext = cfg.w("extracted", "cursor")
+        self.ext = cfg.w("extracted", "db")
         self.ledger = manifest.ledger_sides(cfg)
         self.home = cfg.home
         self.win = sources.get("windows_home")
@@ -91,7 +90,7 @@ class Resolver:
         key = path
         if is_under(path, self.ext):
             tag = os.path.basename(path)[:3]
-            db, side = self.ledger.get(tag, (path, side))
+            db, side, tool = self.ledger.get(tag, (path, side, tool))
             key = db
             disp = self.disp(db) + " (chat database)"
         else:

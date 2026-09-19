@@ -4,7 +4,7 @@ import os
 import re
 import unittest
 
-from afterprompt import __version__
+from afterprompt import __version__, catalogue
 from afterprompt.patterns import PATTERNS
 from tests.helpers import REPO
 
@@ -115,7 +115,7 @@ class SiteTests(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(SITE, src)), src)
 
     def test_supported_tools_are_honest(self):  # W-10
-        # Only tools the scanner actually covers may be marked as scanned.
+        # Only tools the scanner actually covers may be marked as scanned, and every one it covers is.
         scanned = set(re.findall(r'<div class="tool on"[^>]*><img[^>]*>([^<]+)<b>Scanned</b>', self.html))
-        self.assertEqual(scanned, {"Claude Code", "Cursor"})
+        self.assertEqual(scanned, set(catalogue.scanned_products()))
 

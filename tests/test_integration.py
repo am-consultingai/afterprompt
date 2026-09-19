@@ -43,7 +43,7 @@ class IntegrationTests(TempDirTest):
                        "local development connection string", "scan-session transcripts only",
                        "the tool's own credential store"):
             self.assertIn(reason, d["dismissed"])
-        self.assertEqual(d["coverage"]["cursor_databases"]["ok"], 1)
+        self.assertEqual(d["coverage"]["databases"]["ok"], 1)
 
     def test_wsl_deep(self):  # I-2
         fx = Fixture(self.tmp, "wsl")
@@ -180,7 +180,7 @@ class IntegrationTests(TempDirTest):
         db = os.path.join(fx.home, ".config", "Cursor", "User", "globalStorage", "state.vscdb")
         os.chmod(db, 0)
         self.scan(fx, expect=10)
-        cov = fx.findings()["coverage"]["cursor_databases"]
+        cov = fx.findings()["coverage"]["databases"]
         self.assertEqual(len(cov["failed"]), 1)
 
 
@@ -215,7 +215,7 @@ class WindowsNativeIntegrationTests(TempDirTest):
         # The token in Cursor's AppData\Roaming database
         self.assertIn(fx.masked("F2"), rotate)
         self.assertEqual(rotate[fx.masked("F2")]["tools"], ["Cursor"])
-        self.assertEqual(d["coverage"]["cursor_databases"]["ok"], 1)
+        self.assertEqual(d["coverage"]["databases"]["ok"], 1)
 
         # Every side reported is the Windows one; nothing claims a unix side.
         for r in list(rotate.values()) + list(review.values()):

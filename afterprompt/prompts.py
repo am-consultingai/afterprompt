@@ -86,7 +86,7 @@ def collect_prompts(cfg, sources):
                 if t:
                     ts = d.get("timestamp")
                     prompts.append((f"Claude Code session ({side})", ts[:10] if isinstance(ts, str) else "?", t))
-    ext = cfg.w("extracted", "cursor")
+    ext = cfg.w("extracted", "db")
     for f in sorted(glob.glob(os.path.join(glob.escape(ext), "*.txt"))):
         try:
             fh = open(f, encoding="utf-8", errors="replace")

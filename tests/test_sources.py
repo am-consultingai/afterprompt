@@ -30,8 +30,8 @@ class SourcesTests(TempDirTest):
         os.makedirs(os.path.join(self.home, "Library", "Caches", "claude-cli-nodejs"))
         os.makedirs(os.path.join(self.home, ".claude"))
         out = discover(make_cfg(self.tmp, "macos", self.home))
-        self.assertEqual(len(out["cursor_dbs"]), 2)
-        self.assertTrue(all(d["side"] == "macos" for d in out["cursor_dbs"]))
+        self.assertEqual(len(out["databases"]), 2)
+        self.assertTrue(all(d["side"] == "macos" for d in out["databases"]))
         paths = root_paths(out)
         self.assertIn((os.path.join(self.home, "Library", "Caches", "claude-cli-nodejs"), "Claude Code", "macos"), paths)
         self.assertIsNone(out["windows_home"])
@@ -40,7 +40,7 @@ class SourcesTests(TempDirTest):
         cursor_db(os.path.join(self.home, ".config", "Cursor", "User", "globalStorage", "state.vscdb"), [])
         os.makedirs(os.path.join(self.home, ".cache", "claude-cli-nodejs"))
         out = discover(make_cfg(self.tmp, "linux", self.home))
-        self.assertEqual([d["side"] for d in out["cursor_dbs"]], ["linux"])
+        self.assertEqual([d["side"] for d in out["databases"]], ["linux"])
         self.assertIn((os.path.join(self.home, ".cache", "claude-cli-nodejs"), "Claude Code", "linux"),
                       root_paths(out))
         self.assertFalse(any(r["side"] == "windows" for r in out["roots"]))
@@ -55,7 +55,7 @@ class SourcesTests(TempDirTest):
         paths = root_paths(out)
         self.assertIn((os.path.join(win, ".claude"), "Claude Code", "windows"), paths)
         self.assertIn((os.path.join(self.home, ".claude"), "Claude Code", "wsl"), paths)
-        self.assertEqual(out["cursor_dbs"][0]["side"], "windows")
+        self.assertEqual(out["databases"][0]["side"], "windows")
         self.assertEqual(out["windows_home_source"], "--windows-home")
 
     def test_claude_config_dir(self):  # U-SRC-4
@@ -144,8 +144,8 @@ class NativeWindowsTests(TempDirTest):
         # The profile is this machine, not a bridged one.
         self.assertEqual(out["windows_home"], self.home)
         self.assertEqual(out["windows_home_source"], "this machine")
-        self.assertEqual(len(out["cursor_dbs"]), 2)
-        self.assertTrue(all(d["side"] == "windows" for d in out["cursor_dbs"]))
+        self.assertEqual(len(out["databases"]), 2)
+        self.assertTrue(all(d["side"] == "windows" for d in out["databases"]))
         paths = root_paths(out)
         self.assertIn((self.cli_cache, "Claude Code", "windows"), paths)
         self.assertIn((os.path.join(self.home, ".claude"), "Claude Code", "windows"), paths)
@@ -158,11 +158,11 @@ class NativeWindowsTests(TempDirTest):
         as_linux = discover(make_cfg(self.tmp, "linux", self.home))
         linux_paths = {p for p, _, _ in root_paths(as_linux)}
         self.assertNotIn(self.cli_cache, linux_paths)
-        self.assertEqual(len(as_linux["cursor_dbs"]), 0)  # AppData\Roaming\Cursor is invisible to a linux run
+        self.assertEqual(len(as_linux["databases"]), 0)  # AppData\Roaming\Cursor is invisible to a linux run
 
         as_windows = discover(make_cfg(self.tmp, "windows", self.home))
         self.assertIn(self.cli_cache, {p for p, _, _ in root_paths(as_windows)})
-        self.assertEqual(len(as_windows["cursor_dbs"]), 2)
+        self.assertEqual(len(as_windows["databases"]), 2)
 
     def test_windows_project_dirs_from_claude_json(self):  # U-SRC-W3 (W3)
         """Windows-shaped project paths must resolve natively, not through /mnt/c."""
@@ -182,5 +182,5 @@ class NativeWindowsTests(TempDirTest):
         self.layout()
         cursor_db(os.path.join(self.home, ".config", "Cursor", "User", "globalStorage", "state.vscdb"), [])
         out = discover(make_cfg(self.tmp, "windows", self.home))
-        self.assertEqual(len(out["cursor_dbs"]), 2)
-        self.assertTrue(all("AppData" in d["path"] for d in out["cursor_dbs"]))
+        self.assertEqual(len(out["databases"]), 2)
+        self.assertTrue(all("AppData" in d["path"] for d in out["databases"]))

@@ -70,7 +70,7 @@ folders on the same machine are listed in the report, never read, and the scan n
 `--windows-home /mnt/c/Users/<you>`.
 
 Support for other assistants (Codex CLI, Gemini CLI, Windsurf, Copilot) is planned. Each tool's locations are
-defined in one registry (`afterprompt/sources.py`), so adding one does not touch the scanning engine.
+defined in one data file (`afterprompt/catalogue.json`), so adding one does not touch the scanning engine.
 
 ## How it decides something is a leak
 
@@ -213,12 +213,14 @@ tools/winrun.sh         development only: start Windows processes from a WSL che
                         Windows behaviour without driving PowerShell by hand
 afterprompt/
   cli.py                options, resumable run lifecycle, exit codes
-  sources.py            where each AI tool keeps its data, per platform (the registry)
+  catalogue.json        where each AI tool keeps its data, per platform, and which of its files are
+                        configuration, its own login store, or shipped code (catalogue.py checks it)
+  sources.py            finds those locations on this machine
   platforms.py          macOS / Linux / WSL / Windows detection, Windows profile and WSL distro discovery
   envs.py               the environments on this machine, and starting a worker inside each one
   worker.py             the worker protocol: JSON lines on the worker's stdout, masked values only
   merge.py              one report from several environments, deduplicated by value hash
-  cursor.py             Cursor SQLite extraction
+  databases.py          SQLite extraction (Cursor's chat databases and the like)
   manifest.py           file enumeration
   vendor.py             pattern passes (one ripgrep run per pattern)
   patterns.py           the 140 patterns, labels and revoke links

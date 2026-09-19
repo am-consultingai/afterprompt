@@ -1,27 +1,30 @@
-"""Copy Cursor's SQLite chat stores (with -wal/-shm) and dump every row as text, so the scanner sees whole
-values (SQLite splits long values across overflow pages)."""
+"""Copy the AI tools' SQLite stores (with -wal/-shm) and dump every row as text, so the scanner sees whole values
+(SQLite splits long values across overflow pages). Tables a tool marks as its own login store are left out."""
 import glob
 import os
 import shutil
 import sqlite3
 import time
 
+from afterprompt import catalogue
 from afterprompt.util import log, makedirs, write_json
 
 PART_CAP = 256 * 1024 ** 2
 
 
 def extract(cfg, sources, part_cap=PART_CAP):
-    out_dir = cfg.w("extracted", "cursor")
+    out_dir = cfg.w("extracted", "db")
     copy_dir = cfg.w("dbcopy")
     makedirs(out_dir)
     makedirs(copy_dir)
     ledger = []
-    for n, db in enumerate(sources["cursor_dbs"]):
+    for n, db in enumerate(sources["databases"]):
         t0 = time.monotonic()
         tag = f"{n:03d}"
         base = os.path.join(copy_dir, f"{tag}.db")
-        entry = {"tag": tag, "db": db["path"], "side": db["side"]}
+        tool = db.get("tool", "Cursor")
+        skip = {t.lower() for t in catalogue.exclude_tables(tool)}
+        entry = {"tag": tag, "db": db["path"], "side": db["side"], "tool": tool}
         try:
             shutil.copyfile(db["path"], base)
             if not db["path"].endswith(".backup"):
@@ -30,7 +33,8 @@ def extract(cfg, sources, part_cap=PART_CAP):
                         shutil.copyfile(db["path"] + suf, base + suf)
             con = sqlite3.connect(f"file:{base}?mode=ro", uri=True)
             try:
-                tables = [r[0] for r in con.execute("select name from sqlite_master where type='table'")]
+                tables = [r[0] for r in con.execute("select name from sqlite_master where type='table'")
+                          if r[0].lower() not in skip]
                 rows = written = part = 0
                 fo = open(os.path.join(out_dir, f"{tag}_{part:02d}.txt"), "wb")
                 fo.write(f"### SOURCE {db['path']}\n".encode("utf-8", "replace"))
@@ -68,7 +72,7 @@ def extract(cfg, sources, part_cap=PART_CAP):
                     pass
         entry["s"] = round(time.monotonic() - t0, 1)
         ledger.append(entry)
-        log(f"  cursor {tag} {entry['status'][:80]} rows={entry.get('rows')}")
+        log(f"  database {tag} {tool} {entry['status'][:80]} rows={entry.get('rows')}")
     write_json(cfg.w("extracted", "_ledger.json"), ledger)
     ok = sum(1 for e in ledger if e["status"] == "ok")
     return {"databases": len(ledger), "ok": ok, "failed": [{"path": e["db"], "error": e["status"]}

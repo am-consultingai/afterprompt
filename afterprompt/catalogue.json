@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "about": "Where each AI tool keeps its data. Adding a tool is an edit to this file, not to the engine. See catalogue.py for the fields.",
+  "vendored": ["/node_modules/"],
+  "tools": [
+    {
+      "product": "Claude Code",
+      "vendor": "Anthropic",
+      "kind": "cli",
+      "status": "scanned",
+      "locations": [
+        {"path": "$CLAUDE_DIR", "side": "unix"},
+        {"path": ".claude.json", "side": "unix"},
+        {"path": ".claude.json.backup", "side": "unix"},
+        {"path": ".cache/claude-cli-nodejs", "side": "unix", "platforms": ["linux", "wsl"]},
+        {"path": "Library/Caches/claude-cli-nodejs", "side": "unix", "platforms": ["macos"]},
+        {"path": ".cache/claude", "side": "unix"},
+        {"path": ".local/state/claude", "side": "unix"},
+        {"path": ".local/share/claude", "side": "unix"},
+        {"path": ".claude", "side": "windows"},
+        {"path": ".claude.json", "side": "windows"},
+        {"path": ".claude.json.backup", "side": "windows"},
+        {"path": "AppData/Local/claude-cli-nodejs", "side": "windows"},
+        {"path": ".local/share/claude", "side": "windows"}
+      ],
+      "config_files": ["\\.mcp\\.json", "\\.claude/settings(?:\\.local)?\\.json", "\\.claude/config\\.json",
+                       "claude_desktop_config\\.json"],
+      "credential_files": ["\\.credentials\\.json"],
+      "vendored": ["/\\.local/share/claude/versions/", "/\\.claude/plugins/"]
+    },
+    {
+      "product": "Cursor",
+      "vendor": "Anysphere",
+      "kind": "ide",
+      "status": "scanned",
+      "locations": [
+        {"path": "Library/Application Support/Cursor/User", "side": "unix", "platforms": ["macos"],
+         "role": "sqlite_glob"},
+        {"path": ".config/Cursor/User", "side": "unix", "platforms": ["linux", "wsl"], "role": "sqlite_glob"},
+        {"path": "AppData/Roaming/Cursor/User", "side": "windows", "role": "sqlite_glob"},
+        {"path": ".cursor/projects", "side": "unix"},
+        {"path": ".cursor/plans", "side": "unix"},
+        {"path": ".cursor/mcp.json", "side": "unix"},
+        {"path": ".cursor/ai-tracking", "side": "unix", "role": "sqlite_dir"},
+        {"path": ".cursor/projects", "side": "windows"},
+        {"path": ".cursor/plans", "side": "windows"},
+        {"path": ".cursor/mcp.json", "side": "windows"},
+        {"path": ".cursor/ai-tracking", "side": "windows", "role": "sqlite_dir"}
+      ],
+      "sqlite_globs": ["globalStorage/state.vscdb", "globalStorage/state.vscdb.backup",
+                       "workspaceStorage/*/state.vscdb", "workspaceStorage/*/state.vscdb.backup"],
+      "config_files": ["\\.cursor/mcp\\.json"]
+    }
+  ]
+}

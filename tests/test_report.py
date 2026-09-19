@@ -126,7 +126,7 @@ class WslDistroCoverageTests(unittest.TestCase):
 
     def rows(self, **cov):
         base = {"platform": "windows", "windows_home": "C:\\Users\\me", "windows_home_source": "this machine",
-                "sources": [], "cursor_databases": {"total": 0, "ok": 0, "failed": []}, "unreadable_files": 0,
+                "sources": [], "databases": {"total": 0, "ok": 0, "failed": []}, "unreadable_files": 0,
                 "excluded_files": 0, "vendored_files": 0, "scan_session_files": 0, "live_values": {},
                 "prompts": {}, "limits": [], "missing_locations": [], "pattern_truncations": [],
                 "keychain": "not requested"}

@@ -160,7 +160,7 @@ class TriageTests(TempDirTest):
         idx = self.files[src][0]
         self.hit(".claude/projects/p/other.jsonl", "github_token", "A", "r1")
         self.vendor[-1]["f"] = self.cfg.w("store", f"{idx}.txt")
-        ext = self.cfg.w("extracted", "cursor", "000_00.txt")
+        ext = self.cfg.w("extracted", "db", "000_00.txt")
         write(ext, "x")
         self.files[ext] = (len(self.files), False, False, "Cursor")
         write_json(self.cfg.w("extracted", "_ledger.json"),

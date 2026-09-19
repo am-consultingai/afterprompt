@@ -28,7 +28,7 @@ def data(rotate=(), review=(), totals=None, dismissed=None, files=10, side="wind
             "rotate": list(rotate), "review": review, "review_totals": t, "review_truncated": {},
             "dismissed": dict(dismissed or {}),
             "coverage": {"platform": "windows", "sources": [{"tool": "Cursor", "side": side, "files": files, "bytes": 100}],
-                         "files": files, "bytes": 100, "cursor_databases": {"total": 1, "ok": 1, "failed": []},
+                         "files": files, "bytes": 100, "databases": {"total": 1, "ok": 1, "failed": []},
                          "unreadable_files": 1, "excluded_files": 0, "vendored_files": 2, "scan_session_files": 0,
                          "pattern_truncations": [], "missing_locations": [], "keychain": "not requested",
                          "live_values": {"values": 3, "stores": 1, "env_files": 1, "credential_named_files": 0,
@@ -136,7 +136,7 @@ class MergeFindingsTests(unittest.TestCase):
 class MergeCoverageTests(unittest.TestCase):
     def test_counts_add_up_per_environment(self):  # U-MRG-10
         ubu = data(files=30, side="linux")
-        ubu["coverage"]["cursor_databases"]["failed"] = [{"path": "~/.config/Cursor/x.vscdb", "error": "locked"}]
+        ubu["coverage"]["databases"]["failed"] = [{"path": "~/.config/Cursor/x.vscdb", "error": "locked"}]
         ubu["coverage"]["pattern_truncations"] = ["jwt"]
         ubu["coverage"]["decode"] = {"statuses": {"ok": 2}, "decoded_bytes": 10, "disk_cap_reached": True,
                                      "not_decoded": 1}
@@ -144,8 +144,8 @@ class MergeCoverageTests(unittest.TestCase):
         c = out["coverage"]
         self.assertEqual(c["files"], 40)
         self.assertEqual(c["unreadable_files"], 2)
-        self.assertEqual(c["cursor_databases"]["total"], 2)
-        self.assertEqual(c["cursor_databases"]["failed"][0]["path"], "[Ubuntu] ~/.config/Cursor/x.vscdb")
+        self.assertEqual(c["databases"]["total"], 2)
+        self.assertEqual(c["databases"]["failed"][0]["path"], "[Ubuntu] ~/.config/Cursor/x.vscdb")
         self.assertEqual(c["pattern_truncations"], ["[Ubuntu] jwt"])
         self.assertEqual(c["live_values"]["values"], 6)
         self.assertEqual(c["prompts"]["unique_prompts"], 10)

@@ -29,10 +29,10 @@ class PromptTests(TempDirTest):
         self.assertEqual(texts, ["and this", "user typed this"])
 
     def test_cursor_bubbles(self):  # U-PRM-3
-        from afterprompt import cursor
+        from afterprompt import databases
         db = os.path.join(self.tmp, "state.vscdb")
         cursor_db(db, [(1, "cursor user prompt"), (2, "cursor reply")])
-        cursor.extract(self.cfg, {"cursor_dbs": [{"path": db, "side": "linux"}]})
+        databases.extract(self.cfg, {"databases": [{"path": db, "side": "linux"}]})
         texts = [p[2] for p in prompts.collect_prompts(self.cfg, self.srcs)]
         self.assertEqual(texts, ["cursor user prompt"])
 

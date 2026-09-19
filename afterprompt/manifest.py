@@ -4,26 +4,29 @@ import re
 import stat
 from collections import Counter, namedtuple
 
+from afterprompt import catalogue
 from afterprompt.util import is_under, log, read_json
 
 # Matched against a forward-slash form of the path so Windows separators classify identically.
-VEND = re.compile(r"/\.local/share/claude/versions/|/\.claude/plugins/|/node_modules/")
+VEND = catalogue.VENDORED
 SESSION_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 Row = namedtuple("Row", "idx size vendored self tool side path")
 
 
 def scan_roots(cfg, sources):
-    """(path, tool, side) for every root, including extracted Cursor text."""
+    """(path, tool, side) for every root, including the text extracted from databases."""
     out = [(r["path"], r["tool"], r["side"]) for r in sources["roots"]]
-    ext = cfg.w("extracted", "cursor")
+    ext = cfg.w("extracted", "db")
     if os.path.isdir(ext):
-        out.append((ext, "Cursor", cfg.platform))
+        out.append((ext, "Database", cfg.platform))
     return out
 
 
 def ledger_sides(cfg):
-    return {e["tag"]: (e["db"], e["side"]) for e in read_json(cfg.w("extracted", "_ledger.json"), []) or []}
+    """tag -> (database path, side, tool) for every extracted database."""
+    return {e["tag"]: (e["db"], e["side"], e.get("tool", "Cursor"))
+            for e in read_json(cfg.w("extracted", "_ledger.json"), []) or []}
 
 
 def self_session_ids(sources):
@@ -40,7 +43,7 @@ def self_session_ids(sources):
 def build(cfg, sources):
     excludes = [re.compile(x) for x in cfg.excludes]
     ledger = ledger_sides(cfg)
-    ext = cfg.w("extracted", "cursor")
+    ext = cfg.w("extracted", "db")
     roots = scan_roots(cfg, sources)
     by_len = sorted(roots, key=lambda r: -len(r[0]))
     files, unreadable, odd = {}, [], 0
@@ -75,8 +78,7 @@ def build(cfg, sources):
     for i, p in enumerate(sorted(files)):
         tool, side = next(((t, s) for r, t, s in by_len if is_under(p, r)), ("Extra", cfg.platform))
         if is_under(p, ext):
-            tag = os.path.basename(p)[:3]
-            side = ledger.get(tag, (None, side))[1]
+            _, side, tool = ledger.get(os.path.basename(p)[:3], (None, side, tool))
         # Classification patterns are written with "/", so match against a normalised copy:
         # on Windows the separator would otherwise hide vendored files and our own transcript.
         pn = p.replace("\\", "/")

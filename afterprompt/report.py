@@ -46,7 +46,7 @@ def side_label(s):
 
 def coverage(cfg, sources):
     st = lambda name: read_json(cfg.w("state", f"{name}.done"), {}) or {}  # noqa: E731
-    man, cur, ven, known, prm = st("manifest"), st("cursor"), st("vendor_raw"), st("known"), st("prompts")
+    man, cur, ven, known, prm = st("manifest"), st("databases"), st("vendor_raw"), st("known"), st("prompts")
     cov = {
         "platform": sources.get("platform"),
         "windows_home": sources.get("windows_home"),
@@ -55,7 +55,7 @@ def coverage(cfg, sources):
         "sources": man.get("per_source", []),
         "files": man.get("files", 0), "bytes": man.get("bytes", 0),
         "missing_locations": sources.get("missing", []),
-        "cursor_databases": {"total": cur.get("databases", 0), "ok": cur.get("ok", 0),
+        "databases": {"total": cur.get("databases", 0), "ok": cur.get("ok", 0),
                              "failed": cur.get("failed", [])},
         "unreadable_files": man.get("unreadable", 0), "unreadable_examples": man.get("unreadable_examples", [])[:20],
         "excluded_files": man.get("excluded", 0), "vendored_files": man.get("vendored", 0),
@@ -204,10 +204,10 @@ def coverage_rows(data):
             rows.append((f"Other users on {env['label']}", other_homes_text(env["other_homes"])))
     if not data.get("environments") and c.get("other_homes"):
         rows.append(("Other users on this machine", other_homes_text(c["other_homes"])))
-    cd = c["cursor_databases"]
-    rows.append(("Cursor chat databases", f"{cd['ok']} of {cd['total']} read"))
+    cd = c["databases"]
+    rows.append(("Chat databases", f"{cd['ok']} of {cd['total']} read"))
     for f in cd["failed"]:
-        rows.append(("Cursor database not read", f"{f['path']}: {f['error']} (quit Cursor and run the scan again)"))
+        rows.append(("Database not read", f"{f['path']}: {f['error']} (quit the app that owns it and run the scan again)"))
     rows.append(("Unreadable files", str(c["unreadable_files"])))
     rows.append(("Excluded / vendored / scan-session files",
                  f"{c['excluded_files']} / {c['vendored_files']} / {c['scan_session_files']}"))
