@@ -55,9 +55,12 @@ class RegressionTests(unittest.TestCase):
     """Moving the registry into data must not change what is scanned."""
 
     def test_same_locations(self):  # U-CAT-1
-        self.assertEqual(rows({"Claude Code", "Cursor"}), OLD_REGISTRY)
+        # Everything scanned before is still scanned; the only additions since are listed here.
+        added = [('Cursor', 'unix', '.cursor/chats', 'sqlite_glob', ('linux', 'macos', 'wsl')),
+                 ('Cursor', 'windows', '.cursor/chats', 'sqlite_glob', ('windows', 'wsl'))]
+        self.assertEqual(rows({"Claude Code", "Cursor"}), sorted(OLD_REGISTRY + added))
         for loc in catalogue.REGISTRY:
-            if loc.tool == "Cursor" and loc.role == "sqlite_glob":
+            if loc.tool == "Cursor" and loc.role == "sqlite_glob" and loc.path != ".cursor/chats":
                 self.assertEqual(loc.globs, OLD_GLOBS)
 
     def test_same_classification(self):  # U-CAT-2

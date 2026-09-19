@@ -155,6 +155,22 @@
           "path": ".cursor/ai-tracking",
           "side": "windows",
           "role": "sqlite_dir"
+        },
+        {
+          "path": ".cursor/chats",
+          "side": "unix",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "*/*/store.db"
+          ]
+        },
+        {
+          "path": ".cursor/chats",
+          "side": "windows",
+          "role": "sqlite_glob",
+          "sqlite_globs": [
+            "*/*/store.db"
+          ]
         }
       ],
       "sqlite_globs": [
@@ -689,48 +705,148 @@
       "product": "GitHub Copilot",
       "vendor": "GitHub",
       "kind": "extension",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": "$EDITOR_USER/",
+          "side": "unix",
+          "match": [
+            "workspaceStorage/*/chatSessions/*.json",
+            "workspaceStorage/*/chatSessions/*.jsonl",
+            "workspaceStorage/*/chatEditingSessions/*/state.json",
+            "globalStorage/emptyWindowChatSessions/*.json",
+            "globalStorage/emptyWindowChatSessions/*.jsonl",
+            "globalStorage/transferredChatSessions/*.json"
+          ]
+        },
+        {
+          "path": ".copilot/session-state",
+          "side": "unix"
+        },
+        {
+          "path": ".copilot/session-state",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "vscode_extensions": [
           "github.copilot-chat",
           "github.copilot"
+        ],
+        "home": [
+          ".copilot"
         ]
       },
-      "note": "Chat history lives in the host editor's storage; covered by X6 (VS Code family)."
+      "source": "github.com/microsoft/vscode (workbench/contrib/chat/common/model/chatSessionStore.ts; extensions/copilot chatSessionMetadataStoreImpl.ts)"
     },
     {
       "product": "Cline",
       "vendor": "Cline",
       "kind": "extension",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": "$EDITOR_USER/globalStorage/saoudrizwan.claude-dev",
+          "side": "unix",
+          "remote": true
+        },
+        {
+          "path": ".cline/data",
+          "side": "unix"
+        },
+        {
+          "path": ".cline/data",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "vscode_extensions": [
           "saoudrizwan.claude-dev"
+        ],
+        "home": [
+          ".cline"
         ]
       },
-      "note": "Task history lives in the host editor's globalStorage; covered by X6."
+      "source": "github.com/cline/cline (apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts, storage-context.ts, sdk/packages/shared/src/storage/paths.ts)",
+      "credential_files": [
+        "\\.cline/data/secrets\\.json"
+      ],
+      "credential_stores": [
+        ".cline/data/secrets.json"
+      ],
+      "config_files": [
+        "cline_mcp_settings\\.json"
+      ]
     },
     {
       "product": "Roo Code",
       "vendor": "Roo Code",
       "kind": "extension",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": "$EDITOR_USER/globalStorage/rooveterinaryinc.roo-cline",
+          "side": "unix",
+          "remote": true
+        }
+      ],
       "detect": {
         "vscode_extensions": [
           "rooveterinaryinc.roo-cline"
         ]
       },
-      "note": "Task history lives in the host editor's globalStorage; covered by X6."
+      "source": "github.com/RooCodeInc/Roo-Code (src/shared/globalFileNames.ts, src/utils/storage.ts, TaskHistoryStore.ts)",
+      "config_files": [
+        "rooveterinaryinc\\.roo-cline/settings/mcp_settings\\.json"
+      ]
     },
     {
       "product": "Continue",
       "vendor": "Continue",
       "kind": "extension",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".continue/sessions",
+          "side": "unix"
+        },
+        {
+          "path": ".continue/sessions",
+          "side": "windows"
+        },
+        {
+          "path": ".continue/dev_data",
+          "side": "unix"
+        },
+        {
+          "path": ".continue/dev_data",
+          "side": "windows"
+        },
+        {
+          "path": ".continue/config.yaml",
+          "side": "unix"
+        },
+        {
+          "path": ".continue/config.yaml",
+          "side": "windows"
+        },
+        {
+          "path": ".continue/config.json",
+          "side": "unix"
+        },
+        {
+          "path": ".continue/config.json",
+          "side": "windows"
+        },
+        {
+          "path": ".continue/.env",
+          "side": "unix"
+        },
+        {
+          "path": ".continue/.env",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "vscode_extensions": [
           "continue.continue"
@@ -739,7 +855,11 @@
           ".continue"
         ]
       },
-      "note": "Sessions under ~/.continue; not yet mapped and tested."
+      "source": "github.com/continuedev/continue (core/util/paths.ts)",
+      "config_files": [
+        "\\.continue/config\\.(?:ya?ml|json)",
+        "\\.continue/\\.env"
+      ]
     },
     {
       "product": "Sourcegraph Cody",
@@ -758,14 +878,26 @@
       "product": "Amazon Q Developer",
       "vendor": "AWS",
       "kind": "extension",
-      "status": "planned",
-      "locations": [],
+      "status": "scanned",
+      "locations": [
+        {
+          "path": ".aws/amazonq/history",
+          "side": "unix"
+        },
+        {
+          "path": ".aws/amazonq/history",
+          "side": "windows"
+        }
+      ],
       "detect": {
         "vscode_extensions": [
           "amazonwebservices.amazon-q-vscode"
+        ],
+        "home": [
+          ".aws/amazonq"
         ]
       },
-      "note": "Not yet mapped."
+      "source": "github.com/aws/aws-toolkit-vscode (packages/core/src/shared/db/chatDb/util.ts, chatDb.ts)"
     },
     {
       "product": "Augment",
@@ -908,6 +1040,112 @@
         ]
       },
       "note": "Plaintext sessions.db; not yet mapped and tested."
+    },
+    {
+      "product": "Kilo Code",
+      "vendor": "Kilo",
+      "kind": "extension",
+      "status": "scanned",
+      "source": "github.com/Kilo-Org/kilocode (packages/core/src/global.ts, database/database.ts, opencode/src/auth/index.ts, kilo-vscode legacy-migration/task-store.ts)",
+      "locations": [
+        {
+          "path": ".local/share/kilo",
+          "side": "unix",
+          "role": "sqlite_glob"
+        },
+        {
+          "path": ".local/share/kilo",
+          "side": "windows",
+          "role": "sqlite_glob"
+        },
+        {
+          "path": ".local/share/kilo/log",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/kilo/log",
+          "side": "windows"
+        },
+        {
+          "path": "$EDITOR_USER/globalStorage/kilocode.kilo-code",
+          "side": "unix",
+          "remote": true
+        }
+      ],
+      "sqlite_globs": [
+        "kilo*.db",
+        "opencode-*.db"
+      ],
+      "exclude_tables": [
+        "credential",
+        "account",
+        "control_account",
+        "account_state"
+      ],
+      "credential_files": [
+        "kilo/(?:mcp-)?auth\\.json"
+      ],
+      "credential_stores": [
+        ".local/share/kilo/auth.json",
+        ".local/share/kilo/mcp-auth.json"
+      ],
+      "detect": {
+        "vscode_extensions": [
+          "kilocode.kilo-code"
+        ],
+        "home": [
+          ".local/share/kilo"
+        ]
+      }
+    }
+  ],
+  "editors": [
+    {
+      "name": "Code",
+      "label": "VS Code",
+      "server": ".vscode-server"
+    },
+    {
+      "name": "Code - Insiders",
+      "label": "VS Code Insiders",
+      "server": ".vscode-server-insiders"
+    },
+    {
+      "name": "VSCodium",
+      "label": "VSCodium",
+      "server": ".vscodium-server"
+    },
+    {
+      "name": "Cursor",
+      "label": "Cursor",
+      "server": ".cursor-server"
+    },
+    {
+      "name": "Antigravity",
+      "label": "Antigravity",
+      "server": ".antigravity-server"
+    },
+    {
+      "name": "Void",
+      "label": "Void",
+      "server": ".void-server"
+    },
+    {
+      "name": "PearAI",
+      "label": "PearAI",
+      "server": ".pearai-server"
+    },
+    {
+      "name": "Kiro",
+      "label": "Kiro"
+    },
+    {
+      "name": "Windsurf",
+      "label": "Windsurf"
+    },
+    {
+      "name": "Trae",
+      "label": "Trae"
     }
   ]
 }

@@ -61,10 +61,14 @@ setting: it runs the unsigned script under a policy scoped to that one process.
 | Tool | Data |
 |---|---|
 | **Claude Code** | Session transcripts, prompt history, file history, pasted content, MCP server logs, `~/.claude.json`, per-project `.claude/` folders and `.mcp.json` files |
-| **Cursor** | Chat databases (`state.vscdb`, including `.backup` copies and write-ahead logs), agent transcripts, plans, `mcp.json` |
+| **Cursor** | Chat databases (`state.vscdb`, including `.backup` copies and write-ahead logs), the Cursor CLI agent's `~/.cursor/chats` stores, agent transcripts, plans, `mcp.json` |
 | **Codex CLI** | Session rollouts (`~/.codex/sessions`, archived sessions), prompt history, its SQLite state and log databases, memories, shell snapshots (which capture exported environment variables), `config.toml`, `~/.codex/.env` |
 | **Gemini CLI** | Chat recordings, prompt logs, tool output and checkpoints under `~/.gemini/tmp`, `settings.json`, `~/.gemini/.env` |
 | **OpenCode** | The `opencode.db` session database (its own login tables are skipped), legacy JSON storage, logs, tool output, plans, prompt history, `opencode.json` |
+| **GitHub Copilot** | VS Code chat sessions (the `.jsonl` log since VS Code 1.109, and the older `.json` files), empty-window and transferred sessions, edit-session state, and Copilot CLI session state |
+| **Cline, Roo Code, Kilo Code** | Task history in every VS Code-family editor they run in (VS Code, Insiders, VSCodium, Cursor, Windsurf, Kiro, Antigravity and others, including remote `~/.vscode-server` profiles), `~/.cline/data`, Kilo's `kilo.db` (login tables skipped) |
+| **Continue** | `~/.continue` sessions, dev data, `config.yaml`/`config.json`, `.env` |
+| **Amazon Q Developer** | Chat history under `~/.aws/amazonq/history` |
 | **Ollama** | `ollama run` prompt history, logs, the desktop app's chat database (macOS and Windows), and the config backups it keeps |
 
 A native Windows run scans the profile it runs as: `%USERPROFILE%\.claude`, `%APPDATA%\Cursor`,

@@ -11,6 +11,13 @@ Each tool:
                   role    root (scan as files, the default) | sqlite_glob (SQLite files under path matching the
                           tool's sqlite_globs) | sqlite_dir (every SQLite file under path; other files are roots)
                   match   root only: scan just the files under path matching these globs (rotating logs)
+                  sqlite_globs  for this location only, instead of the tool's
+                  editors  with an $EDITOR_USER/ path: only these editors (default: all)
+                  remote   with an $EDITOR_USER/ path: also each editor's remote-server profile (~/.<server>/data/User)
+
+A path starting with $EDITOR_USER/ is inside a VS Code-family editor's profile ("User" folder), and is expanded to
+every editor in the catalogue's "editors" list, on every platform: Library/Application Support/<name>/User on macOS,
+.config/<name>/User on Linux and WSL, AppData/Roaming/<name>/User on Windows.
   sqlite_globs      for sqlite_glob locations
   exclude_tables    SQLite tables never extracted (the tool's own login, embeddings)
   config_files      regexes: the tool's configuration files. A secret there is "stored in configuration"
@@ -111,6 +118,8 @@ def validate(data):
                 errors.append(f"{where}: location needs a path")
                 continue
             p = loc["path"]
+            if p.startswith("$") and not p.startswith(("$CLAUDE_DIR", EDITOR_PREFIX)):
+                errors.append(f"{where}: unknown placeholder")
             if os.path.isabs(p) or p.startswith(("/", "\\")) or ".." in p.replace("\\", "/").split("/") or "\\" in p:
                 errors.append(f"{where}: path must be relative to the home, with forward slashes")
             if loc.get("side") not in SIDES:
@@ -122,12 +131,24 @@ def validate(data):
             role = loc.get("role", "root")
             if role not in ROLES:
                 errors.append(f"{where}: role must be one of {', '.join(ROLES)}")
-            if role == "sqlite_glob" and not t.get("sqlite_globs"):
+            names = {e.get("name") for e in data.get("editors", []) if isinstance(e, dict)}
+            if p.startswith(EDITOR_PREFIX):
+                if not names:
+                    errors.append(f"{where}: $EDITOR_USER needs the catalogue's editors list")
+                if set(loc.get("editors") or []) - names:
+                    errors.append(f"{where}: unknown editors {sorted(set(loc['editors']) - names)}")
+            elif loc.get("editors") or loc.get("remote"):
+                errors.append(f"{where}: editors and remote only apply to $EDITOR_USER paths")
+            if role == "sqlite_glob" and not (t.get("sqlite_globs") or loc.get("sqlite_globs")):
                 errors.append(f"{where}: sqlite_glob needs the tool's sqlite_globs")
             m = loc.get("match")
             if m is not None and (role != "root" or not isinstance(m, list) or not m
                                   or not all(isinstance(x, str) and x for x in m)):
                 errors.append(f"{where}: match is a non-empty list of globs, for root locations only")
+    for e in data.get("editors", []):
+        if not isinstance(e, dict) or not isinstance(e.get("name"), str) or not e["name"] or \
+                ("server" in e and not (isinstance(e["server"], str) and e["server"].startswith("."))):
+            errors.append(f"editors: each needs a name, and server (optional) is a dot-folder in the home: {e!r}")
     for x in data.get("vendored", []):
         try:
             re.compile(x)
@@ -145,14 +166,38 @@ def load(path=PATH):
     return data
 
 
+EDITOR_PREFIX = "$EDITOR_USER/"
+EDITOR_ROOTS = (("unix", ("macos",), "Library/Application Support/{name}/User"),
+                ("unix", ("linux", "wsl"), ".config/{name}/User"),
+                ("windows", ("wsl", "windows"), "AppData/Roaming/{name}/User"))
+
+
+def expand(loc, editors):
+    """The concrete locations for one catalogue location: itself, or one per editor profile when it starts with
+    $EDITOR_USER/."""
+    if not loc["path"].startswith(EDITOR_PREFIX):
+        return [loc]
+    rest = loc["path"][len(EDITOR_PREFIX):]
+    only = set(loc.get("editors") or [e["name"] for e in editors])
+    out = []
+    for e in editors:
+        if e["name"] not in only:
+            continue
+        for side, plats, root in EDITOR_ROOTS:
+            out.append(dict(loc, path=f"{root.format(name=e['name'])}/{rest}", side=side, platforms=list(plats)))
+        if loc.get("remote") and e.get("server"):
+            out.append(dict(loc, path=f"{e['server']}/data/User/{rest}", side="unix", platforms=["linux", "wsl"]))
+    return out
+
+
 def registry(data):
     out = []
     for t in data["tools"]:
         if t["status"] != "scanned":
             continue
-        for loc in t["locations"]:
+        for loc in (x for l in t["locations"] for x in expand(l, data.get("editors", []))):
             out.append(Loc(t["product"], tuple(loc.get("platforms", SIDES[loc["side"]])), loc["side"], loc["path"],
-                           loc.get("role", "root"), tuple(t.get("sqlite_globs", ())),
+                           loc.get("role", "root"), tuple(loc.get("sqlite_globs") or t.get("sqlite_globs", ())),
                            tuple(t.get("exclude_tables", ())), tuple(loc.get("match", ()))))
     return out
 
