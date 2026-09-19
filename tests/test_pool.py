@@ -2,6 +2,7 @@ import json
 import multiprocessing
 import os
 import unittest
+import warnings
 
 from afterprompt import pool
 from tests.helpers import TempDirTest, make_cfg
@@ -69,3 +70,12 @@ class PoolTests(TempDirTest):
         crashed, skipped = self.run_items(touch_item, self.items(30), cfg, should_stop=lambda it: True)
         self.assertTrue(skipped)
         self.assertLess(sum(os.path.exists(p) for _, p in self.items(30)), 30)
+
+    @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "no fork start method")
+    def test_fork_never_sees_live_thread(self):  # U-POOL-6
+        # Python 3.12+ warns when fork() runs in a multi-threaded process; the watchdog must start after it.
+        cfg = make_cfg(self.tmp, "linux", mp_start="fork")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.run_items(touch_item, self.items(4), cfg)
+        self.assertEqual([str(w.message) for w in caught if "fork()" in str(w.message)], [])

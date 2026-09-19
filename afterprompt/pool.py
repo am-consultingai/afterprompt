@@ -122,10 +122,12 @@ def run_pool(fn, items, label, is_done, on_crash, cfg, should_stop=None):
         done_n = 0
         broke = False
         with _executor(cfg, cfg.workers) as ex:
+            # Submit before starting the watchdog: the executor creates its workers on the first submit, and
+            # a fork-started worker must not inherit a live thread.
+            futs = {ex.submit(fn, it): it for it in pending}
             wd = Watchdog(ex, cfg.mem_cap_bytes, label)
             wd.start()
             try:
-                futs = {ex.submit(fn, it): it for it in pending}
                 for fut in as_completed(futs):
                     done_n += 1
                     if fut.cancelled():
@@ -154,10 +156,11 @@ def run_pool(fn, items, label, is_done, on_crash, cfg, should_stop=None):
     for it in pending:
         try:
             with _executor(cfg, 1) as ex:
+                fut = ex.submit(fn, it)
                 wd = Watchdog(ex, cfg.mem_cap_bytes, label)
                 wd.start()
                 try:
-                    ex.submit(fn, it).result()
+                    fut.result()
                 finally:
                     wd.stop.set()
         except BrokenProcessPool:

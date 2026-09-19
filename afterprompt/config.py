@@ -2,7 +2,6 @@
 import hashlib
 import json
 import os
-import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -50,7 +49,7 @@ class RunConfig:
     rg: str = "rg"
     install_dir: str = ""
     platform: str = "linux"
-    mp_start: str = "fork"
+    mp_start: str = "spawn"
     stop_after: Optional[str] = None
     now: float = 0.0
 
@@ -77,9 +76,9 @@ def from_args(args, run_dir):
     install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     base_dir = base_dir_from_env()
     plat = platforms.detect(os.environ.get("AFTERPROMPT_PLATFORM") or None)
-    # fork is unavailable on Windows and unsafe from a multi-threaded parent on macOS.
-    native_spawn = plat in ("macos", "windows") or sys.platform in ("darwin", "win32")
-    mp = os.environ.get("AFTERPROMPT_MP_START") or ("spawn" if native_spawn else "fork")
+    # spawn everywhere: fork is unavailable on Windows, and forking a parent that has live threads (the pool
+    # watchdog, rg feeders) can hang a child on a lock held at fork time. fork stays reachable as an override.
+    mp = os.environ.get("AFTERPROMPT_MP_START") or "spawn"
     win_arg = args.windows_home if args.windows_home is not None else (os.environ.get("AFTERPROMPT_WINDOWS_HOME") or None)
     cfg = RunConfig(
         mode="deep" if args.deep else "quick",

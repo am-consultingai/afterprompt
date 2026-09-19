@@ -55,7 +55,7 @@ def make_cfg(root, platform="linux", home=None, windows_home=None, mode="quick",
                     home=home or os.path.join(root, "home"), windows_home_arg=windows_home or "none",
                     workers=2, mem_cap_bytes=2 * 1024 ** 3, file_timeout=60, pattern_timeout=60, walk_budget=20,
                     rg=shutil.which("rg") or "rg", install_dir=REPO, platform=platform,
-                    mp_start="spawn" if platform in ("macos", "windows") or WINDOWS else "fork")
+                    mp_start="spawn")
     for k, v in kw.items():
         setattr(cfg, k, v)
     os.makedirs(os.path.join(cfg.work_dir, "state"), exist_ok=True)
@@ -225,8 +225,6 @@ class Fixture:
                     "AFTERPROMPT_WALK_BUDGET": "20"})
         if self.platform == "wsl":
             env["AFTERPROMPT_WINDOWS_HOME"] = self.win
-        if self.platform in ("macos", "windows") or WINDOWS:
-            env["AFTERPROMPT_MP_START"] = "spawn"
         env.update(extra)
         return env
 

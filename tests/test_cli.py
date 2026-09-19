@@ -49,6 +49,14 @@ class CliTests(TempDirTest):
             self.assertNotEqual(base, config.from_args(ns(extra_root=[self.tmp]), "/r").fingerprint())
             self.assertEqual(base, config.from_args(ns(out=self.tmp), "/r").fingerprint())
 
+    def test_start_method(self):  # U-CLI-6
+        with mock.patch.dict(os.environ, self.env()):
+            for plat in ("linux", "wsl", "macos", "windows"):
+                with self.subTest(platform=plat), mock.patch.dict(os.environ, {"AFTERPROMPT_PLATFORM": plat}):
+                    self.assertEqual(config.from_args(ns(), "/r").mp_start, "spawn")
+            with mock.patch.dict(os.environ, {"AFTERPROMPT_MP_START": "fork"}):
+                self.assertEqual(config.from_args(ns(), "/r").mp_start, "fork")
+
     def test_default_workers(self):  # U-CLI-4
         self.assertEqual(config.default_workers(cpu=12, ram_gb=40), 6)
         self.assertEqual(config.default_workers(cpu=4, ram_gb=40), 3)
