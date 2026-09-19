@@ -5,7 +5,7 @@ import os
 from collections import namedtuple
 from unittest import mock
 
-from afterprompt import cli, config
+from afterprompt import __version__, cli, config
 from tests.helpers import TempDirTest, write
 
 
@@ -38,7 +38,7 @@ class CliTests(TempDirTest):
 
     def test_version(self):  # U-CLI-2
         code, out, _ = run_main(["--version"], self.env())
-        self.assertEqual((code, out.strip()), (0, "afterprompt 0.1.0"))
+        self.assertEqual((code, out.strip()), (0, f"afterprompt {__version__}"))
 
     def test_fingerprint(self):  # U-CLI-3
         with mock.patch.dict(os.environ, self.env()):

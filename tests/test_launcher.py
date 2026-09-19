@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 import unittest
 
+from afterprompt import __version__
 from tests.helpers import SCAN_SH, TempDirTest, requires_posix
 
 BASH = os.environ.get("AFTERPROMPT_TEST_BASH") or "bash"
@@ -105,7 +106,7 @@ class LauncherTests(TempDirTest):
             with self.subTest(arg=arg):
                 code, out, err = self.run_sh(arg, "--no-download", AFTERPROMPT_IGNORE_SYSTEM_RG="1")
                 self.assertEqual(code, 0, err)
-        self.assertIn("afterprompt 0.1.0", self.run_sh("--version", AFTERPROMPT_IGNORE_SYSTEM_RG="1")[1])
+        self.assertIn(f"afterprompt {__version__}", self.run_sh("--version", AFTERPROMPT_IGNORE_SYSTEM_RG="1")[1])
 
     @unittest.skipUnless(shutil.which("shellcheck"), "shellcheck is not installed")
     def test_shellcheck(self):  # L-11
