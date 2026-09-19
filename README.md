@@ -140,6 +140,7 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
   --windows-home PATH    WSL: the Windows profile to scan, or "none" to skip the Windows side
   --no-wsl               scan only this machine, not the WSL distributions on it
   --theme neutral|am     report look: neutral (default, unbranded) or am (AM Consulting brand)
+  --sarif                also write report.sarif (SARIF 2.1.0) for code-scanning and SIEM pipelines
   --no-download          never download ripgrep; fail if it is not installed
   --fresh                discard an unfinished scan and start over
   --status               show progress of a running or interrupted scan

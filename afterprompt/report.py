@@ -420,6 +420,9 @@ def write(cfg, sources, run_meta, host_env=None, env_results=None):
         fh.write(render_md(data, theme))
     with open(os.path.join(cfg.report_dir, "report.html"), "w", encoding="utf-8") as fh:
         fh.write(render_html(data, theme))
+    if getattr(cfg, "sarif", False):
+        from afterprompt import sarif
+        write_json(os.path.join(cfg.report_dir, "report.sarif"), sarif.build(data))
     assets_out = os.path.join(cfg.report_dir, "report-assets")
     os.makedirs(assets_out, mode=0o700, exist_ok=True)
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")

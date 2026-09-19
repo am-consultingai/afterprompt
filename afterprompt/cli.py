@@ -88,6 +88,8 @@ def parser():
                    help="WSL: the Windows profile to scan, or 'none' to skip the Windows side")
     p.add_argument("--theme", choices=("neutral", "am"), default="neutral",
                    help="report look: neutral (default) or am, the AM Consulting brand")
+    p.add_argument("--sarif", action="store_true",
+                   help="also write report.sarif (SARIF 2.1.0) for code-scanning and SIEM pipelines")
     p.add_argument("--no-wsl", action="store_true",
                    help="scan only this machine, not the WSL distributions on it")
     p.add_argument("--no-download", action="store_true", help="never download ripgrep; fail if it is not installed")
