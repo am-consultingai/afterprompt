@@ -88,6 +88,8 @@ def parser():
                    help="WSL: the Windows profile to scan, or 'none' to skip the Windows side")
     p.add_argument("--theme", choices=("neutral", "am"), default="neutral",
                    help="report look: neutral (default) or am, the AM Consulting brand")
+    p.add_argument("--ui", action="store_true",
+                   help="also show the scan in your browser, served only to this machine (127.0.0.1)")
     p.add_argument("--sarif", action="store_true",
                    help="also write report.sarif (SARIF 2.1.0) for code-scanning and SIEM pipelines")
     p.add_argument("--no-wsl", action="store_true",
@@ -154,6 +156,28 @@ def status(base, out=print):
         size = sum(os.path.getsize(os.path.join(store, f)) for f in os.listdir(store))
         out(f"  decoded plaintext on disk: {human_bytes(size)}")
     return EXIT_OK
+
+
+def start_ui(base):
+    """Start the loopback UI and print its one-time link. Console lines go to the page as well."""
+    from afterprompt import ui
+    state = ui.State(os.path.join(base, "checklist.json"))
+    view = ui.Server(state).start()
+    # Printed, not logged: the key must not end up in run.log.
+    print(f"Browser view: {view.url}", flush=True)
+    print("  (the link carries a one-time key; it works only on this machine)", flush=True)
+
+    def tee(msg):
+        print(msg, flush=True)
+        state.say(msg)
+    set_console_sink(tee)
+    return view
+
+
+def stop_ui(view):
+    if view:
+        set_console_sink(None)
+        view.stop()
 
 
 def stage_list(deep, other_envs):
@@ -418,6 +442,9 @@ def run(argv, emit):
 
     stages = stage_list(cfg.deep, len(env_list) > 1)
     ctx = {"meta": meta, "envs": env_list, "worker_args": worker_args(cfg, args)}
+    view = start_ui(base) if args.ui and not emit else None
+    if view:
+        view.state.set_stages(stages, DESCRIPTIONS)
     t0 = time.monotonic()
     current = None
     try:
@@ -428,7 +455,11 @@ def run(argv, emit):
                 if name == "discover":
                     ctx["sources"] = read_json(cfg.w("sources.json"))
                 say(f"[{k}/{len(stages)}] {DESCRIPTIONS[name]} … already done")
+                if view:
+                    view.state.stage(name, done=True)
                 continue
+            if view:
+                view.state.stage(name)
             if name != "discover" and "sources" not in ctx:
                 ctx["sources"] = read_json(cfg.w("sources.json"))
             say(f"[{k}/{len(stages)}] {DESCRIPTIONS[name]} …")
@@ -442,15 +473,19 @@ def run(argv, emit):
             if line:
                 say(f"      {line}")
             log(f"=== stage {name} end ({info['elapsed_s']}s)")
+            if view:
+                view.state.stage(name, done=True)
             if cfg.stop_after == name:
                 say(f"Stopped after {name} (AFTERPROMPT_STOP_AFTER).")
                 return EXIT_INTERRUPTED
     except KeyboardInterrupt:
+        stop_ui(view)
         say("")
         say("Interrupted. Run ./afterprompt.sh again with the same options to resume, or ./afterprompt.sh --fresh to start over.")
         say(f"Work files, which may include plaintext copies of chat data, remain in {cfg.work_dir} until then.")
         return EXIT_INTERRUPTED
     except Exception as err:  # noqa: BLE001 - reported and logged
+        stop_ui(view)
         log("".join(traceback.format_exc()))
         say(f"The scan failed during '{DESCRIPTIONS.get(current, current)}': {type(err).__name__}: {err}")
         say(f"Details: {os.path.join(run_dir, 'run.log')}. Run ./afterprompt.sh again to retry from this step.")
@@ -483,4 +518,10 @@ def run(argv, emit):
     if uncovered:
         say(f"  Installed but not scanned: {', '.join(uncovered)} (the report says why)")
     say(f"Report: {os.path.join(cfg.report_dir, 'report.html')}")
+    if view:
+        view.state.finish(os.path.join(cfg.report_dir, "findings.json"))
+        say("The browser view stays open until you close its tab (or press Ctrl-C).")
+        from afterprompt import ui
+        ui.wait_until_done(view)
+        set_console_sink(None)
     return code

@@ -145,6 +145,7 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
   --no-wsl               scan only this machine, not the WSL distributions on it
   --theme neutral|am     report look: neutral (default, unbranded) or am (AM Consulting brand)
   --sarif                also write report.sarif (SARIF 2.1.0) for code-scanning and SIEM pipelines
+  --ui                   also show the scan in your browser, with a rotate checklist you tick off
   --no-download          never download ripgrep; fail if it is not installed
   --fresh                discard an unfinished scan and start over
   --status               show progress of a running or interrupted scan
@@ -164,6 +165,19 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
 | 5 | Scan failed (details in `run.log`; running again retries from the failed step) |
 | 6 | Not enough disk space for a deep scan |
 | 130 | Interrupted |
+
+## The browser view (`--ui`)
+
+`--ui` prints a link and serves a live view of the scan to your browser: progress per stage (and per WSL
+distro), then the rotate checklist with each vendor's revoke link, ticks you can set as you go (kept in
+`~/.afterprompt/checklist.json`, by value hash only), and the coverage. It is a view over the same scan, not a
+different one, and it closes itself when you close the tab.
+
+It is built so that nothing else can use it: it listens on `127.0.0.1` only, every request needs the one-time
+key from the link (which travels in the URL fragment, never to a server, and is removed from the address bar),
+requests naming another host are refused (DNS rebinding), cross-site requests are refused, no CORS header is
+ever sent, and the page is served with a strict Content-Security-Policy and loads nothing from the internet.
+Everything it shows was already masked for `findings.json`.
 
 ## Reading the report
 
@@ -235,6 +249,9 @@ afterprompt/
   envs.py               the environments on this machine, and starting a worker inside each one
   worker.py             the worker protocol: JSON lines on the worker's stdout, masked values only
   merge.py              one report from several environments, deduplicated by value hash
+  ui.py, assets/ui/     the --ui loopback server and page
+  detect.py             which AI tools are installed (read-only)
+  sarif.py              report.sarif
   databases.py          SQLite extraction (Cursor's chat databases and the like)
   manifest.py           file enumeration
   vendor.py             pattern passes (one ripgrep run per pattern)

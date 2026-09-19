@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Afterprompt</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="bar"><span class="wordmark">Afterprompt</span><span id="conn" class="pill">connecting…</span></header>
+<main>
+  <p id="notoken" class="notice" hidden>Open the link printed in your terminal: it carries the key this page needs.
+    For safety the key is not kept in the address bar, so reloading needs that link again.</p>
+  <section id="progress">
+    <h2>Scan</h2>
+    <ol id="stages" class="stages"></ol>
+    <details id="logbox"><summary>Console output</summary><pre id="log"></pre></details>
+  </section>
+  <section id="results" hidden>
+    <h2 id="headline"></h2>
+    <p id="context" class="sub"></p>
+    <div class="stats" id="stats"></div>
+    <h3>Rotate now</h3>
+    <p class="sub">Revoke each one and issue a new one, then tick it off. Ticks are kept on this machine.</p>
+    <ul id="rotate" class="checklist"></ul>
+    <p id="rotate-empty" class="sub" hidden>Nothing to rotate.</p>
+    <h3>Review</h3>
+    <ul id="review" class="plain"></ul>
+    <h3>Coverage</h3>
+    <table id="coverage" class="cov"></table>
+  </section>
+</main>
+<footer id="foot">Afterprompt · this page talks only to the scanner on this machine</footer>
+</body>
+</html>
