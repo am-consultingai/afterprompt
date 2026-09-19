@@ -4,7 +4,7 @@ import html
 import os
 import shutil
 
-from afterprompt import __version__
+from afterprompt import __version__, envs, merge
 from afterprompt.triage import CAPS
 from afterprompt.util import human_bytes, read_json, write_json
 
@@ -37,6 +37,10 @@ NEXT_STEPS = [
 
 
 def side_label(s):
+    if s.startswith("wsl:"):
+        return f"WSL: {s[4:]}"
+    if s.startswith("env:"):
+        return s[4:]
     return SIDE_NAMES.get(s, s)
 
 
@@ -47,7 +51,7 @@ def coverage(cfg, sources):
         "platform": sources.get("platform"),
         "windows_home": sources.get("windows_home"),
         "windows_home_source": sources.get("windows_home_source"),
-        "wsl_distros": sources.get("wsl_distros", []),
+        "other_homes": envs.other_homes(cfg.home),
         "sources": man.get("per_source", []),
         "files": man.get("files", 0), "bytes": man.get("bytes", 0),
         "missing_locations": sources.get("missing", []),
@@ -100,6 +104,9 @@ def context_line(data):
     # itself it is simply the home directory and the note would be noise.
     show_profile = data["platform"]["kind"] == "wsl" and data["platform"].get("windows_home")
     extra = f" · Windows profile {data['platform']['windows_home']}" if show_profile else ""
+    n = len(data.get("environments") or [])
+    if n > 1:
+        extra += f" · {n} environments"
     return f"{when} · {data['mode']} scan · {plat}{extra}"
 
 
@@ -164,6 +171,23 @@ def render_md(data):
     return "\n".join(L)
 
 
+def environment_text(env):
+    status = env["status"]
+    if status in ("scanned", "scanned_share"):
+        text = merge.STATUS_TEXT[status]
+        if env.get("files") is not None:
+            text += f" · {env['files']:,} files, {human_bytes(env.get('bytes', 0))} · {env.get('rotate', 0)} to rotate"
+    else:
+        text = f"{merge.STATUS_TEXT.get(status, status)}: {env.get('reason') or 'no reason recorded'}"
+    if env.get("notice"):
+        text += f" ({env['notice']})"
+    return text
+
+
+def other_homes_text(names):
+    return f"{', '.join(names)}: not scanned (they belong to other users, and the scan never elevates)"
+
+
 def coverage_rows(data):
     c = data["coverage"]
     rows = []
@@ -173,10 +197,13 @@ def coverage_rows(data):
         rows.append(("AI tool data", "none found"))
     if c["platform"] == "wsl":
         rows.append(("Windows profile", f"{c['windows_home'] or 'not found'} ({c['windows_home_source']})"))
-    if c.get("wsl_distros"):
-        # Saying so is the point: a clean Windows result says nothing about history inside a distro.
-        rows.append(("WSL distributions found but not scanned",
-                     f"{', '.join(c['wsl_distros'])} — run Afterprompt inside each one to cover it"))
+    # One line per environment. A clean total must never hide a gap in one of them.
+    for env in data.get("environments") or []:
+        rows.append((f"Environment: {env['label']}", environment_text(env)))
+        if env.get("other_homes"):
+            rows.append((f"Other users on {env['label']}", other_homes_text(env["other_homes"])))
+    if not data.get("environments") and c.get("other_homes"):
+        rows.append(("Other users on this machine", other_homes_text(c["other_homes"])))
     cd = c["cursor_databases"]
     rows.append(("Cursor chat databases", f"{cd['ok']} of {cd['total']} read"))
     for f in cd["failed"]:
@@ -350,8 +377,10 @@ def render_html(data):
     return "\n".join(out)
 
 
-def write(cfg, sources, run_meta):
+def write(cfg, sources, run_meta, host_env=None, env_results=None):
     data = build_findings(cfg, sources, run_meta)
+    if env_results:
+        data = merge.merge(data, host_env, env_results)
     os.makedirs(cfg.report_dir, mode=0o700, exist_ok=True)
     write_json(os.path.join(cfg.report_dir, "findings.json"), data)
     with open(os.path.join(cfg.report_dir, "report.md"), "w", encoding="utf-8") as fh:

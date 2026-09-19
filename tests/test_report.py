@@ -121,7 +121,8 @@ class WindowsReportTests(unittest.TestCase):
 
 
 class WslDistroCoverageTests(unittest.TestCase):
-    """W5: a clean Windows result must not imply the distros are clean too."""
+    """W5 / D1: a clean result must not imply anything about environments it did not cover, and the report never
+    hands work back to the user ("run it there yourself")."""
 
     def rows(self, **cov):
         base = {"platform": "windows", "windows_home": "C:\\Users\\me", "windows_home_source": "this machine",
@@ -132,13 +133,14 @@ class WslDistroCoverageTests(unittest.TestCase):
         base.update(cov)
         return dict(report.coverage_rows({"coverage": base}))
 
-    def test_distros_are_named_when_present(self):  # U-REP-W2 (W5)
-        rows = self.rows(wsl_distros=["Ubuntu-22.04", "Debian"])
-        row = rows["WSL distributions found but not scanned"]
-        self.assertIn("Ubuntu-22.04, Debian", row)
-        self.assertIn("run Afterprompt inside each one", row)
+    def test_other_users_are_named_not_read(self):  # U-REP-W2 (W5, D1 decision 4)
+        row = self.rows(other_homes=["alice", "bob"])["Other users on this machine"]
+        self.assertIn("alice, bob", row)
+        self.assertIn("never elevates", row)
 
-    def test_no_row_without_wsl(self):  # U-REP-W3 (W5)
+    def test_single_environment_has_no_environment_noise(self):  # U-REP-W3 (W5)
         """A machine with no WSL is complete as scanned: no caveat, no noise."""
-        self.assertNotIn("WSL distributions found but not scanned", self.rows(wsl_distros=[]))
-        self.assertNotIn("WSL distributions found but not scanned", self.rows())
+        rows = self.rows()
+        self.assertFalse(any(k.startswith(("Environment:", "Other users", "WSL distributions")) for k in rows))
+        for text in rows.values():
+            self.assertNotIn("run Afterprompt inside", text)

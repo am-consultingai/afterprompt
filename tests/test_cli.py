@@ -5,8 +5,8 @@ import os
 from collections import namedtuple
 from unittest import mock
 
-from afterprompt import __version__, cli, config
-from tests.helpers import TempDirTest, write
+from afterprompt import __version__, cli, config, envs, worker
+from tests.helpers import Fixture, TempDirTest, requires_rg, write
 
 
 def run_main(args, env):
@@ -81,3 +81,133 @@ class CliTests(TempDirTest):
         code, out, _ = run_main(["--status"], self.env())
         self.assertEqual(code, 0)
         self.assertIn("No scan in progress", out)
+
+
+@requires_rg
+class EnvironmentCliTests(TempDirTest):
+    """D1 / M3: one command, every environment, and an exit code that never hides a gap."""
+
+    def fixture(self, clean=True):
+        fx = Fixture(os.path.join(self.tmp, "host"), "linux", clean=clean)
+        return fx, fx.env(AFTERPROMPT_TEST_ENVS=f"Box={os.path.join(self.tmp, 'box')}")
+
+    def failing_scan(self, e, cfg, worker_args, say, state_dir):
+        return envs.save_result(state_dir, dict(envs.skipped(e, None), status="not_scanned",
+                                                reason="Python 3.9+ or ripgrep is not available there"))
+
+    def test_exit_7_when_an_environment_was_not_scanned(self):  # U-CLI-7
+        fx, env = self.fixture(clean=True)
+        with mock.patch.object(envs, "scan", side_effect=self.failing_scan):
+            code, out, _ = run_main([], env)
+        self.assertEqual(code, cli.EXIT_PARTIAL, out)
+        self.assertIn("Not scanned: Box — Python 3.9+ or ripgrep is not available there", out)
+        self.assertIn("2 environments", out)
+        d = fx.findings()
+        self.assertEqual([e["status"] for e in d["environments"]], ["scanned", "not_scanned"])
+
+    def test_rotate_still_wins_over_a_gap(self):  # U-CLI-8
+        fx, env = self.fixture(clean=False)
+        with mock.patch.object(envs, "scan", side_effect=self.failing_scan):
+            code, out, _ = run_main([], env)
+        self.assertEqual(code, cli.EXIT_ROTATE, out)
+        self.assertIn("Not scanned: Box", out)
+
+    def test_no_wsl_skips_distros_without_a_gap(self):  # U-CLI-9
+        fx, env = self.fixture(clean=True)
+        env.pop("AFTERPROMPT_TEST_ENVS")
+        ubuntu = envs.Environment("Ubuntu", "wsl", "WSL: Ubuntu", "wsl:Ubuntu")
+        with mock.patch.object(envs, "discover", side_effect=lambda cfg: [envs.host(cfg), ubuntu]), \
+                mock.patch.object(envs, "scan", side_effect=AssertionError("must not scan")):
+            code, out, _ = run_main(["--no-wsl"], env)
+        self.assertEqual(code, cli.EXIT_OK, out)
+        d = fx.findings()
+        self.assertEqual(d["environments"][1]["status"], "skipped")
+        self.assertIn("--no-wsl", d["environments"][1]["reason"])
+
+    def test_single_environment_has_no_extra_stage(self):  # U-CLI-10
+        fx, env = self.fixture(clean=True)
+        env.pop("AFTERPROMPT_TEST_ENVS")
+        code, out, _ = run_main([], env)
+        self.assertEqual(code, cli.EXIT_OK, out)
+        self.assertNotIn("other environments", out)
+        self.assertNotIn("environments", fx.findings())
+        self.assertIn("[9/9]", out)
+
+    def test_worker_speaks_only_protocol(self):  # U-CLI-11
+        fx, env = self.fixture(clean=False)
+        code, out, err = run_main(["--worker", "--windows-home", "none"], env)
+        self.assertEqual(code, cli.EXIT_ROTATE, err)
+        msgs = [worker.decode(l) for l in out.splitlines()]
+        self.assertTrue(all(msgs), [l for l in out.splitlines() if not worker.decode(l)])
+        kinds = [m["type"] for m in msgs]
+        self.assertEqual(kinds[0], "hello")
+        self.assertEqual(kinds[-1], "result")
+        self.assertEqual(kinds.count("result"), 1)
+        self.assertNotIn("error", kinds)
+        self.assertEqual(msgs[-1]["exit"], cli.EXIT_ROTATE)
+        self.assertEqual(len(msgs[-1]["findings"]["rotate"]), 4)
+        said = " ".join(m["text"] for m in msgs if m["type"] == "say")
+        self.assertIn("Finding AI tool data", said)
+        self.assertNotIn("Report:", said)
+        # Workers keep their own run folder, so a scan someone started by hand there is never resumed or discarded.
+        self.assertTrue(os.path.isdir(os.path.join(fx.base, "worker", "runs")))
+        self.assertFalse(os.path.exists(os.path.join(fx.base, "runs")))
+        for v in fx.s.values():
+            self.assertNotIn(v, out)
+
+    def test_worker_reports_failure(self):  # U-CLI-12
+        fx, env = self.fixture(clean=True)
+        with mock.patch.object(cli, "run_stage", side_effect=RuntimeError("disk on fire")):
+            code, out, _ = run_main(["--worker", "--windows-home", "none"], env)
+        self.assertEqual(code, cli.EXIT_FAILED)
+        msgs = [worker.decode(l) for l in out.splitlines()]
+        self.assertEqual(msgs[-1]["type"], "error")
+        self.assertIn("disk on fire", msgs[-1]["message"])
+        code, out, err = run_main(["--worker", "--bogus"], env)
+        self.assertEqual(code, cli.EXIT_USAGE)
+        self.assertEqual(worker.decode(out.splitlines()[-1])["type"], "error")
+
+    def test_worker_args(self):  # U-CLI-13
+        args = cli.parser().parse_args(["--deep", "--no-download", "--keep-work", "--fresh", "--exclude", "x",
+                                        "--max-disk", "3", "--extra-root", self.tmp, "--out", self.tmp])
+        cfg = config.from_args(args, self.tmp)
+        got = cli.worker_args(cfg, args)
+        self.assertEqual(got[:5], ["--worker", "--windows-home", "none", "--max-disk", "3.0"])
+        for flag in ("--deep", "--no-download", "--keep-work", "--fresh"):
+            self.assertIn(flag, got)
+        self.assertEqual(got[got.index("--exclude") + 1], "x")
+        for host_only in ("--extra-root", "--out", "--no-wsl"):
+            self.assertNotIn(host_only, got)
+
+    def test_status_lists_the_environment_stage(self):  # U-CLI-14
+        fx, env = self.fixture(clean=True)
+        with mock.patch.object(envs, "scan", side_effect=self.failing_scan):
+            code, _, _ = run_main([], dict(env, AFTERPROMPT_STOP_AFTER="known"))
+        self.assertEqual(code, cli.EXIT_INTERRUPTED)
+        _, out, _ = run_main(["--status"], env)
+        self.assertIn("Scanning the other environments on this machine", out)
+
+    def test_interrupted_environment_stage_resumes_per_environment(self):  # U-CLI-15
+        """Box finished before the interruption, Other did not: only Other is scanned again."""
+        fx, env = self.fixture(clean=True)
+        env["AFTERPROMPT_TEST_ENVS"] += f";Other={os.path.join(self.tmp, 'other')}"
+        scanned = []
+
+        def first(e, cfg, worker_args, say, state_dir):
+            if e.name == "Other":
+                raise KeyboardInterrupt
+            scanned.append(e.name)
+            return envs.save_result(state_dir, dict(envs.skipped(e, None), status="scanned", findings=None))
+        with mock.patch.object(envs, "scan", side_effect=first):
+            code, _, _ = run_main([], env)
+        self.assertEqual(code, cli.EXIT_INTERRUPTED)
+
+        def second(e, cfg, worker_args, say, state_dir):
+            scanned.append(e.name)
+            return envs.save_result(state_dir, dict(envs.skipped(e, None), status="scanned", findings=None))
+        with mock.patch.object(envs, "scan", side_effect=second):
+            code, out, _ = run_main([], env)
+        self.assertEqual(code, cli.EXIT_OK, out)
+        self.assertEqual(scanned, ["Box", "Other"])
+        self.assertIn("Box … already done", out)
+        self.assertEqual([e["name"] for e in fx.findings()["environments"]], ["Linux", "Box", "Other"])

@@ -51,6 +51,8 @@ class RunConfig:
     platform: str = "linux"
     mp_start: str = "spawn"
     stop_after: Optional[str] = None
+    worker: bool = False
+    no_wsl: bool = False
     now: float = 0.0
 
     @property
@@ -61,7 +63,7 @@ class RunConfig:
         data = {"version": __version__, "mode": self.mode, "home": self.home,
                 "windows_home_arg": self.windows_home_arg, "extra_roots": sorted(self.extra_roots),
                 "excludes": sorted(self.excludes), "max_disk_bytes": self.max_disk_bytes,
-                "include_keychain": self.include_keychain}
+                "include_keychain": self.include_keychain, "no_wsl": self.no_wsl}
         return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
     def worker_dict(self):
@@ -103,6 +105,8 @@ def from_args(args, run_dir):
         platform=plat,
         mp_start=mp,
         stop_after=os.environ.get("AFTERPROMPT_STOP_AFTER") or None,
+        worker=bool(getattr(args, "worker", False)),
+        no_wsl=bool(getattr(args, "no_wsl", False)),
     )
     return cfg
 

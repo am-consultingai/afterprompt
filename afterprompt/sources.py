@@ -193,15 +193,12 @@ def discover(cfg):
             if any(name == m or name.startswith(m + "-") for m in marks):
                 self_exclude.append(os.path.join(proj_root, name))
 
-    # On Windows, note any WSL distro: its history is not in this profile and is not scanned here.
-    distros = platforms.wsl_distros() if cfg.platform == "windows" else []
     out = {"platform": cfg.platform, "home": cfg.home, "windows_home": win_path, "windows_home_source": win_source,
-           "wsl_distros": distros,
            "roots": roots, "cursor_dbs": dbs, "project_dirs": projects, "self_exclude": self_exclude,
            "missing": missing, "walk_truncated": walk_truncated}
     write_json(cfg.w("sources.json"), out)
     log(f"discover: {len(roots)} roots, {len(dbs)} Cursor databases, {len(projects)} project dirs, "
-        f"windows home: {win_path or '-'} ({win_source}), wsl distros: {', '.join(distros) or '-'}, "
+        f"windows home: {win_path or '-'} ({win_source}), "
         f"{time.monotonic() - t0:.1f}s")
     return out
 

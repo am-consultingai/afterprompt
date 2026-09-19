@@ -9,11 +9,12 @@ import sys
 import time
 import traceback
 
-from afterprompt import __version__, config, platforms
-from afterprompt.util import human_bytes, human_duration, log, makedirs, read_json, say, set_log, write_json
+from afterprompt import __version__, config, envs, platforms, worker
+from afterprompt.util import (human_bytes, human_duration, log, makedirs, read_json, say, set_console_sink, set_log,
+                              write_json)
 
-EXIT_OK, EXIT_ROTATE, EXIT_USAGE, EXIT_DEPENDENCY, EXIT_UNSUPPORTED, EXIT_FAILED, EXIT_DISK, EXIT_INTERRUPTED = \
-    0, 10, 2, 3, 4, 5, 6, 130
+EXIT_OK, EXIT_ROTATE, EXIT_USAGE, EXIT_DEPENDENCY, EXIT_UNSUPPORTED, EXIT_FAILED, EXIT_DISK, EXIT_PARTIAL, \
+    EXIT_INTERRUPTED = 0, 10, 2, 3, 4, 5, 6, 7, 130
 
 QUICK = ["discover", "cursor", "manifest", "vendor_raw", "known", "prompts", "triage", "report", "cleanup"]
 DEEP = ["discover", "cursor", "manifest", "vendor_raw", "expand", "vendor_store", "entropy_raw", "entropy_store",
@@ -27,6 +28,7 @@ DESCRIPTIONS = {
     "vendor_store": "Matching patterns in decoded data",
     "entropy_raw": "Entropy sweep",
     "entropy_store": "Entropy sweep of decoded data",
+    "environments": "Scanning the other environments on this machine",
     "known": "Checking your live credentials against AI history",
     "prompts": "Reviewing your prompts for passwords",
     "triage": "Deciding what to rotate",
@@ -66,8 +68,10 @@ def positive_int(s):
 
 def parser():
     p = Parser(prog="afterprompt.sh", description="Find credentials that leaked into AI coding assistants' local history.",
-               epilog="Exit codes: 0 nothing to rotate, 10 credentials to rotate, 2 usage error, 3 missing "
-                      "dependency, 4 unsupported environment, 5 scan failed, 6 not enough disk space, 130 interrupted.")
+               epilog="One run covers this machine and every WSL distribution on it; use --no-wsl to scan only "
+                      "this machine. Exit codes: 0 nothing to rotate, 10 credentials to rotate, 7 nothing to rotate "
+                      "but an environment could not be scanned, 2 usage error, 3 missing dependency, 4 unsupported "
+                      "environment, 5 scan failed, 6 not enough disk space, 130 interrupted.")
     p.add_argument("--deep", action="store_true", help="decode nested payloads and run the entropy sweep")
     p.add_argument("--out", metavar="DIR", help="where to write the report (default: ~/.afterprompt/runs/<run-id>)")
     p.add_argument("--extra-root", metavar="PATH", action="append", help="also scan PATH (repeatable)")
@@ -82,10 +86,14 @@ def parser():
                    help="macOS: also check Claude Code's Keychain login (shows a permission prompt)")
     p.add_argument("--windows-home", metavar="PATH",
                    help="WSL: the Windows profile to scan, or 'none' to skip the Windows side")
+    p.add_argument("--no-wsl", action="store_true",
+                   help="scan only this machine, not the WSL distributions on it")
     p.add_argument("--no-download", action="store_true", help="never download ripgrep; fail if it is not installed")
     p.add_argument("--fresh", action="store_true", help="discard an unfinished scan and start over")
     p.add_argument("--status", action="store_true", help="show progress of a running or interrupted scan")
     p.add_argument("--version", action="store_true", help="print the version and exit")
+    # Started by another Afterprompt run to scan the environment it runs in; speaks worker.py's protocol.
+    p.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return p
 
 
@@ -127,7 +135,7 @@ def status(base, out=print):
             out(f"Latest report: {latest}")
         return EXIT_OK
     meta = read_json(os.path.join(run_dir, "run.json"), {}) or {}
-    stages = DEEP if meta.get("mode") == "deep" else QUICK
+    stages = stage_list(meta.get("mode") == "deep", bool(meta.get("environments")))
     out(f"Scan {rid} ({meta.get('mode', '?')} mode), started {meta.get('started', '?')}")
     for s in stages:
         done = os.path.exists(os.path.join(run_dir, "work", "state", f"{s}.done"))
@@ -142,6 +150,55 @@ def status(base, out=print):
         size = sum(os.path.getsize(os.path.join(store, f)) for f in os.listdir(store))
         out(f"  decoded plaintext on disk: {human_bytes(size)}")
     return EXIT_OK
+
+
+def stage_list(deep, other_envs):
+    stages = list(DEEP if deep else QUICK)
+    if other_envs:
+        stages.insert(stages.index("report"), "environments")
+    return stages
+
+
+def worker_args(cfg, args):
+    """What a worker needs to scan its environment the way this run scans this one. Paths from this machine
+    (--extra-root, --out, --windows-home) mean nothing there; the Windows profile is covered here, not twice."""
+    out = ["--worker", "--windows-home", "none", "--max-disk", str(args.max_disk)]
+    out += ["--deep"] if cfg.deep else []
+    out += ["--no-download"] if args.no_download else []
+    out += ["--keep-work"] if cfg.keep_work else []
+    out += ["--fresh"] if args.fresh else []
+    for x in cfg.excludes:
+        out += ["--exclude", x]
+    return out
+
+
+def scan_environments(cfg, ctx):
+    state_dir = os.path.join(cfg.run_dir, "envs")
+    results = []
+    for e in ctx["envs"][1:]:
+        prev = envs.load_result(state_dir, e)
+        if prev:
+            say(f"      {e.label} … already done")
+            results.append(prev)
+            continue
+        if cfg.no_wsl and e.kind == "wsl":
+            r = envs.save_result(state_dir, envs.skipped(e, "--no-wsl was given"))
+        else:
+            say(f"      {e.label}")
+            r = envs.scan(e, cfg, ctx["worker_args"], lambda m: say("        " + m), state_dir)
+        if r["status"] == "not_scanned":
+            say(f"      {e.label}: not scanned — {r['reason']}")
+        results.append(r)
+    ctx["env_results"] = results
+    counts = {s: sum(1 for r in results if r["status"] == s) for s in envs.FINAL}
+    return dict(counts, environments=len(results))
+
+
+def env_results(cfg, ctx):
+    if "env_results" in ctx:
+        return ctx["env_results"]
+    state_dir = os.path.join(cfg.run_dir, "envs")
+    return [r for r in (envs.load_result(state_dir, e) for e in ctx["envs"][1:]) if r]
 
 
 def run_stage(cfg, name, ctx):
@@ -178,8 +235,10 @@ def run_stage(cfg, name, ctx):
         return {"rotate": len(t["rotate"]),
                 "review": sum(n for c, n in t["review_totals"].items() if c != "entropy"),
                 "dismissed": sum(t["dismissed"].values())}
+    if name == "environments":
+        return scan_environments(cfg, ctx)
     if name == "report":
-        data = report.write(cfg, src, ctx["meta"])
+        data = report.write(cfg, src, ctx["meta"], host_env=ctx["envs"][0].to_dict(), env_results=env_results(cfg, ctx))
         ctx["summary"] = data["summary"]
         write_json(os.path.join(cfg.run_dir, "summary.json"), data["summary"])
         return {}
@@ -193,7 +252,7 @@ def run_stage(cfg, name, ctx):
 def stage_result_line(name, info):
     if name == "discover":
         extra = ""
-        if info.get("windows_home_source") not in ("not applicable",):
+        if info.get("windows_home_source") not in ("not applicable", "disabled"):
             extra = f" · Windows profile: {info.get('windows_home') or 'not found'} ({info.get('windows_home_source')})"
         return f"{info['roots']} locations, {info['cursor_dbs']} Cursor databases{extra}"
     if name == "cursor":
@@ -211,11 +270,40 @@ def stage_result_line(name, info):
         return f"{info['unique_prompts']:,} prompts, {info['near_keyword']} candidates"
     if name == "triage":
         return f"{info['rotate']} to rotate, {info['review']} to review"
+    if name == "environments":
+        parts = [f"{info.get(s, 0)} {t}" for s, t in (("scanned", "scanned"), ("scanned_share", "over the share"),
+                                                     ("not_scanned", "not scanned"), ("skipped", "skipped"))
+                 if info.get(s)]
+        return ", ".join(parts)
     return ""
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if "--worker" not in argv:
+        return run(argv, None)
+    # A worker's stdout belongs to the protocol: console lines become "say" messages, and the run ends with
+    # exactly one "result" or "error".
+    emit = worker.Emitter()
+    said = []
+
+    def sink(msg):
+        said.append(msg)
+        emit("say", text=msg)
+    set_console_sink(sink)
+    try:
+        code = run(argv, emit)
+    except BaseException as err:  # noqa: BLE001 - the host must always hear how the worker ended
+        emit("error", exit=EXIT_FAILED, message=f"{type(err).__name__}: {err}")
+        raise
+    finally:
+        set_console_sink(None)
+    if code not in (EXIT_OK, EXIT_ROTATE, EXIT_PARTIAL) and not getattr(emit, "finished", False):
+        emit("error", exit=code, message=" ".join(m.strip() for m in said[-2:] if m.strip()) or f"exit code {code}")
+    return code
+
+
+def run(argv, emit):
     try:
         args = parser().parse_args(argv)
         for p in args.extra_root or []:
@@ -237,6 +325,10 @@ def main(argv=None):
 
     os.umask(0o077)
     base = config.base_dir_from_env()
+    if args.worker:
+        # Its own folder, so a worker never resumes or discards a scan someone started by hand in that
+        # environment. ripgrep stays shared in <base>/bin, where the launcher put it.
+        base = os.path.join(base, "worker")
     makedirs(base)
     if args.status:
         return status(base)
@@ -276,11 +368,20 @@ def main(argv=None):
                 "options": {"extra_roots": cfg.extra_roots, "excludes": cfg.excludes,
                             "max_disk_gb": args.max_disk, "include_keychain": cfg.include_keychain,
                             "windows_home": cfg.windows_home_arg}}
+    if resumed and "environments" in meta:
+        env_list = [envs.host(cfg)] + [envs.Environment.from_dict(d) for d in meta["environments"]]
+    else:
+        env_list = envs.discover(cfg)
+        meta["environments"] = [e.to_dict() for e in env_list[1:]]
     write_json(meta_path, meta)
     with open(os.path.join(base, "current"), "w", encoding="utf-8") as fh:
         fh.write(rid + "\n")
 
-    say(f"afterprompt {__version__} · {cfg.mode} scan · {cfg.platform}")
+    if emit:
+        emit("hello", version=__version__, platform=cfg.platform, other_homes=envs.other_homes(cfg.home))
+    else:
+        many = f" · {len(env_list)} environments" if len(env_list) > 1 else ""
+        say(f"afterprompt {__version__} · {cfg.mode} scan · {cfg.platform}{many}")
     if notice:
         say(notice)
     if resumed:
@@ -295,8 +396,8 @@ def main(argv=None):
             cfg.max_disk_bytes = int(free - config.GIB)
             say(f"Only {human_bytes(free)} free: decoded data capped at {human_bytes(cfg.max_disk_bytes)}.")
 
-    stages = DEEP if cfg.deep else QUICK
-    ctx = {"meta": meta}
+    stages = stage_list(cfg.deep, len(env_list) > 1)
+    ctx = {"meta": meta, "envs": env_list, "worker_args": worker_args(cfg, args)}
     t0 = time.monotonic()
     current = None
     try:
@@ -342,11 +443,20 @@ def main(argv=None):
     except OSError:
         pass
     summary = ctx.get("summary") or read_json(os.path.join(run_dir, "summary.json"), {}) or {}
+    code = EXIT_ROTATE if summary.get("rotate", 0) else (EXIT_PARTIAL if summary.get("environments_not_scanned")
+                                                        else EXIT_OK)
+    if emit:
+        emit("result", exit=code, findings=read_json(os.path.join(cfg.report_dir, "findings.json"), {}))
+        emit.finished = True
+        return code
     say("")
     say(f"Done in {human_duration(time.monotonic() - t0)}.")
     say(f"  Rotate now: {summary.get('rotate', 0)}")
     say(f"  Review:     {summary.get('review', 0):,}")
     if summary.get("entropy_candidates"):
         say(f"  Random-looking tokens (deep scan): {summary['entropy_candidates']:,}; the strongest are listed in the report")
+    for r in env_results(cfg, ctx):
+        if r["status"] == "not_scanned":
+            say(f"  Not scanned: {r['label']} — {r['reason']}")
     say(f"Report: {os.path.join(cfg.report_dir, 'report.html')}")
-    return EXIT_ROTATE if summary.get("rotate", 0) else EXIT_OK
+    return code

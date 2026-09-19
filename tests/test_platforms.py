@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from afterprompt import platforms as P
 from tests.helpers import TempDirTest, requires_posix, write
@@ -152,8 +153,29 @@ class WslDistroTests(unittest.TestCase):
 
     def test_no_wsl_installed_is_not_an_error(self):  # U-PLAT-W1 (W5)
         """The common case on a plain Windows machine: wsl.exe does not exist."""
-        self.assertEqual(P.wsl_distros(self.runner(b""), which=lambda n: None), [])
+        with mock.patch.object(P, "wsl_exe", return_value=None):
+            self.assertEqual(P.wsl_distros(self.runner(b"")), [])
+            self.assertIsNone(P.running_distros(self.runner(b"")))
         self.assertIsNone(self.called)
+
+    def test_wsl_exe_off_path(self):  # U-PLAT-W7
+        """Inside WSL, interop.appendWindowsPath = false hides wsl.exe from PATH; it is still on the C: drive."""
+        self.assertEqual(P.wsl_exe(which=lambda n: "/usr/bin/wsl.exe"), "/usr/bin/wsl.exe")
+        if sys.platform == "win32":
+            self.assertIsNone(P.wsl_exe(which=lambda n: None))
+            return
+        seen = []
+        got = P.wsl_exe(which=lambda n: None, mount="/win/", exists=lambda p: seen.append(p) or True)
+        self.assertEqual(got, "/win/c/Windows/System32/wsl.exe")
+        self.assertIsNone(P.wsl_exe(which=lambda n: None, mount="/win/", exists=lambda p: False))
+
+    def test_running_distros(self):  # U-PLAT-W8
+        """Pseudo-distros are only filtered from the list of environments, not from what is running."""
+        out = self.utf16("Ubuntu", "docker-desktop")
+        self.assertEqual(P.running_distros(self.runner(out), exe="wsl.exe"), ["Ubuntu", "docker-desktop"])
+        self.assertEqual(self.called, ["wsl.exe", "--list", "--quiet", "--running"])
+        self.assertEqual(P.running_distros(self.runner(b"", rc=1), exe="wsl.exe"), None)
+        self.assertEqual(P.running_distros(self.runner(b""), exe="wsl.exe"), [])
 
     def test_lists_real_distros_only(self):  # U-PLAT-W2 (W5)
         out = self.utf16("Ubuntu-22.04", "docker-desktop", "Debian", "docker-desktop-data", "")

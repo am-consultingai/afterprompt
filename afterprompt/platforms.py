@@ -169,22 +169,52 @@ def claude_project_dirname(path):
 PSEUDO_DISTROS = {"docker-desktop", "docker-desktop-data", "rancher-desktop", "rancher-desktop-data"}
 
 
-def wsl_distros(run=subprocess.run, which=None):
-    """Installed WSL distributions, as seen from Windows. [] when WSL is not installed at all.
+def wsl_exe(which=None, mount=None, exists=os.path.exists):
+    """Path to wsl.exe, or None. Inside WSL it is often not on PATH (interop.appendWindowsPath = false),
+    so fall back to where Windows keeps it, under the drive mount."""
+    import shutil
+    which = which or shutil.which
+    found = which("wsl.exe")
+    if found:
+        return found
+    if sys.platform == "win32":
+        return None
+    mount = mount if mount is not None else automount_root()
+    p = f"{mount}c/Windows/System32/wsl.exe"
+    return p if exists(p) else None
+
+
+def _wsl_list(run, exe, *flags):
+    try:
+        r = run([exe, "--list", "--quiet"] + list(flags), capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if getattr(r, "returncode", 1) != 0:
+        return None
+    out = r.stdout if isinstance(r.stdout, bytes) else (r.stdout or "").encode()
+    return _distro_names(out)
+
+
+def running_distros(run=subprocess.run, exe=None):
+    """Names of the distros running right now, or None when that cannot be told."""
+    exe = exe or wsl_exe()
+    return _wsl_list(run, exe, "--running") if exe else None
+
+
+def wsl_distros(run=subprocess.run, which=None, exe=None):
+    """Installed WSL distributions, as seen from Windows (or from inside WSL, through interop).
+    [] when WSL is not installed at all.
 
     A machine without WSL is the normal case, not a degraded one: the list is simply empty.
     """
-    import shutil
-    which = which or shutil.which
-    if not which("wsl.exe"):
+    exe = exe or wsl_exe(which)
+    if not exe:
         return []
-    try:
-        r = run(["wsl.exe", "--list", "--quiet"], capture_output=True, timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if getattr(r, "returncode", 1) != 0:
-        return []
-    out = r.stdout if isinstance(r.stdout, bytes) else (r.stdout or "").encode()
+    names = _wsl_list(run, exe)
+    return [n for n in names or [] if n.lower() not in PSEUDO_DISTROS]
+
+
+def _distro_names(out):
     # wsl.exe writes UTF-16LE; fall back to UTF-8 for a shim or a future change of heart.
     try:
         text = out.decode("utf-16-le")
@@ -195,7 +225,7 @@ def wsl_distros(run=subprocess.run, which=None):
     names = []
     for line in text.replace("\r", "").split("\n"):
         name = line.strip().lstrip("\ufeff").strip()
-        if name and name.lower() not in PSEUDO_DISTROS and name not in names:
+        if name and name not in names:
             names.append(name)
     return names
 

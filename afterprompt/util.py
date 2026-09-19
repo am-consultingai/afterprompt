@@ -8,12 +8,17 @@ import re
 import sys
 import time
 
-_LOG = {"path": None, "quiet": False}
+_LOG = {"path": None, "quiet": False, "sink": None}
 
 
 def set_log(path, quiet=False):
     _LOG["path"] = path
     _LOG["quiet"] = quiet
+
+
+def set_console_sink(sink):
+    """Send console lines to sink(msg) instead of stdout; a worker turns them into protocol messages."""
+    _LOG["sink"] = sink
 
 
 def log(msg, console=False):
@@ -26,7 +31,10 @@ def log(msg, console=False):
         except OSError:
             pass
     if console and not _LOG["quiet"]:
-        print(msg, flush=True)
+        if _LOG["sink"]:
+            _LOG["sink"](msg)
+        else:
+            print(msg, flush=True)
 
 
 def say(msg=""):

@@ -102,6 +102,15 @@ class Resolver:
                 "designed": bool(DESIGNED.search(norm))}
 
 
+def rotate_key(r):
+    rank = 0 if r["category"] == "live_credential" else (1 if r["tier"] == "A" else 2)
+    return (rank, -r["files"], -r["occurrences"], r["label"])
+
+
+def review_key(r):
+    return ({"A": 0, "B": 1, "C": 2}.get(r["tier"], 3), -r["entropy"], -r["files"])
+
+
 def _jsonl(path):
     if not os.path.exists(path):
         return
@@ -285,13 +294,9 @@ def build(cfg, sources, now=None):
         else:
             review[f["category"]].append(rec)
 
-    def rot_key(r):
-        rank = 0 if r["category"] == "live_credential" else (1 if r["tier"] == "A" else 2)
-        return (rank, -r["files"], -r["occurrences"], r["label"])
-
-    rotate.sort(key=rot_key)
+    rotate.sort(key=rotate_key)
     for cat in review:
-        review[cat].sort(key=lambda r: ({"A": 0, "B": 1, "C": 2}.get(r["tier"], 3), -r["entropy"], -r["files"]))
+        review[cat].sort(key=review_key)
 
     # ---- entropy (deep)
     if cfg.deep:

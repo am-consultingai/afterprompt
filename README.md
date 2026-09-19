@@ -32,12 +32,16 @@ When the scan finishes, it prints the path to your report. Nothing is uploaded a
 | Windows | `afterprompt.cmd`, from cmd.exe, PowerShell or a double-click. **WSL is not required** |
 | Windows, inside WSL | `./afterprompt.sh`. The scan covers your WSL home *and* your Windows profile (`/mnt/c/Users/<you>`) |
 
-On Windows you can run it either way. `afterprompt.cmd` scans the Windows profile; running it inside WSL scans
-the Linux home and reaches across to the Windows profile as well. If you use WSL, running it there covers both
-in one pass — and reads the Linux files far faster than Windows can across the `\\wsl.localhost` share.
+**One run covers the whole machine.** On Windows, run it either way: it scans the Windows profile *and* every WSL
+distribution it finds, and writes one report. Each distro is scanned from inside itself, where its files read
+far faster than Windows can reach them across the `\\wsl.localhost` share: Afterprompt copies itself into the
+distro's `~/.afterprompt/engine` and starts there. You never have to open a second terminal.
 
-A native Windows run lists any WSL distributions it finds in the report and says plainly that their history was
-not scanned, because a clean Windows result tells you nothing about what is inside a distro.
+- A distro that was stopped is started for the scan, and the output says so. WSL stops it again when idle.
+- A distro with no Python 3 is read from Windows over `\\wsl.localhost` instead (slower, but complete).
+- A distro that cannot be scanned at all is named in the report with the reason, and the run exits with code 7
+  rather than 0, so "clean" never means "clean where we happened to look".
+- `--no-wsl` scans only the machine you ran it on.
 
 Git Bash, MSYS and Cygwin are not supported: use `afterprompt.cmd` instead.
 
@@ -61,8 +65,8 @@ setting: it runs the unsigned script under a policy scoped to that one process.
 
 A native Windows run scans the profile it runs as: `%USERPROFILE%\.claude`, `%APPDATA%\Cursor`,
 `%LOCALAPPDATA%\claude-cli-nodejs` and the rest. Under WSL, both the Linux-side and Windows-side copies of each
-tool are scanned. Either way only the user running the scan is included; other people's profiles on the same
-machine are not. If the Windows profile cannot be detected automatically from WSL, pass
+tool are scanned. Either way only the user running the scan is included: other people's profiles and home
+folders on the same machine are listed in the report, never read, and the scan never asks for elevation. If the Windows profile cannot be detected automatically from WSL, pass
 `--windows-home /mnt/c/Users/<you>`.
 
 Support for other assistants (Codex CLI, Gemini CLI, Windsurf, Copilot) is planned. Each tool's locations are
@@ -127,6 +131,7 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
   --keep-work            keep intermediate files, including decoded plaintext, after the scan
   --include-keychain     macOS: also check Claude Code's Keychain login (shows a permission prompt)
   --windows-home PATH    WSL: the Windows profile to scan, or "none" to skip the Windows side
+  --no-wsl               scan only this machine, not the WSL distributions on it
   --no-download          never download ripgrep; fail if it is not installed
   --fresh                discard an unfinished scan and start over
   --status               show progress of a running or interrupted scan
@@ -139,6 +144,7 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
 |---|---|
 | 0 | Scan completed; nothing to rotate |
 | 10 | Scan completed; credentials to rotate |
+| 7 | Scan completed; nothing to rotate, but at least one environment (a WSL distro) could not be scanned |
 | 2 | Invalid options |
 | 3 | Missing dependency (Python 3.9+ or ripgrep) |
 | 4 | Unsupported environment (for example Git Bash) |
@@ -209,6 +215,9 @@ afterprompt/
   cli.py                options, resumable run lifecycle, exit codes
   sources.py            where each AI tool keeps its data, per platform (the registry)
   platforms.py          macOS / Linux / WSL / Windows detection, Windows profile and WSL distro discovery
+  envs.py               the environments on this machine, and starting a worker inside each one
+  worker.py             the worker protocol: JSON lines on the worker's stdout, masked values only
+  merge.py              one report from several environments, deduplicated by value hash
   cursor.py             Cursor SQLite extraction
   manifest.py           file enumeration
   vendor.py             pattern passes (one ripgrep run per pattern)

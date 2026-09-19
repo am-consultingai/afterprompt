@@ -4,7 +4,7 @@ import os
 import stat
 import unittest
 
-from tests.helpers import Fixture, TempDirTest, requires_posix, requires_rg, run_dirs
+from tests.helpers import Fixture, TempDirTest, jsonl, requires_posix, requires_rg, run_dirs
 
 
 def summary(findings):
@@ -230,3 +230,86 @@ class WindowsNativeIntegrationTests(TempDirTest):
         self.assertTrue(displays)
         # Locations are shown relative to the profile, never through a /mnt/c bridge path.
         self.assertFalse([p for p in displays if p.startswith("/mnt/")], displays)
+
+
+@requires_rg
+class MultiEnvironmentIntegrationTests(TempDirTest):
+    """D1 / M1–M3: one run through the real launcher covers a second environment through a real worker process,
+    and produces one report. The second environment is a folder (AFTERPROMPT_TEST_ENVS), which uses the same
+    worker protocol, merge and coverage code as a WSL distro and the network-share fallback."""
+
+    def setUp(self):
+        super().setUp()
+        self.host = Fixture(os.path.join(self.tmp, "host"), "linux", seed=99)
+        self.box = Fixture(os.path.join(self.tmp, "box"), "linux", seed=7)
+        # The host's GitHub token (in the host's Cursor database) was also pasted into a transcript in the box.
+        jsonl(os.path.join(self.box.claude_project("-shared"), "s.jsonl"),
+              [{"type": "user", "message": {"content": f"use {self.host.s['F2']} for the push"}}])
+
+    def scan(self, *args, expect=None, **env):
+        p = self.host.run(*args, env=self.host.env(AFTERPROMPT_TEST_ENVS=f"Box={self.box.home}", **env))
+        out = p.stdout.decode("utf-8", "replace") + p.stderr.decode("utf-8", "replace")
+        if expect is not None:
+            self.assertEqual(p.returncode, expect, out)
+        return out
+
+    def test_one_report_for_two_environments(self):  # I-ENV-1
+        out = self.scan(expect=10)
+        self.assertIn("2 environments", out)
+        self.assertIn("Scanning the other environments on this machine", out)
+        self.assertIn("        [1/9] Finding AI tool data", out)   # the worker's progress, indented under Box
+        d = self.host.findings()
+        rotate, _ = summary(d)
+        want = {fx.masked(k) for fx in (self.host, self.box) for k in ("F1", "F2", "F3", "F12")}
+        self.assertEqual(set(rotate), want)
+
+        shared = rotate[self.host.masked("F2")]
+        self.assertEqual(shared["sides"], ["env:Box", "linux"])
+        self.assertEqual(shared["tools"], ["Claude Code", "Cursor"])
+        self.assertEqual(shared["files"], 2)
+        self.assertTrue(any(l["display"].startswith("[Box] ") for l in shared["locations"]))
+        self.assertTrue(any(not l["display"].startswith("[") for l in shared["locations"]))
+        box_only = rotate[self.box.masked("F1")]
+        self.assertEqual(box_only["sides"], ["env:Box"])
+        self.assertTrue(box_only["still_on_disk"][0]["store"].startswith("[Box] "))
+
+        self.assertEqual(d["schema"], 2)
+        self.assertEqual([(e["label"], e["status"]) for e in d["environments"]],
+                         [("Linux (this machine)", "scanned"), ("Box", "scanned")])
+        self.assertEqual(d["coverage"]["files"], sum(e["files"] for e in d["environments"]))
+        self.assertEqual(d["summary"]["environments_not_scanned"], 0)
+        run = os.path.join(self.host.base, "runs", run_dirs(self.host.base)[-1])
+        with open(os.path.join(run, "report.html"), encoding="utf-8") as fh:
+            page = fh.read()
+        self.assertIn("Environment: Box", page)
+        self.assertIn("[Box] ", page)
+
+    def test_nothing_secret_crosses_or_stays(self):  # I-ENV-2
+        out = self.scan("--deep", expect=10)
+        secrets = [v for fx in (self.host, self.box) for v in fx.s.values()]
+        for v in secrets:
+            self.assertNotIn(v, out)
+        run = os.path.join(self.host.base, "runs", run_dirs(self.host.base)[-1])
+        checked = 0
+        for dp, _, fns in os.walk(run):
+            for fn in fns:
+                with open(os.path.join(dp, fn), "rb") as fh:
+                    data = fh.read()
+                checked += 1
+                for v in secrets:
+                    self.assertNotIn(v.encode(), data, f"{os.path.join(dp, fn)} contains a planted secret")
+        self.assertGreater(checked, 5)
+        # The worker cleaned up its own work folder, decoded plaintext included.
+        self.assertFalse([dp for dp, _, _ in os.walk(run) if os.path.basename(dp) == "work"])
+
+    def test_resume_does_not_rescan_a_finished_environment(self):  # I-ENV-3
+        out = self.scan(expect=130, AFTERPROMPT_STOP_AFTER="environments")
+        self.assertIn("Stopped after environments", out)
+        status = self.host.run("--status").stdout.decode()
+        self.assertIn("done  Scanning the other environments on this machine", status)
+        out = self.scan(expect=10)
+        self.assertIn("Scanning the other environments on this machine … already done", out)
+        run = os.path.join(self.host.base, "runs", run_dirs(self.host.base)[-1])
+        worker_runs = os.path.join(run, "envs", "folder-Box", "base", "worker", "runs")
+        self.assertEqual(len(os.listdir(worker_runs)), 1)
+        self.assertIn(self.box.masked("F1"), summary(self.host.findings())[0])
