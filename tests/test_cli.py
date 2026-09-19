@@ -211,3 +211,39 @@ class EnvironmentCliTests(TempDirTest):
         self.assertEqual(scanned, ["Box", "Other"])
         self.assertIn("Box … already done", out)
         self.assertEqual([e["name"] for e in fx.findings()["environments"]], ["Linux", "Box", "Other"])
+
+
+@requires_rg
+class PlaintextLifetimeTests(TempDirTest):
+    """Decoded plaintext and database dumps are deleted as soon as nothing reads them, not at the end of the run."""
+
+    def run_until(self, stage, *args):
+        fx = Fixture(os.path.join(self.tmp, f"m-{stage}{len(os.listdir(self.tmp))}"), "linux")
+        code, out, _ = run_main(["--deep", *args], fx.env(AFTERPROMPT_STOP_AFTER=stage))
+        self.assertEqual(code, cli.EXIT_INTERRUPTED, out)
+        work = os.path.join(fx.base, "runs", os.listdir(os.path.join(fx.base, "runs"))[0], "work")
+        return fx, work
+
+    def test_decoded_store_goes_right_after_known(self):  # U-CLI-16
+        _, work = self.run_until("entropy_store")
+        self.assertTrue(os.listdir(os.path.join(work, "store")))            # still needed by the known stage
+        _, work = self.run_until("known")
+        self.assertFalse(os.path.exists(os.path.join(work, "store")))
+        self.assertTrue(os.path.isdir(os.path.join(work, "extracted", "db")))  # prompts still reads these
+
+    def test_database_text_goes_right_after_prompts(self):  # U-CLI-17
+        _, work = self.run_until("prompts")
+        self.assertFalse(os.path.exists(os.path.join(work, "extracted", "db")))
+        self.assertTrue(os.path.exists(os.path.join(work, "extracted", "_ledger.json")))
+
+    def test_keep_work_keeps_them(self):  # U-CLI-18
+        _, work = self.run_until("prompts", "--keep-work")
+        self.assertTrue(os.listdir(os.path.join(work, "store")))
+        self.assertTrue(os.listdir(os.path.join(work, "extracted", "db")))
+
+    def test_resume_after_removal_finishes_with_decoded_findings(self):  # U-CLI-19
+        fx, work = self.run_until("known")
+        code, out, _ = run_main(["--deep"], fx.env())
+        self.assertEqual(code, cli.EXIT_ROTATE, out)
+        rotate = {r["masked"]: r for r in fx.findings()["rotate"]}
+        self.assertTrue(all(l["decoded"] for l in rotate[fx.masked("F4")]["locations"]))

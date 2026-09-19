@@ -203,6 +203,15 @@ def env_results(cfg, ctx):
     return [r for r in (envs.load_result(state_dir, e) for e in ctx["envs"][1:]) if r]
 
 
+def discard_plaintext(cfg, path):
+    """Delete a folder of plaintext copies once nothing reads it any more (kept with --keep-work)."""
+    if cfg.keep_work or not os.path.isdir(path):
+        return False
+    shutil.rmtree(path, ignore_errors=True)
+    log(f"removed plaintext copies in {path}")
+    return not os.path.exists(path)
+
+
 def run_stage(cfg, name, ctx):
     from afterprompt import databases, decode, entropy, known, manifest, prompts, report, sources, triage, vendor
     if name == "discover":
@@ -228,9 +237,16 @@ def run_stage(cfg, name, ctx):
     if name == "entropy_store":
         return entropy.run(cfg, "store", rows)
     if name == "known":
-        return known.run(cfg, src, raw_paths + ([cfg.w("store")] if cfg.deep else []))
+        info = known.run(cfg, src, raw_paths + ([cfg.w("store")] if cfg.deep else []))
+        # The decoded plaintext has no reader after this stage: remove it now rather than at the end of the run,
+        # which in a multi-environment scan can be a long time later.
+        info["decoded_removed"] = discard_plaintext(cfg, cfg.w("store"))
+        return info
     if name == "prompts":
-        return prompts.run(cfg, src)
+        info = prompts.run(cfg, src)
+        # Same for the text dumped from chat databases; the ledger that maps it back to its database stays.
+        info["extracted_removed"] = discard_plaintext(cfg, cfg.w("extracted", "db"))
+        return info
     if name == "triage":
         t = triage.build(cfg, src)
         ctx["triage"] = t
