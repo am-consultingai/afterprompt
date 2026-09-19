@@ -3,17 +3,20 @@
 Each tool:
   product, vendor, kind (cli | ide | extension | desktop | runner)
   status        scanned (supported and tested) | planned (listed, not scanned)
-  locations     [{path, side, platforms?, role?, exclude_tables?}]
+  locations     [{path, side, platforms?, role?, match?}]
                   path    relative to the side's home; "$CLAUDE_DIR" is Claude Code's config dir
                   side    unix (the macOS/Linux/WSL home) | windows (the Windows profile: this machine's own
                           home on Windows, the profile across /mnt/c from WSL)
                   platforms  default: every platform that has that side
                   role    root (scan as files, the default) | sqlite_glob (SQLite files under path matching the
                           tool's sqlite_globs) | sqlite_dir (every SQLite file under path; other files are roots)
+                  match   root only: scan just the files under path matching these globs (rotating logs)
   sqlite_globs      for sqlite_glob locations
   exclude_tables    SQLite tables never extracted (the tool's own login, embeddings)
   config_files      regexes: the tool's configuration files. A secret there is "stored in configuration"
   credential_files  regexes: the tool's own login store. A secret only there is its intended home, not a leak
+  credential_stores JSON login files (relative to each home) read as live values, so the tool's own token is
+                    caught when it turns up anywhere else
   vendored          regexes: code the tool ships. A match only there is dismissed
 
 Regexes are matched against a path with forward slashes. config_files and credential_files are anchored to a
@@ -31,7 +34,7 @@ KINDS = ("cli", "ide", "extension", "desktop", "runner")
 STATUSES = ("scanned", "planned")
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalogue.json")
 
-Loc = namedtuple("Loc", "tool platforms side path role globs exclude_tables")
+Loc = namedtuple("Loc", "tool platforms side path role globs exclude_tables match")
 
 
 class CatalogueError(ValueError):
@@ -71,7 +74,7 @@ def validate(data):
             errors.append(f"{name}: status must be one of {', '.join(STATUSES)}")
         for key in ("config_files", "credential_files", "vendored"):
             _regexes(t, key, errors)
-        for key in ("sqlite_globs", "exclude_tables"):
+        for key in ("sqlite_globs", "exclude_tables", "credential_stores"):
             if key in t and (not isinstance(t[key], list) or not all(isinstance(x, str) for x in t[key])):
                 errors.append(f"{name}: {key} must be a list of strings")
         locs = t.get("locations")
@@ -97,6 +100,10 @@ def validate(data):
                 errors.append(f"{where}: role must be one of {', '.join(ROLES)}")
             if role == "sqlite_glob" and not t.get("sqlite_globs"):
                 errors.append(f"{where}: sqlite_glob needs the tool's sqlite_globs")
+            m = loc.get("match")
+            if m is not None and (role != "root" or not isinstance(m, list) or not m
+                                  or not all(isinstance(x, str) and x for x in m)):
+                errors.append(f"{where}: match is a non-empty list of globs, for root locations only")
     for x in data.get("vendored", []):
         try:
             re.compile(x)
@@ -122,7 +129,7 @@ def registry(data):
         for loc in t["locations"]:
             out.append(Loc(t["product"], tuple(loc.get("platforms", SIDES[loc["side"]])), loc["side"], loc["path"],
                            loc.get("role", "root"), tuple(t.get("sqlite_globs", ())),
-                           tuple(t.get("exclude_tables", ()))))
+                           tuple(t.get("exclude_tables", ())), tuple(loc.get("match", ()))))
     return out
 
 
@@ -149,6 +156,11 @@ def exclude_tables(tool):
         if t["product"] == tool:
             return tuple(t.get("exclude_tables", ()))
     return ()
+
+
+def credential_stores():
+    """[(tool, relative path)] of the JSON login files every scanned tool keeps."""
+    return [(t["product"], p) for t in DATA["tools"] if t["status"] == "scanned" for p in t.get("credential_stores", [])]
 
 
 def scanned_products():

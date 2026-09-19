@@ -62,6 +62,10 @@ setting: it runs the unsigned script under a policy scoped to that one process.
 |---|---|
 | **Claude Code** | Session transcripts, prompt history, file history, pasted content, MCP server logs, `~/.claude.json`, per-project `.claude/` folders and `.mcp.json` files |
 | **Cursor** | Chat databases (`state.vscdb`, including `.backup` copies and write-ahead logs), agent transcripts, plans, `mcp.json` |
+| **Codex CLI** | Session rollouts (`~/.codex/sessions`, archived sessions), prompt history, its SQLite state and log databases, memories, shell snapshots (which capture exported environment variables), `config.toml`, `~/.codex/.env` |
+| **Gemini CLI** | Chat recordings, prompt logs, tool output and checkpoints under `~/.gemini/tmp`, `settings.json`, `~/.gemini/.env` |
+| **OpenCode** | The `opencode.db` session database (its own login tables are skipped), legacy JSON storage, logs, tool output, plans, prompt history, `opencode.json` |
+| **Ollama** | `ollama run` prompt history, logs, the desktop app's chat database (macOS and Windows), and the config backups it keeps |
 
 A native Windows run scans the profile it runs as: `%USERPROFILE%\.claude`, `%APPDATA%\Cursor`,
 `%LOCALAPPDATA%\claude-cli-nodejs` and the rest. Under WSL, both the Linux-side and Windows-side copies of each
@@ -69,8 +73,11 @@ tool are scanned. Either way only the user running the scan is included: other p
 folders on the same machine are listed in the report, never read, and the scan never asks for elevation. If the Windows profile cannot be detected automatically from WSL, pass
 `--windows-home /mnt/c/Users/<you>`.
 
-Support for other assistants (Codex CLI, Gemini CLI, Windsurf, Copilot) is planned. Each tool's locations are
-defined in one data file (`afterprompt/catalogue.json`), so adding one does not touch the scanning engine.
+Each tool's own login file (Codex `auth.json`, Gemini `oauth_creds.json`, OpenCode `auth.json`) is read as a live
+credential: a token from it that turns up in any AI history is reported under Rotate now, but the login file
+itself is its intended home and is not flagged. Windsurf is not covered yet: its Cascade conversations are stored
+encrypted. Each tool's locations are defined in one data file (`afterprompt/catalogue.json`), so adding one does
+not touch the scanning engine.
 
 ## How it decides something is a leak
 

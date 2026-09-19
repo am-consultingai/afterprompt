@@ -116,6 +116,7 @@ class SiteTests(unittest.TestCase):
 
     def test_supported_tools_are_honest(self):  # W-10
         # Only tools the scanner actually covers may be marked as scanned, and every one it covers is.
-        scanned = set(re.findall(r'<div class="tool on"[^>]*><img[^>]*>([^<]+)<b>Scanned</b>', self.html))
+        scanned = set(re.findall(r'<div class="tool on"[^>]*>(?:<img[^>]*>|<span class="mono-mark">[^<]*</span>)'
+                                 r'([^<]+)<b>Scanned</b>', self.html))
         self.assertEqual(scanned, set(catalogue.scanned_products()))
 

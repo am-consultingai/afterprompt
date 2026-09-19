@@ -98,7 +98,11 @@ def discover(cfg):
         if not os.path.exists(path):
             missing.append({"tool": loc.tool, "side": side, "path": path})
             continue
-        if loc.role == "root":
+        if loc.role == "root" and loc.match:
+            for p in sorted({p for g in loc.match for p in glob.glob(os.path.join(glob.escape(path), g))}):
+                if os.path.isfile(p):
+                    add_root(p, loc.tool, side, "file")
+        elif loc.role == "root":
             add_root(path, loc.tool, side)
         elif loc.role == "sqlite_glob":
             found = sorted(p for g in loc.globs for p in glob.glob(os.path.join(glob.escape(path), g)))

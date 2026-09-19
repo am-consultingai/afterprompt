@@ -1,7 +1,9 @@
 {
   "schema": 1,
   "about": "Where each AI tool keeps its data. Adding a tool is an edit to this file, not to the engine. See catalogue.py for the fields.",
-  "vendored": ["/node_modules/"],
+  "vendored": [
+    "/node_modules/"
+  ],
   "tools": [
     {
       "product": "Claude Code",
@@ -9,24 +11,79 @@
       "kind": "cli",
       "status": "scanned",
       "locations": [
-        {"path": "$CLAUDE_DIR", "side": "unix"},
-        {"path": ".claude.json", "side": "unix"},
-        {"path": ".claude.json.backup", "side": "unix"},
-        {"path": ".cache/claude-cli-nodejs", "side": "unix", "platforms": ["linux", "wsl"]},
-        {"path": "Library/Caches/claude-cli-nodejs", "side": "unix", "platforms": ["macos"]},
-        {"path": ".cache/claude", "side": "unix"},
-        {"path": ".local/state/claude", "side": "unix"},
-        {"path": ".local/share/claude", "side": "unix"},
-        {"path": ".claude", "side": "windows"},
-        {"path": ".claude.json", "side": "windows"},
-        {"path": ".claude.json.backup", "side": "windows"},
-        {"path": "AppData/Local/claude-cli-nodejs", "side": "windows"},
-        {"path": ".local/share/claude", "side": "windows"}
+        {
+          "path": "$CLAUDE_DIR",
+          "side": "unix"
+        },
+        {
+          "path": ".claude.json",
+          "side": "unix"
+        },
+        {
+          "path": ".claude.json.backup",
+          "side": "unix"
+        },
+        {
+          "path": ".cache/claude-cli-nodejs",
+          "side": "unix",
+          "platforms": [
+            "linux",
+            "wsl"
+          ]
+        },
+        {
+          "path": "Library/Caches/claude-cli-nodejs",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": ".cache/claude",
+          "side": "unix"
+        },
+        {
+          "path": ".local/state/claude",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/claude",
+          "side": "unix"
+        },
+        {
+          "path": ".claude",
+          "side": "windows"
+        },
+        {
+          "path": ".claude.json",
+          "side": "windows"
+        },
+        {
+          "path": ".claude.json.backup",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Local/claude-cli-nodejs",
+          "side": "windows"
+        },
+        {
+          "path": ".local/share/claude",
+          "side": "windows"
+        }
       ],
-      "config_files": ["\\.mcp\\.json", "\\.claude/settings(?:\\.local)?\\.json", "\\.claude/config\\.json",
-                       "claude_desktop_config\\.json"],
-      "credential_files": ["\\.credentials\\.json"],
-      "vendored": ["/\\.local/share/claude/versions/", "/\\.claude/plugins/"]
+      "config_files": [
+        "\\.mcp\\.json",
+        "\\.claude/settings(?:\\.local)?\\.json",
+        "\\.claude/config\\.json",
+        "claude_desktop_config\\.json"
+      ],
+      "credential_files": [
+        "\\.credentials\\.json"
+      ],
+      "vendored": [
+        "/\\.local/share/claude/versions/",
+        "/\\.claude/plugins/"
+      ]
     },
     {
       "product": "Cursor",
@@ -34,22 +91,460 @@
       "kind": "ide",
       "status": "scanned",
       "locations": [
-        {"path": "Library/Application Support/Cursor/User", "side": "unix", "platforms": ["macos"],
-         "role": "sqlite_glob"},
-        {"path": ".config/Cursor/User", "side": "unix", "platforms": ["linux", "wsl"], "role": "sqlite_glob"},
-        {"path": "AppData/Roaming/Cursor/User", "side": "windows", "role": "sqlite_glob"},
-        {"path": ".cursor/projects", "side": "unix"},
-        {"path": ".cursor/plans", "side": "unix"},
-        {"path": ".cursor/mcp.json", "side": "unix"},
-        {"path": ".cursor/ai-tracking", "side": "unix", "role": "sqlite_dir"},
-        {"path": ".cursor/projects", "side": "windows"},
-        {"path": ".cursor/plans", "side": "windows"},
-        {"path": ".cursor/mcp.json", "side": "windows"},
-        {"path": ".cursor/ai-tracking", "side": "windows", "role": "sqlite_dir"}
+        {
+          "path": "Library/Application Support/Cursor/User",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ],
+          "role": "sqlite_glob"
+        },
+        {
+          "path": ".config/Cursor/User",
+          "side": "unix",
+          "platforms": [
+            "linux",
+            "wsl"
+          ],
+          "role": "sqlite_glob"
+        },
+        {
+          "path": "AppData/Roaming/Cursor/User",
+          "side": "windows",
+          "role": "sqlite_glob"
+        },
+        {
+          "path": ".cursor/projects",
+          "side": "unix"
+        },
+        {
+          "path": ".cursor/plans",
+          "side": "unix"
+        },
+        {
+          "path": ".cursor/mcp.json",
+          "side": "unix"
+        },
+        {
+          "path": ".cursor/ai-tracking",
+          "side": "unix",
+          "role": "sqlite_dir"
+        },
+        {
+          "path": ".cursor/projects",
+          "side": "windows"
+        },
+        {
+          "path": ".cursor/plans",
+          "side": "windows"
+        },
+        {
+          "path": ".cursor/mcp.json",
+          "side": "windows"
+        },
+        {
+          "path": ".cursor/ai-tracking",
+          "side": "windows",
+          "role": "sqlite_dir"
+        }
       ],
-      "sqlite_globs": ["globalStorage/state.vscdb", "globalStorage/state.vscdb.backup",
-                       "workspaceStorage/*/state.vscdb", "workspaceStorage/*/state.vscdb.backup"],
-      "config_files": ["\\.cursor/mcp\\.json"]
+      "sqlite_globs": [
+        "globalStorage/state.vscdb",
+        "globalStorage/state.vscdb.backup",
+        "workspaceStorage/*/state.vscdb",
+        "workspaceStorage/*/state.vscdb.backup"
+      ],
+      "config_files": [
+        "\\.cursor/mcp\\.json"
+      ]
+    },
+    {
+      "product": "Codex CLI",
+      "vendor": "OpenAI",
+      "kind": "cli",
+      "status": "scanned",
+      "source": "github.com/openai/codex (codex-rs: home-dir, rollout, message-history, state, core/shell_snapshot)",
+      "locations": [
+        {
+          "path": ".codex/sessions",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/sessions",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/archived_sessions",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/archived_sessions",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/history.jsonl",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/history.jsonl",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/memories",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/memories",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/memories_v2",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/memories_v2",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/memories_extensions",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/memories_extensions",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/shell_snapshots",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/shell_snapshots",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/log",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/log",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/config.toml",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/config.toml",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/.env",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/.env",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/daemon.stderr.log",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/daemon.stderr.log",
+          "side": "windows"
+        },
+        {
+          "path": ".codex/app-server.stderr.log",
+          "side": "unix"
+        },
+        {
+          "path": ".codex/app-server.stderr.log",
+          "side": "windows"
+        },
+        {
+          "path": ".codex",
+          "side": "unix",
+          "role": "sqlite_glob"
+        },
+        {
+          "path": ".codex",
+          "side": "windows",
+          "role": "sqlite_glob"
+        }
+      ],
+      "sqlite_globs": [
+        "*.sqlite"
+      ],
+      "config_files": [
+        "\\.codex/(?:[^/]+\\.)?config\\.toml",
+        "\\.codex/\\.env"
+      ],
+      "credential_files": [
+        "\\.codex/auth\\.json",
+        "\\.codex/\\.credentials\\.json"
+      ],
+      "credential_stores": [
+        ".codex/auth.json",
+        ".codex/.credentials.json"
+      ]
+    },
+    {
+      "product": "Gemini CLI",
+      "vendor": "Google",
+      "kind": "cli",
+      "status": "scanned",
+      "source": "github.com/google-gemini/gemini-cli (core/utils/paths.ts, chatRecordingService.ts, core/logger.ts, cli/config/settings.ts)",
+      "locations": [
+        {
+          "path": ".gemini/tmp",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/tmp",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/settings.json",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/settings.json",
+          "side": "windows"
+        },
+        {
+          "path": ".gemini/.env",
+          "side": "unix"
+        },
+        {
+          "path": ".gemini/.env",
+          "side": "windows"
+        }
+      ],
+      "config_files": [
+        "\\.gemini/settings\\.json",
+        "\\.gemini/\\.env"
+      ],
+      "credential_files": [
+        "\\.gemini/(?:oauth_creds|google_accounts|mcp-oauth-tokens|a2a-oauth-tokens|gemini-credentials)\\.json"
+      ],
+      "credential_stores": [
+        ".gemini/oauth_creds.json",
+        ".gemini/mcp-oauth-tokens.json",
+        ".gemini/a2a-oauth-tokens.json"
+      ],
+      "vendored": [
+        "/\\.gemini/tmp/bin/"
+      ]
+    },
+    {
+      "product": "OpenCode",
+      "vendor": "Anomaly",
+      "kind": "cli",
+      "status": "scanned",
+      "source": "github.com/sst/opencode (core/global.ts xdg-basedir, core/database, opencode/storage, tui/prompt, observability/logging)",
+      "locations": [
+        {
+          "path": ".local/share/opencode/log",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/opencode/log",
+          "side": "windows"
+        },
+        {
+          "path": ".local/share/opencode/tool-output",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/opencode/tool-output",
+          "side": "windows"
+        },
+        {
+          "path": ".local/share/opencode/plans",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/opencode/plans",
+          "side": "windows"
+        },
+        {
+          "path": ".local/share/opencode/storage",
+          "side": "unix"
+        },
+        {
+          "path": ".local/share/opencode/storage",
+          "side": "windows"
+        },
+        {
+          "path": ".local/share/opencode",
+          "side": "unix",
+          "role": "sqlite_glob"
+        },
+        {
+          "path": ".local/share/opencode",
+          "side": "windows",
+          "role": "sqlite_glob"
+        },
+        {
+          "path": ".local/state/opencode",
+          "side": "unix"
+        },
+        {
+          "path": ".local/state/opencode",
+          "side": "windows"
+        },
+        {
+          "path": ".config/opencode/opencode.json",
+          "side": "unix"
+        },
+        {
+          "path": ".config/opencode/opencode.json",
+          "side": "windows"
+        },
+        {
+          "path": ".config/opencode/opencode.jsonc",
+          "side": "unix"
+        },
+        {
+          "path": ".config/opencode/opencode.jsonc",
+          "side": "windows"
+        },
+        {
+          "path": ".config/opencode/config.json",
+          "side": "unix"
+        },
+        {
+          "path": ".config/opencode/config.json",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/opencode/log",
+          "side": "windows"
+        },
+        {
+          "path": "AppData/Roaming/opencode",
+          "side": "windows",
+          "role": "sqlite_glob"
+        }
+      ],
+      "sqlite_globs": [
+        "opencode*.db"
+      ],
+      "exclude_tables": [
+        "credential",
+        "account",
+        "control_account",
+        "account_state"
+      ],
+      "config_files": [
+        "\\.config/opencode/(?:opencode\\.jsonc?|config\\.json)"
+      ],
+      "credential_files": [
+        "opencode/(?:mcp-)?auth\\.json"
+      ],
+      "credential_stores": [
+        ".local/share/opencode/auth.json",
+        ".local/share/opencode/mcp-auth.json"
+      ]
+    },
+    {
+      "product": "Ollama",
+      "vendor": "Ollama",
+      "kind": "runner",
+      "status": "scanned",
+      "source": "github.com/ollama/ollama (readline/history.go, app/store, internal/onboarding/app_state.go, docs/faq.mdx)",
+      "locations": [
+        {
+          "path": ".ollama/history",
+          "side": "unix"
+        },
+        {
+          "path": ".ollama/history",
+          "side": "windows"
+        },
+        {
+          "path": ".ollama/logs",
+          "side": "unix"
+        },
+        {
+          "path": ".ollama/logs",
+          "side": "windows"
+        },
+        {
+          "path": ".ollama/config.json",
+          "side": "unix"
+        },
+        {
+          "path": ".ollama/config.json",
+          "side": "windows"
+        },
+        {
+          "path": ".ollama/config",
+          "side": "unix"
+        },
+        {
+          "path": ".ollama/config",
+          "side": "windows"
+        },
+        {
+          "path": ".ollama/backup",
+          "side": "unix"
+        },
+        {
+          "path": ".ollama/backup",
+          "side": "windows"
+        },
+        {
+          "path": ".ollama/launch",
+          "side": "unix"
+        },
+        {
+          "path": ".ollama/launch",
+          "side": "windows"
+        },
+        {
+          "path": "Library/Application Support/Ollama",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ],
+          "role": "sqlite_glob"
+        },
+        {
+          "path": "Library/Application Support/Ollama/config.json",
+          "side": "unix",
+          "platforms": [
+            "macos"
+          ]
+        },
+        {
+          "path": "AppData/Local/Ollama",
+          "side": "windows",
+          "role": "sqlite_glob"
+        },
+        {
+          "path": "AppData/Local/Ollama",
+          "side": "windows",
+          "match": [
+            "*.log",
+            "config.json"
+          ]
+        }
+      ],
+      "sqlite_globs": [
+        "db.sqlite"
+      ],
+      "credential_files": [
+        "\\.ollama/id_ed25519"
+      ]
+    },
+    {
+      "product": "Windsurf",
+      "vendor": "Cognition",
+      "kind": "ide",
+      "status": "planned",
+      "locations": [],
+      "note": "Cascade transcripts (~/.codeium/windsurf/cascade/*.pb) are AES-256-GCM encrypted protobuf: not readable as text. The editor's state.vscdb holds the login's plaintext apiKey. Covering only mcp_config.json and memories would be partial coverage."
     }
   ]
 }

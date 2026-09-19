@@ -9,6 +9,7 @@ import re
 import subprocess
 import time
 
+from afterprompt import catalogue
 from afterprompt import sources as src
 from afterprompt.patterns import label_for_value
 from afterprompt.util import Walker, entropy, is_under, log, mask, sha16, skip_dir, write_json
@@ -305,6 +306,17 @@ def collect(cfg, sources, project_budget=120.0):
                 c.walk_json(load_json_file(cred), cred, secret_filter, designed=True)
             except (OSError, ValueError):
                 pass
+        # Every other tool's own login file (catalogue credential_stores): its tokens are live values, so one
+        # that turns up in any AI history is caught; the file itself is their intended home.
+        for _, rel in catalogue.credential_stores():
+            f = os.path.normpath(os.path.join(home, rel))
+            if f in handled or not os.path.isfile(f) or os.path.getsize(f) > 2_000_000:
+                continue
+            handled.add(f)
+            try:
+                c.walk_json(load_json_file(f), f, secret_filter, designed=True)
+            except (OSError, ValueError) as e:
+                log(f"  known: could not parse {f}: {type(e).__name__}")
         cj = os.path.join(home, ".claude.json")
         if os.path.isfile(cj):
             try:
