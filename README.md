@@ -27,16 +27,30 @@ When the scan finishes, it prints the path to your report. Nothing is uploaded a
 
 | Platform | How to run |
 |---|---|
-| macOS | Terminal |
-| Linux | Any shell |
-| Windows | Inside **WSL**. The scan covers both your WSL home and your Windows user profile (`/mnt/c/Users/<you>`) |
+| macOS | Terminal: `./afterprompt.sh` |
+| Linux | Any shell: `./afterprompt.sh` |
+| Windows | `afterprompt.cmd`, from cmd.exe, PowerShell or a double-click. **WSL is not required** |
+| Windows, inside WSL | `./afterprompt.sh`. The scan covers your WSL home *and* your Windows profile (`/mnt/c/Users/<you>`) |
 
-Git Bash and PowerShell are not supported on Windows. Use WSL.
+On Windows you can run it either way. `afterprompt.cmd` scans the Windows profile; running it inside WSL scans
+the Linux home and reaches across to the Windows profile as well. If you use WSL, running it there covers both
+in one pass — and reads the Linux files far faster than Windows can across the `\\wsl.localhost` share.
+
+A native Windows run lists any WSL distributions it finds in the report and says plainly that their history was
+not scanned, because a clean Windows result tells you nothing about what is inside a distro.
+
+Git Bash, MSYS and Cygwin are not supported: use `afterprompt.cmd` instead.
 
 **Requirements:** Python 3.9+ (standard library only, nothing to `pip install`) and
-[ripgrep](https://github.com/BurntSushi/ripgrep) 13 or newer. If ripgrep is missing, `afterprompt.sh` downloads
+[ripgrep](https://github.com/BurntSushi/ripgrep) 13 or newer. If ripgrep is missing, the launcher downloads
 ripgrep 15.2.0 from its official GitHub release into `~/.afterprompt/bin/` and verifies a pinned SHA-256 checksum
 before using it. Pass `--no-download` to prevent this.
+
+On Windows, install Python from [python.org](https://www.python.org/downloads/windows/) or with
+`winget install Python.Python.3.13`. A `python` that opens the Microsoft Store is a stub, not an interpreter;
+the launcher skips those and tells you so. Windows PowerShell 5.1 (shipped with Windows 10 and later) is
+enough — nothing else needs installing or configuring, and `afterprompt.cmd` does not change any machine
+setting: it runs the unsigned script under a policy scoped to that one process.
 
 ## What it scans
 
@@ -45,9 +59,11 @@ before using it. Pass `--no-download` to prevent this.
 | **Claude Code** | Session transcripts, prompt history, file history, pasted content, MCP server logs, `~/.claude.json`, per-project `.claude/` folders and `.mcp.json` files |
 | **Cursor** | Chat databases (`state.vscdb`, including `.backup` copies and write-ahead logs), agent transcripts, plans, `mcp.json` |
 
-On Windows under WSL, both the Linux-side and Windows-side copies of each tool are scanned. Only the Windows user
-running the scan is included. Other people's profiles on the same machine are not. If the Windows profile cannot
-be detected automatically, pass `--windows-home /mnt/c/Users/<you>`.
+A native Windows run scans the profile it runs as: `%USERPROFILE%\.claude`, `%APPDATA%\Cursor`,
+`%LOCALAPPDATA%\claude-cli-nodejs` and the rest. Under WSL, both the Linux-side and Windows-side copies of each
+tool are scanned. Either way only the user running the scan is included; other people's profiles on the same
+machine are not. If the Windows profile cannot be detected automatically from WSL, pass
+`--windows-home /mnt/c/Users/<you>`.
 
 Support for other assistants (Codex CLI, Gemini CLI, Windsurf, Copilot) is planned. Each tool's locations are
 defined in one registry (`afterprompt/sources.py`), so adding one does not touch the scanning engine.
@@ -183,11 +199,16 @@ Almost every leak comes from two habits:
 ## Project layout
 
 ```text
-afterprompt.sh          entry point: checks the environment, finds or downloads ripgrep, runs the scanner
+afterprompt.sh          entry point on macOS, Linux and WSL: checks the environment, finds or downloads
+                        ripgrep, runs the scanner
+afterprompt.cmd         entry point on Windows (a shim so the unsigned .ps1 runs under the default policy)
+afterprompt.ps1         the Windows launcher itself: same checks, same environment variables, same exit codes
+tools/winrun.sh         development only: start Windows processes from a WSL checkout, to exercise the
+                        Windows behaviour without driving PowerShell by hand
 afterprompt/
   cli.py                options, resumable run lifecycle, exit codes
   sources.py            where each AI tool keeps its data, per platform (the registry)
-  platforms.py          macOS / Linux / WSL detection, Windows profile detection
+  platforms.py          macOS / Linux / WSL / Windows detection, Windows profile and WSL distro discovery
   cursor.py             Cursor SQLite extraction
   manifest.py           file enumeration
   vendor.py             pattern passes (one ripgrep run per pattern)
@@ -210,9 +231,9 @@ site/                   the website (plain HTML), deployed to GitHub Pages by .g
 python3 -m unittest discover -s tests -t .
 ```
 
-The integration tests run `afterprompt.sh` against generated fixture machines (macOS, Linux and WSL layouts) with
+The integration tests run the launcher against generated fixture machines (macOS, Linux, WSL and Windows layouts) with
 planted secrets. They check the report contents, and that no planted value appears in any output. CI runs the
-suite on Linux and macOS (Python 3.9 and 3.12) and inside WSL on Windows.
+suite on Linux and macOS (Python 3.9 and 3.12), inside WSL on Windows, and on native Windows (Python 3.9 and 3.13).
 
 ## License
 

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import unittest
 
 from afterprompt import report
 from afterprompt.util import write_json
@@ -101,3 +102,43 @@ class ReportTests(TempDirTest):
         self.assertEqual(data["summary"]["entropy_candidates"], 9000)
         self.assertIn("Random-looking tokens: 9,000", self.read(cfg, "report.md"))
 
+
+
+class WindowsReportTests(unittest.TestCase):
+    """W3: a native Windows run must read as Windows, without the WSL bridge's profile note."""
+
+    def data(self, kind, windows_home=None):
+        return {"finished": "2026-09-18T09:00:00", "mode": "quick",
+                "platform": {"kind": kind, "home": "~", "windows_home": windows_home,
+                             "windows_home_source": "this machine" if kind == "windows" else "cmd.exe"}}
+
+    def test_context_line(self):  # U-REP-W1 (W3)
+        self.assertEqual(report.context_line(self.data("windows", "C:\\Users\\me")),
+                         "2026-09-18 09:00 · quick scan · Windows")
+        self.assertEqual(report.context_line(self.data("wsl", "C:\\Users\\me")),
+                         "2026-09-18 09:00 · quick scan · Windows (WSL) · Windows profile C:\\Users\\me")
+        self.assertEqual(report.context_line(self.data("linux")), "2026-09-18 09:00 · quick scan · Linux")
+
+
+class WslDistroCoverageTests(unittest.TestCase):
+    """W5: a clean Windows result must not imply the distros are clean too."""
+
+    def rows(self, **cov):
+        base = {"platform": "windows", "windows_home": "C:\\Users\\me", "windows_home_source": "this machine",
+                "sources": [], "cursor_databases": {"total": 0, "ok": 0, "failed": []}, "unreadable_files": 0,
+                "excluded_files": 0, "vendored_files": 0, "scan_session_files": 0, "live_values": {},
+                "prompts": {}, "limits": [], "missing_locations": [], "pattern_truncations": [],
+                "keychain": "not requested"}
+        base.update(cov)
+        return dict(report.coverage_rows({"coverage": base}))
+
+    def test_distros_are_named_when_present(self):  # U-REP-W2 (W5)
+        rows = self.rows(wsl_distros=["Ubuntu-22.04", "Debian"])
+        row = rows["WSL distributions found but not scanned"]
+        self.assertIn("Ubuntu-22.04, Debian", row)
+        self.assertIn("run Afterprompt inside each one", row)
+
+    def test_no_row_without_wsl(self):  # U-REP-W3 (W5)
+        """A machine with no WSL is complete as scanned: no caveat, no noise."""
+        self.assertNotIn("WSL distributions found but not scanned", self.rows(wsl_distros=[]))
+        self.assertNotIn("WSL distributions found but not scanned", self.rows())

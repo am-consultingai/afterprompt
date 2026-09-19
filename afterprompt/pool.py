@@ -27,7 +27,39 @@ def worker_init(d):
             pass
 
 
+def _rss_windows(pid):
+    """Resident set from psapi; Windows has no /proc and no ps."""
+    import ctypes
+    from ctypes import wintypes
+
+    class COUNTERS(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ = 0x1000, 0x0010
+    k32, psapi = ctypes.WinDLL("kernel32", use_last_error=True), ctypes.WinDLL("psapi", use_last_error=True)
+    h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, False, int(pid))
+    if not h:
+        return 0
+    try:
+        c = COUNTERS()
+        c.cb = ctypes.sizeof(c)
+        if not psapi.GetProcessMemoryInfo(h, ctypes.byref(c), c.cb):
+            return 0
+        return int(c.WorkingSetSize)
+    finally:
+        k32.CloseHandle(h)
+
+
 def rss_bytes(pid):
+    if sys.platform == "win32":
+        try:
+            return _rss_windows(pid)
+        except (OSError, ValueError, AttributeError):
+            return 0
     if sys.platform.startswith("linux"):
         try:
             with open(f"/proc/{pid}/status", encoding="ascii", errors="replace") as fh:
@@ -57,7 +89,8 @@ class Watchdog(threading.Thread):
             for pid in list(procs):
                 if rss_bytes(pid) > self.cap:
                     try:
-                        os.kill(pid, signal.SIGKILL)
+                        # Windows has no SIGKILL; os.kill there calls TerminateProcess for any signal.
+                        os.kill(pid, signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL)
                         self.killed += 1
                         log(f"  {self.label}: worker {pid} exceeded {self.cap / 1024 ** 3:.2f} GB and was stopped")
                     except OSError:

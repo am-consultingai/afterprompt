@@ -3,7 +3,7 @@ import stat
 import time
 
 from afterprompt import util
-from tests.helpers import TempDirTest, write
+from tests.helpers import TempDirTest, write, WINDOWS
 
 
 class UtilTests(TempDirTest):
@@ -38,7 +38,8 @@ class UtilTests(TempDirTest):
         util.write_json(p, {"a": 1})
         self.assertFalse(os.path.exists(p + ".part"))
         self.assertEqual(util.read_json(p), {"a": 1})
-        self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o600)
+        if not WINDOWS:  # NTFS has no POSIX mode bits; privacy there comes from the profile's ACL
+            self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o600)
 
     def test_walker_depth_skip_deadline(self):  # U-UTIL-7
         for rel in ("a/b/c/d/deep.txt", "node_modules/x.txt", "OneDrive - Corp/y.txt", "keep/z.txt"):

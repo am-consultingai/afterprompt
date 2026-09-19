@@ -3,7 +3,7 @@ import os
 from unittest import mock
 
 from afterprompt import sources
-from tests.helpers import REPO, TempDirTest, cursor_db, make_cfg, write
+from tests.helpers import REPO, TempDirTest, cursor_db, make_cfg, requires_posix, write
 
 
 def discover(cfg):
@@ -68,6 +68,7 @@ class SourcesTests(TempDirTest):
         paths = {r["path"] for r in out["roots"]}
         self.assertIn(alt, paths)
 
+    @requires_posix  # asserts unix-style absolute project keys in .claude.json
     def test_project_dirs(self):  # U-SRC-5
         a = os.path.join(self.tmp, "work", "a")
         b = os.path.join(self.tmp, "work", "b")
@@ -115,3 +116,71 @@ class SourcesTests(TempDirTest):
         write(os.path.join(extra, "a.txt"), "x")
         out = discover(make_cfg(self.tmp, "linux", self.home, extra_roots=[extra]))
         self.assertIn((extra, "Extra", "linux"), root_paths(out))
+
+
+class NativeWindowsTests(TempDirTest):
+    """W3: on Windows the machine's own profile is the 'windows' side, with no WSL bridge involved."""
+
+    def setUp(self):
+        super().setUp()
+        self.home = os.path.join(self.tmp, "Users", "me")
+        os.makedirs(self.home)
+
+    def layout(self):
+        """The locations a Windows machine actually uses."""
+        self.cursor_user = os.path.join(self.home, "AppData", "Roaming", "Cursor", "User")
+        cursor_db(os.path.join(self.cursor_user, "globalStorage", "state.vscdb"), [])
+        cursor_db(os.path.join(self.cursor_user, "workspaceStorage", "w1", "state.vscdb"), [])
+        self.cli_cache = os.path.join(self.home, "AppData", "Local", "claude-cli-nodejs")
+        write(os.path.join(self.cli_cache, "log.txt"), "cache\n")
+        os.makedirs(os.path.join(self.home, ".claude"))
+        write(os.path.join(self.home, ".claude.json"), json.dumps({"projects": {}}))
+        write(os.path.join(self.home, ".cursor", "mcp.json"), json.dumps({"mcpServers": {}}))
+
+    def test_windows_locations_are_found(self):  # U-SRC-W1 (W3)
+        self.layout()
+        out = discover(make_cfg(self.tmp, "windows", self.home))
+        self.assertEqual(out["platform"], "windows")
+        # The profile is this machine, not a bridged one.
+        self.assertEqual(out["windows_home"], self.home)
+        self.assertEqual(out["windows_home_source"], "this machine")
+        self.assertEqual(len(out["cursor_dbs"]), 2)
+        self.assertTrue(all(d["side"] == "windows" for d in out["cursor_dbs"]))
+        paths = root_paths(out)
+        self.assertIn((self.cli_cache, "Claude Code", "windows"), paths)
+        self.assertIn((os.path.join(self.home, ".claude"), "Claude Code", "windows"), paths)
+        self.assertIn((os.path.join(self.home, ".cursor", "mcp.json"), "Cursor", "windows"), paths)
+
+    def test_mislabelled_as_linux_misses_appdata(self):  # U-SRC-W2 (W3)
+        """The regression this epic exists for: before W2/W3 a native Windows run reported 'linux',
+        which skipped every AppData location while still producing a confident report."""
+        self.layout()
+        as_linux = discover(make_cfg(self.tmp, "linux", self.home))
+        linux_paths = {p for p, _, _ in root_paths(as_linux)}
+        self.assertNotIn(self.cli_cache, linux_paths)
+        self.assertEqual(len(as_linux["cursor_dbs"]), 0)  # AppData\Roaming\Cursor is invisible to a linux run
+
+        as_windows = discover(make_cfg(self.tmp, "windows", self.home))
+        self.assertIn(self.cli_cache, {p for p, _, _ in root_paths(as_windows)})
+        self.assertEqual(len(as_windows["cursor_dbs"]), 2)
+
+    def test_windows_project_dirs_from_claude_json(self):  # U-SRC-W3 (W3)
+        """Windows-shaped project paths must resolve natively, not through /mnt/c."""
+        self.layout()
+        app = os.path.join(self.tmp, "Users", "me", "code", "app")
+        os.makedirs(os.path.join(app, ".claude"))
+        drive_path = "C:\\Users\\me\\code\\app"
+        with mock.patch.object(sources.platforms, "from_windows_path",
+                               side_effect=lambda k, m=None, n=False: app if (k == drive_path and n) else None):
+            write(os.path.join(self.home, ".claude.json"), json.dumps({"projects": {drive_path: {}}}))
+            out = discover(make_cfg(self.tmp, "windows", self.home))
+        self.assertIn(app, out["project_dirs"])
+        self.assertIn((os.path.join(app, ".claude"), "Claude Code", "windows"), root_paths(out))
+
+    def test_no_unix_side_on_windows(self):  # U-SRC-W4 (W3)
+        """A .config/Cursor tree on a Windows profile is a Linux layout and must not be claimed."""
+        self.layout()
+        cursor_db(os.path.join(self.home, ".config", "Cursor", "User", "globalStorage", "state.vscdb"), [])
+        out = discover(make_cfg(self.tmp, "windows", self.home))
+        self.assertEqual(len(out["cursor_dbs"]), 2)
+        self.assertTrue(all("AppData" in d["path"] for d in out["cursor_dbs"]))

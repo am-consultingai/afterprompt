@@ -11,9 +11,15 @@ scanner/
 # Local backup of the superseded MIT-licensed git history
 archive/
 
+# Private handover notes for the next agent
+handover.md
+
 # Work folders from local runs
 .afterprompt/
 
 __pycache__/
 *.pyc
 .DS_Store
+
+# Local agent config (internal ClickUp ids, not for the public repo)
+.claude/

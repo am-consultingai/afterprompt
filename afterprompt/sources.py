@@ -7,11 +7,13 @@ from collections import namedtuple
 from afterprompt import platforms
 from afterprompt.util import Walker, is_under, log, read_json, write_json
 
-# side: "unix" (the macOS/Linux/WSL home) or "windows" (the Windows profile, WSL only)
+# side: "unix" (the macOS/Linux/WSL home) or "windows" (the Windows profile: this machine's own home on
+# Windows, the profile reached across /mnt/c from WSL)
 # role: root | cursor_db_glob | cursor_sqlite_dir
 Loc = namedtuple("Loc", "tool platforms side path role")
 
 ALL = ("macos", "linux", "wsl")
+WIN = ("wsl", "windows")
 REGISTRY = [
     Loc("Claude Code", ALL, "unix", "$CLAUDE_DIR", "root"),
     Loc("Claude Code", ALL, "unix", ".claude.json", "root"),
@@ -21,22 +23,22 @@ REGISTRY = [
     Loc("Claude Code", ALL, "unix", ".cache/claude", "root"),
     Loc("Claude Code", ALL, "unix", ".local/state/claude", "root"),
     Loc("Claude Code", ALL, "unix", ".local/share/claude", "root"),
-    Loc("Claude Code", ("wsl",), "windows", ".claude", "root"),
-    Loc("Claude Code", ("wsl",), "windows", ".claude.json", "root"),
-    Loc("Claude Code", ("wsl",), "windows", ".claude.json.backup", "root"),
-    Loc("Claude Code", ("wsl",), "windows", "AppData/Local/claude-cli-nodejs", "root"),
-    Loc("Claude Code", ("wsl",), "windows", ".local/share/claude", "root"),
+    Loc("Claude Code", WIN, "windows", ".claude", "root"),
+    Loc("Claude Code", WIN, "windows", ".claude.json", "root"),
+    Loc("Claude Code", WIN, "windows", ".claude.json.backup", "root"),
+    Loc("Claude Code", WIN, "windows", "AppData/Local/claude-cli-nodejs", "root"),
+    Loc("Claude Code", WIN, "windows", ".local/share/claude", "root"),
     Loc("Cursor", ("macos",), "unix", "Library/Application Support/Cursor/User", "cursor_db_glob"),
     Loc("Cursor", ("linux", "wsl"), "unix", ".config/Cursor/User", "cursor_db_glob"),
-    Loc("Cursor", ("wsl",), "windows", "AppData/Roaming/Cursor/User", "cursor_db_glob"),
+    Loc("Cursor", WIN, "windows", "AppData/Roaming/Cursor/User", "cursor_db_glob"),
     Loc("Cursor", ALL, "unix", ".cursor/projects", "root"),
     Loc("Cursor", ALL, "unix", ".cursor/plans", "root"),
     Loc("Cursor", ALL, "unix", ".cursor/mcp.json", "root"),
     Loc("Cursor", ALL, "unix", ".cursor/ai-tracking", "cursor_sqlite_dir"),
-    Loc("Cursor", ("wsl",), "windows", ".cursor/projects", "root"),
-    Loc("Cursor", ("wsl",), "windows", ".cursor/plans", "root"),
-    Loc("Cursor", ("wsl",), "windows", ".cursor/mcp.json", "root"),
-    Loc("Cursor", ("wsl",), "windows", ".cursor/ai-tracking", "cursor_sqlite_dir"),
+    Loc("Cursor", WIN, "windows", ".cursor/projects", "root"),
+    Loc("Cursor", WIN, "windows", ".cursor/plans", "root"),
+    Loc("Cursor", WIN, "windows", ".cursor/mcp.json", "root"),
+    Loc("Cursor", WIN, "windows", ".cursor/ai-tracking", "cursor_sqlite_dir"),
 ]
 
 CURSOR_DB_GLOBS = ("globalStorage/state.vscdb", "globalStorage/state.vscdb.backup",
@@ -47,6 +49,16 @@ def claude_dir(home, env=None):
     env = os.environ if env is None else env
     d = env.get("CLAUDE_CONFIG_DIR")
     return os.path.abspath(os.path.expanduser(d)) if d else os.path.join(home, ".claude")
+
+
+def native_side(cfg):
+    """Which side is the machine we are running on: its own home, not one reached across a bridge."""
+    return "windows" if cfg.platform == "windows" else "unix"
+
+
+def home_claude(cfg, side_key, home):
+    """The Claude config dir for that home. CLAUDE_CONFIG_DIR only applies to the machine we run on."""
+    return claude_dir(home) if side_key == native_side(cfg) else os.path.join(home, ".claude")
 
 
 def sides(cfg):
@@ -65,7 +77,9 @@ def windows_home(cfg):
     key = (cfg.platform, cfg.windows_home_arg)
     if key in _WIN_CACHE:
         return _WIN_CACHE[key]
-    if cfg.platform != "wsl":
+    if cfg.platform == "windows":
+        res = (cfg.home, "this machine")
+    elif cfg.platform != "wsl":
         res = (None, "not applicable")
     elif cfg.windows_home_arg and cfg.windows_home_arg.lower() == "none":
         res = (None, "disabled")
@@ -89,7 +103,8 @@ def _is_sqlite(path):
 def discover(cfg):
     t0 = time.monotonic()
     win_path, win_source = windows_home(cfg)
-    homes = {"unix": cfg.home, "windows": win_path}
+    # On Windows the machine's own home is the "windows" side; there is no unix side to scan.
+    homes = {"unix": None if cfg.platform == "windows" else cfg.home, "windows": win_path}
     side_name = {"unix": cfg.platform, "windows": "windows"}
     roots, dbs, missing = [], [], []
     drop = [cfg.install_dir, cfg.base_dir]
@@ -110,7 +125,10 @@ def discover(cfg):
         if not home:
             continue
         side = side_name[loc.side]
-        path = claude_dir(home) if loc.path == "$CLAUDE_DIR" else os.path.join(home, loc.path)
+        if loc.path == "$CLAUDE_DIR" or (loc.path == ".claude" and loc.side == native_side(cfg)):
+            path = claude_dir(home)
+        else:
+            path = os.path.join(home, loc.path)
         if not os.path.exists(path):
             missing.append({"tool": loc.tool, "side": side, "path": path})
             continue
@@ -136,9 +154,9 @@ def discover(cfg):
     for p in projects:
         side = "windows" if win_path and is_under(p, win_path) else cfg.platform
         home = win_path if side == "windows" else cfg.home
-        home_claude = claude_dir(home) if side == cfg.platform else os.path.join(home, ".claude")
+        hc = home_claude(cfg, "windows" if side == "windows" else "unix", home)
         pc = os.path.join(p, ".claude")
-        if os.path.isdir(pc) and os.path.normpath(pc) != os.path.normpath(home_claude):
+        if os.path.isdir(pc) and os.path.normpath(pc) != os.path.normpath(hc):
             add_root(pc, "Claude Code", side, "dir")
         pm = os.path.join(p, ".mcp.json")
         if os.path.isfile(pm):
@@ -150,13 +168,13 @@ def discover(cfg):
         if not home:
             continue
         side = side_name[side_key]
-        home_claude = os.path.normpath(claude_dir(home) if side_key == "unix" else os.path.join(home, ".claude"))
-        w = Walker(home, 4, time.monotonic() + 60, prune_paths=[d for d in drop if d] + [home_claude],
+        hc = os.path.normpath(home_claude(cfg, side_key, home))
+        w = Walker(home, 4, time.monotonic() + 60, prune_paths=[d for d in drop if d] + [hc],
                    skip=_skip_for_project_walk)
         for dp, dns, fns in w:
             if ".claude" in dns:
                 pc = os.path.join(dp, ".claude")
-                if os.path.normpath(pc) != home_claude:
+                if os.path.normpath(pc) != hc:
                     add_root(pc, "Claude Code", side, "dir")
             if ".mcp.json" in fns:
                 add_root(os.path.join(dp, ".mcp.json"), "Claude Code", side, "file")
@@ -168,20 +186,23 @@ def discover(cfg):
         add_root(p, "Extra", side)
 
     self_exclude = []
-    unix_claude = claude_dir(cfg.home)
-    proj_root = os.path.join(unix_claude, "projects")
+    proj_root = os.path.join(claude_dir(cfg.home), "projects")
     marks = {platforms.claude_project_dirname(os.path.normpath(d)) for d in drop if d}
     if os.path.isdir(proj_root):
         for name in sorted(os.listdir(proj_root)):
             if any(name == m or name.startswith(m + "-") for m in marks):
                 self_exclude.append(os.path.join(proj_root, name))
 
+    # On Windows, note any WSL distro: its history is not in this profile and is not scanned here.
+    distros = platforms.wsl_distros() if cfg.platform == "windows" else []
     out = {"platform": cfg.platform, "home": cfg.home, "windows_home": win_path, "windows_home_source": win_source,
+           "wsl_distros": distros,
            "roots": roots, "cursor_dbs": dbs, "project_dirs": projects, "self_exclude": self_exclude,
            "missing": missing, "walk_truncated": walk_truncated}
     write_json(cfg.w("sources.json"), out)
     log(f"discover: {len(roots)} roots, {len(dbs)} Cursor databases, {len(projects)} project dirs, "
-        f"windows home: {win_path or '-'} ({win_source}), {time.monotonic() - t0:.1f}s")
+        f"windows home: {win_path or '-'} ({win_source}), wsl distros: {', '.join(distros) or '-'}, "
+        f"{time.monotonic() - t0:.1f}s")
     return out
 
 
@@ -192,20 +213,24 @@ def _skip_for_project_walk(name):
 
 def project_dirs(cfg, homes):
     mount = platforms.automount_root() if cfg.platform == "wsl" else None
+    native = cfg.platform == "windows"
     found = set()
     for side_key, home in homes.items():
         if not home:
             continue
         cj = read_json(os.path.join(home, ".claude.json"), {}) or {}
         for key in (cj.get("projects") or {}) if isinstance(cj, dict) else ():
-            p = platforms.from_windows_path(key, mount) if cfg.platform == "wsl" else None
+            if cfg.platform in ("wsl", "windows"):
+                p = platforms.from_windows_path(key, mount, native)
+            else:
+                p = None
             p = p or (key if key.startswith("/") else None)
             if p:
                 found.add(os.path.normpath(p))
     cursor_users = []
     if cfg.platform == "macos":
         cursor_users.append(os.path.join(cfg.home, "Library/Application Support/Cursor/User"))
-    else:
+    elif not native:
         cursor_users.append(os.path.join(cfg.home, ".config/Cursor/User"))
     if homes.get("windows"):
         cursor_users.append(os.path.join(homes["windows"], "AppData/Roaming/Cursor/User"))
@@ -213,7 +238,7 @@ def project_dirs(cfg, homes):
         for wj in glob.glob(os.path.join(glob.escape(cu), "workspaceStorage", "*", "workspace.json")):
             d = read_json(wj, {}) or {}
             for k in ("folder", "workspace"):
-                p = platforms.from_uri(d.get(k), mount) if isinstance(d, dict) else None
+                p = platforms.from_uri(d.get(k), mount, native) if isinstance(d, dict) else None
                 if p:
                     if p.endswith(".code-workspace"):
                         p = os.path.dirname(p)

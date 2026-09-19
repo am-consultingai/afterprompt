@@ -24,12 +24,12 @@ UNAME_M="${AFTERPROMPT_UNAME_M:-$(uname -m)}"
 case "$UNAME_S" in
   MINGW* | MSYS* | CYGWIN*)
     fail 4 "Git Bash, MSYS and Cygwin are not supported." \
-      "On Windows, run Afterprompt inside WSL: open Ubuntu (or another WSL distribution), clone the repository there, and run ./afterprompt.sh." \
-      "The scan covers both the WSL side and your Windows profile."
+      "On Windows, run afterprompt.cmd instead (from cmd.exe, PowerShell, or by double-clicking it). WSL is not required." \
+      "If you do use WSL, running ./afterprompt.sh inside the distribution covers both the WSL side and your Windows profile in one pass."
     ;;
   Linux) OS="linux" ;;
   Darwin) OS="darwin" ;;
-  *) fail 4 "Unsupported operating system: $UNAME_S. Afterprompt runs on macOS, Linux, and Windows through WSL." ;;
+  *) fail 4 "Unsupported operating system: $UNAME_S. Afterprompt runs on macOS, Linux, and Windows (natively via afterprompt.cmd, or inside WSL)." ;;
 esac
 
 # ---- arguments that the launcher itself acts on

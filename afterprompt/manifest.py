@@ -6,6 +6,7 @@ from collections import Counter, namedtuple
 
 from afterprompt.util import is_under, log, read_json
 
+# Matched against a forward-slash form of the path so Windows separators classify identically.
 VEND = re.compile(r"/\.local/share/claude/versions/|/\.claude/plugins/|/node_modules/")
 SESSION_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -76,8 +77,11 @@ def build(cfg, sources):
         if is_under(p, ext):
             tag = os.path.basename(p)[:3]
             side = ledger.get(tag, (None, side))[1]
-        vend = bool(VEND.search(p))
-        selfs = any(is_under(p, d) for d in self_dirs) or any(f"/{sid}" in p for sid in ids)
+        # Classification patterns are written with "/", so match against a normalised copy:
+        # on Windows the separator would otherwise hide vendored files and our own transcript.
+        pn = p.replace("\\", "/")
+        vend = bool(VEND.search(pn))
+        selfs = any(is_under(p, d) for d in self_dirs) or any(f"/{sid}" in pn for sid in ids)
         rows.append(Row(i, files[p], vend, selfs, tool, side, p))
     with open(cfg.w("manifest.tsv"), "w", encoding="utf-8") as fo:
         for r in rows:

@@ -6,7 +6,7 @@ from unittest import mock
 
 from afterprompt import known, stores
 from afterprompt.util import sha16
-from tests.helpers import TempDirTest, jwt, make_cfg, requires_rg, write
+from tests.helpers import TempDirTest, jwt, make_cfg, requires_rg, write, requires_posix
 from tests.samples import SecretFactory
 
 
@@ -181,6 +181,7 @@ class StoresTests(TempDirTest):
         pref = stores.prefixes(values)
         self.assertEqual(list(pref), [distinctive[:24]])
 
+    @requires_posix  # the macOS keychain is read through a /bin/sh helper
     def test_keychain(self):  # U-STO-21
         tok = "sk-ant-oat01-" + self.f.chars("u", 90)
         bindir = os.path.join(self.tmp, "bin")

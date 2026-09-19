@@ -8,15 +8,20 @@ from urllib.parse import unquote
 EXCLUDED_PROFILES = {"public", "default", "default user", "all users", "wdagutilityaccount"}
 
 
+PLATFORMS = ("macos", "linux", "wsl", "windows")
+
+
 def detect(override=None, sys_platform=None, osrelease_path="/proc/sys/kernel/osrelease", env=None):
     if override:
-        if override not in ("macos", "linux", "wsl"):
+        if override not in PLATFORMS:
             raise ValueError(f"unknown platform {override!r}")
         return override
     env = os.environ if env is None else env
     plat = sys_platform or sys.platform
     if plat == "darwin":
         return "macos"
+    if plat == "win32":
+        return "windows"
     if env.get("WSL_DISTRO_NAME"):
         return "wsl"
     try:
@@ -50,8 +55,9 @@ def automount_root(conf_path="/etc/wsl.conf"):
 _DRIVE = re.compile(r"^([A-Za-z]):[\\/](.*)$")
 
 
-def from_windows_path(p, mount=None):
-    """C:\\x, C:/x, file:///c%3A/x → <mount>c/x. None for anything else."""
+def from_windows_path(p, mount=None, native=False):
+    """C:\\x, C:/x, file:///c%3A/x → <mount>c/x, or C:\\x when running on Windows itself.
+    None for anything else."""
     if not isinstance(p, str):
         return None
     if p.lower().startswith("file:///"):
@@ -59,26 +65,34 @@ def from_windows_path(p, mount=None):
     m = _DRIVE.match(p)
     if not m:
         return None
+    if native:
+        rest = m.group(2).replace("/", "\\").strip("\\")
+        return f"{m.group(1).upper()}:\\{rest}"
     mount = mount if mount is not None else automount_root()
     rest = m.group(2).replace("\\", "/").strip("/")
     return f"{mount}{m.group(1).lower()}" + (f"/{rest}" if rest else "")
 
 
-def from_uri(uri, mount=None):
-    """Cursor workspace URIs: file:///… (unix or Windows) and vscode-remote://wsl+<distro>/path."""
+def from_uri(uri, mount=None, native=False):
+    """Cursor workspace URIs: file:///… (unix or Windows) and vscode-remote://wsl+<distro>/path.
+    On Windows (native) a Windows URI stays a Windows path and a WSL remote URI is not reachable."""
     if not isinstance(uri, str):
         return None
     low = uri.lower()
     if low.startswith("vscode-remote://"):
+        if native:
+            return None
         rest = uri[len("vscode-remote://"):]
         authority, _, path = rest.partition("/")
         if unquote(authority).lower().startswith("wsl+"):
             return "/" + unquote(path)
         return None
     if low.startswith("file://"):
-        win = from_windows_path(uri, mount)
+        win = from_windows_path(uri, mount, native)
         if win:
             return win
+        if native:
+            return None
         return unquote(uri[len("file://"):])
     return None
 
@@ -149,3 +163,43 @@ def detect_windows_home(run=subprocess.run, mount=None, env=None, which=None):
 def claude_project_dirname(path):
     """Claude Code stores each project's sessions under ~/.claude/projects/<path with non-alphanumerics as '-'>."""
     return re.sub(r"[^A-Za-z0-9]", "-", path)
+
+
+# Distributions that exist to back Docker Desktop: they hold no user's AI history.
+PSEUDO_DISTROS = {"docker-desktop", "docker-desktop-data", "rancher-desktop", "rancher-desktop-data"}
+
+
+def wsl_distros(run=subprocess.run, which=None):
+    """Installed WSL distributions, as seen from Windows. [] when WSL is not installed at all.
+
+    A machine without WSL is the normal case, not a degraded one: the list is simply empty.
+    """
+    import shutil
+    which = which or shutil.which
+    if not which("wsl.exe"):
+        return []
+    try:
+        r = run(["wsl.exe", "--list", "--quiet"], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if getattr(r, "returncode", 1) != 0:
+        return []
+    out = r.stdout if isinstance(r.stdout, bytes) else (r.stdout or "").encode()
+    # wsl.exe writes UTF-16LE; fall back to UTF-8 for a shim or a future change of heart.
+    try:
+        text = out.decode("utf-16-le")
+    except (UnicodeDecodeError, ValueError):
+        text = out.decode("utf-8", "replace")
+    if "\x00" in text:
+        text = text.replace("\x00", "")
+    names = []
+    for line in text.replace("\r", "").split("\n"):
+        name = line.strip().lstrip("\ufeff").strip()
+        if name and name.lower() not in PSEUDO_DISTROS and name not in names:
+            names.append(name)
+    return names
+
+
+def wsl_home_unc(distro):
+    r"""Where a distro's home directories appear from Windows: \\wsl.localhost\<distro>\home."""
+    return rf"\\wsl.localhost\{distro}\home"

@@ -10,7 +10,7 @@ from afterprompt.util import human_bytes, read_json, write_json
 
 ASSETS = ("brand.css", "am-logo-white-600.png", "am-favicon.png")
 SIDE_NAMES = {"wsl": "WSL", "windows": "Windows", "macos": "macOS", "linux": "Linux"}
-PLATFORM_NAMES = {"wsl": "Windows (WSL)", "macos": "macOS", "linux": "Linux"}
+PLATFORM_NAMES = {"wsl": "Windows (WSL)", "macos": "macOS", "linux": "Linux", "windows": "Windows"}
 CATEGORY_TITLES = {
     "configuration": "Stored in AI tool configuration",
     "pattern": "Possible credentials",
@@ -47,6 +47,7 @@ def coverage(cfg, sources):
         "platform": sources.get("platform"),
         "windows_home": sources.get("windows_home"),
         "windows_home_source": sources.get("windows_home_source"),
+        "wsl_distros": sources.get("wsl_distros", []),
         "sources": man.get("per_source", []),
         "files": man.get("files", 0), "bytes": man.get("bytes", 0),
         "missing_locations": sources.get("missing", []),
@@ -95,7 +96,10 @@ def build_findings(cfg, sources, run_meta):
 def context_line(data):
     when = data["finished"].replace("T", " ")[:16]
     plat = PLATFORM_NAMES.get(data["platform"]["kind"], data["platform"]["kind"])
-    extra = f" · Windows profile {data['platform']['windows_home']}" if data["platform"].get("windows_home") else ""
+    # The Windows profile is only worth naming when it was reached across the WSL bridge; on Windows
+    # itself it is simply the home directory and the note would be noise.
+    show_profile = data["platform"]["kind"] == "wsl" and data["platform"].get("windows_home")
+    extra = f" · Windows profile {data['platform']['windows_home']}" if show_profile else ""
     return f"{when} · {data['mode']} scan · {plat}{extra}"
 
 
@@ -169,6 +173,10 @@ def coverage_rows(data):
         rows.append(("AI tool data", "none found"))
     if c["platform"] == "wsl":
         rows.append(("Windows profile", f"{c['windows_home'] or 'not found'} ({c['windows_home_source']})"))
+    if c.get("wsl_distros"):
+        # Saying so is the point: a clean Windows result says nothing about history inside a distro.
+        rows.append(("WSL distributions found but not scanned",
+                     f"{', '.join(c['wsl_distros'])} — run Afterprompt inside each one to cover it"))
     cd = c["cursor_databases"]
     rows.append(("Cursor chat databases", f"{cd['ok']} of {cd['total']} read"))
     for f in cd["failed"]:

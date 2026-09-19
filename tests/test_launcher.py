@@ -7,11 +7,12 @@ import subprocess
 import tarfile
 import unittest
 
-from tests.helpers import SCAN_SH, TempDirTest
+from tests.helpers import SCAN_SH, TempDirTest, requires_posix
 
 BASH = os.environ.get("AFTERPROMPT_TEST_BASH") or "bash"
 
 
+@requires_posix  # afterprompt.sh needs a POSIX shell; the Windows entry point has its own tests
 class LauncherTests(TempDirTest):
     def run_sh(self, *args, **env):
         e = {k: v for k, v in os.environ.items() if not k.startswith("AFTERPROMPT_") or k == "AFTERPROMPT_PYTHON"}

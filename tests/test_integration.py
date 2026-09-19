@@ -4,7 +4,7 @@ import os
 import stat
 import unittest
 
-from tests.helpers import Fixture, TempDirTest, requires_rg, run_dirs
+from tests.helpers import Fixture, TempDirTest, requires_posix, requires_rg, run_dirs
 
 
 def summary(findings):
@@ -53,6 +53,7 @@ class IntegrationTests(TempDirTest):
         self.assertTrue(all(l["decoded"] for l in rotate[fx.masked("F4")]["locations"]))
         self.assertIn("decode", fx.findings()["coverage"])
 
+    @requires_posix  # macOS-only behaviour
     def test_macos_spawn_and_keychain(self):  # I-3
         fx = Fixture(self.tmp, "macos")
         tok = "sk-ant-oat01-" + fx.f.chars("u", 90)
@@ -111,6 +112,7 @@ class IntegrationTests(TempDirTest):
                     for v in secrets:
                         self.assertNotIn(v, data, f"{fn} contains a planted secret")
 
+    @requires_posix  # asserts POSIX 0700/0600 modes; NTFS uses ACLs
     def test_permissions(self):  # I-6
         fx = Fixture(self.tmp, "linux")
         self.scan(fx, expect=10)
@@ -172,6 +174,7 @@ class IntegrationTests(TempDirTest):
             self.assertIn("Nothing to rotate", fh.read())
 
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read mode-000 files")
+    @requires_posix  # chmod 000 does not deny the owner on Windows
     def test_unreadable_cursor_db(self):  # I-12
         fx = Fixture(self.tmp, "linux")
         db = os.path.join(fx.home, ".config", "Cursor", "User", "globalStorage", "state.vscdb")
@@ -179,3 +182,51 @@ class IntegrationTests(TempDirTest):
         self.scan(fx, expect=10)
         cov = fx.findings()["coverage"]["cursor_databases"]
         self.assertEqual(len(cov["failed"]), 1)
+
+
+@requires_rg
+class WindowsNativeIntegrationTests(TempDirTest):
+    """W3/W6: a full scan of a Windows-shaped machine, with no WSL bridge in play.
+
+    The fixture is generated, so this runs anywhere — and on a real Windows host it also
+    exercises afterprompt.ps1 as the launcher.
+    """
+
+    def scan(self, fx, *args, expect=None, **env):
+        p = fx.run(*args, env=fx.env(**env) if env else None)
+        out = p.stdout.decode("utf-8", "replace") + p.stderr.decode("utf-8", "replace")
+        if expect is not None:
+            self.assertEqual(p.returncode, expect, out)
+        return p, out
+
+    def test_windows_quick(self):  # I-WIN-1 (W3)
+        fx = Fixture(self.tmp, "windows")
+        self.scan(fx, expect=10)
+        d = fx.findings()
+        self.assertEqual(d["platform"]["kind"], "windows")
+
+        rotate, review = summary(d)
+        # The key pasted into a transcript and still live in .env
+        self.assertIn(fx.masked("F1"), rotate)
+        self.assertEqual(rotate[fx.masked("F1")]["still_on_disk"][0]["key"], "ANTHROPIC_API_KEY")
+        # The password that only appears in AppData\Local\claude-cli-nodejs and .cursor\plans —
+        # locations a run mislabelled as "linux" never looks at.
+        self.assertIn(fx.masked("F3"), rotate)
+        # The token in Cursor's AppData\Roaming database
+        self.assertIn(fx.masked("F2"), rotate)
+        self.assertEqual(rotate[fx.masked("F2")]["tools"], ["Cursor"])
+        self.assertEqual(d["coverage"]["cursor_databases"]["ok"], 1)
+
+        # Every side reported is the Windows one; nothing claims a unix side.
+        for r in list(rotate.values()) + list(review.values()):
+            self.assertEqual(set(r["sides"]), {"windows"}, r["masked"])
+
+    def test_windows_findings_have_windows_paths(self):  # I-WIN-2 (W3)
+        fx = Fixture(self.tmp, "windows")
+        self.scan(fx, expect=10)
+        d = fx.findings()
+        rotate, _ = summary(d)
+        displays = [loc["display"] for r in rotate.values() for loc in r["locations"]]
+        self.assertTrue(displays)
+        # Locations are shown relative to the profile, never through a /mnt/c bridge path.
+        self.assertFalse([p for p in displays if p.startswith("/mnt/")], displays)

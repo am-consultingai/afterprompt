@@ -16,8 +16,18 @@ from tests.samples import SecretFactory
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCAN_SH = os.path.join(REPO, "afterprompt.sh")
+SCAN_PS1 = os.path.join(REPO, "afterprompt.ps1")
 HAVE_RG = shutil.which("rg") is not None
 requires_rg = unittest.skipUnless(HAVE_RG, "ripgrep is not installed")
+
+WINDOWS = sys.platform == "win32"
+# POSIX-only behaviour: file modes, symlinks, chmod-based denial, shell scripts, fork.
+requires_posix = unittest.skipIf(WINDOWS, "POSIX-only behaviour")
+
+
+def slash(path):
+    """Compare paths across platforms without caring which separator the OS used."""
+    return path.replace(os.sep, "/")
 
 
 class TempDirTest(unittest.TestCase):
@@ -45,7 +55,7 @@ def make_cfg(root, platform="linux", home=None, windows_home=None, mode="quick",
                     home=home or os.path.join(root, "home"), windows_home_arg=windows_home or "none",
                     workers=2, mem_cap_bytes=2 * 1024 ** 3, file_timeout=60, pattern_timeout=60, walk_budget=20,
                     rg=shutil.which("rg") or "rg", install_dir=REPO, platform=platform,
-                    mp_start="spawn" if platform == "macos" else "fork")
+                    mp_start="spawn" if platform in ("macos", "windows") or WINDOWS else "fork")
     for k, v in kw.items():
         setattr(cfg, k, v)
     os.makedirs(os.path.join(cfg.work_dir, "state"), exist_ok=True)
@@ -84,7 +94,7 @@ def jwt(factory, exp):
 
 
 class Fixture:
-    """A fake machine. `platform` is linux, macos, or wsl. Secrets are generated per instance."""
+    """A fake machine. `platform` is linux, macos, wsl, or windows. Secrets are generated per instance."""
 
     def __init__(self, root, platform="wsl", seed=99, clean=False):
         self.root = root
@@ -182,7 +192,13 @@ class Fixture:
               json.dumps({"installed": {"client_id": client_id, "project_id": "demo-app"}}))
         s["F17"] = client_id
 
-        if self.platform == "wsl":
+        if self.platform == "windows":
+            # A Windows machine keeps everything in one profile: no second side, no /mnt bridge.
+            cursor_user = os.path.join(home, "AppData", "Roaming", "Cursor", "User")
+            write(os.path.join(home, "AppData", "Local", "claude-cli-nodejs", "mcp-logs", "cache.log"),
+                  f"[info] started with DB_PASSWORD={s['F3']}\n")
+            write(os.path.join(home, ".cursor", "plans", "plan.md"), f"Use DB_PASSWORD={s['F3']} for staging.\n")
+        elif self.platform == "wsl":
             cursor_user = os.path.join(self.win, "AppData", "Roaming", "Cursor", "User")
             jsonl(os.path.join(self.win, ".claude", "projects", "C--Users-me-app", "s2.jsonl"),
                   [{"type": "assistant", "message": {"content": f"connecting with DB_PASSWORD={s['F3']}"}}])
@@ -209,13 +225,18 @@ class Fixture:
                     "AFTERPROMPT_WALK_BUDGET": "20"})
         if self.platform == "wsl":
             env["AFTERPROMPT_WINDOWS_HOME"] = self.win
-        if self.platform == "macos":
+        if self.platform in ("macos", "windows") or WINDOWS:
             env["AFTERPROMPT_MP_START"] = "spawn"
         env.update(extra)
         return env
 
     def run(self, *args, env=None, bash=None):
-        cmd = [bash or os.environ.get("AFTERPROMPT_TEST_BASH") or "bash", SCAN_SH, *args]
+        if WINDOWS:
+            # No bash on Windows: the launcher under test is the PowerShell one.
+            cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                   "-File", SCAN_PS1, *args]
+        else:
+            cmd = [bash or os.environ.get("AFTERPROMPT_TEST_BASH") or "bash", SCAN_SH, *args]
         p = subprocess.run(cmd, capture_output=True, env=env or self.env(), timeout=900)
         return p
 

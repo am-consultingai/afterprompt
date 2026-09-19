@@ -1,4 +1,8 @@
 # Always check out text files with LF line endings, including on Windows (Git for Windows defaults to CRLF).
 # afterprompt.sh runs under bash, which fails on CRLF, and Windows users run it from WSL.
 * text=auto eol=lf
+# Batch files are the exception: cmd.exe is documented to want CRLF, and afterprompt.cmd is the
+# Windows front door, so it must not depend on cmd.exe tolerating LF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
 *.png binary

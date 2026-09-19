@@ -71,3 +71,35 @@ jobs:
           cp -r . ~/afterprompt
           cd ~/afterprompt
           python3 -m unittest discover -s tests -t . -v
+
+  windows:
+    # Native Windows with no WSL involved: the path a Windows user without WSL actually takes.
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Bootstrap through afterprompt.cmd (finds Python, verifies the ripgrep download)
+        shell: cmd
+        env:
+          AFTERPROMPT_BOOTSTRAP_ONLY: "1"
+        run: afterprompt.cmd
+      - name: Full test suite on native Windows
+        shell: pwsh
+        env:
+          AFTERPROMPT_PYTHON: python
+          AFTERPROMPT_TEST_REAL_WSL: "1"
+        run: |
+          $env:PATH = "$env:USERPROFILE\.afterprompt\bin;$env:PATH"
+          rg --version
+          python -m unittest discover -s tests -t . -v
+      - name: Scan a fixture machine end to end through the Windows launcher
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:USERPROFILE\.afterprompt\bin;$env:PATH"
+          python -m unittest tests.test_integration.WindowsNativeIntegrationTests -v

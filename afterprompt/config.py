@@ -77,7 +77,9 @@ def from_args(args, run_dir):
     install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     base_dir = base_dir_from_env()
     plat = platforms.detect(os.environ.get("AFTERPROMPT_PLATFORM") or None)
-    mp = os.environ.get("AFTERPROMPT_MP_START") or ("spawn" if plat == "macos" or sys.platform == "darwin" else "fork")
+    # fork is unavailable on Windows and unsafe from a multi-threaded parent on macOS.
+    native_spawn = plat in ("macos", "windows") or sys.platform in ("darwin", "win32")
+    mp = os.environ.get("AFTERPROMPT_MP_START") or ("spawn" if native_spawn else "fork")
     win_arg = args.windows_home if args.windows_home is not None else (os.environ.get("AFTERPROMPT_WINDOWS_HOME") or None)
     cfg = RunConfig(
         mode="deep" if args.deep else "quick",

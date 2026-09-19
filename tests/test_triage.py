@@ -4,7 +4,7 @@ import time
 
 from afterprompt import triage
 from afterprompt.util import write_json
-from tests.helpers import TempDirTest, make_cfg, write
+from tests.helpers import TempDirTest, make_cfg, write, slash
 
 
 class TriageTests(TempDirTest):
@@ -61,8 +61,9 @@ class TriageTests(TempDirTest):
         rot, _ = self.by_hash(self.build())
         r = rot["v1"]
         self.assertEqual(r["category"], "live_credential")
-        self.assertEqual(r["label"], "Secret from ~/app/.env (DB_PASSWORD)")
-        self.assertEqual(r["still_on_disk"], [{"store": "~/app/.env", "key": "DB_PASSWORD"}])
+        self.assertEqual(slash(r["label"]), "Secret from ~/app/.env (DB_PASSWORD)")
+        self.assertEqual([{**d, "store": slash(d["store"])} for d in r["still_on_disk"]],
+                         [{"store": "~/app/.env", "key": "DB_PASSWORD"}])
         self.assertEqual(r["revoke"]["where"], "The service that issued DB_PASSWORD")
 
     def test_tier_a(self):  # U-TRI-2
@@ -169,7 +170,7 @@ class TriageTests(TempDirTest):
         self.vendor.append(dict(self.vendor[-1], f=ext, vh="r2", h="r2", o=5, vo=5))
         rot, _ = self.by_hash(self.build())
         self.assertTrue(rot["r1"]["locations"][0]["decoded"])
-        self.assertEqual(rot["r1"]["locations"][0]["display"], "~/.claude/projects/p/s.jsonl")
+        self.assertEqual(slash(rot["r1"]["locations"][0]["display"]), "~/.claude/projects/p/s.jsonl")
         self.assertTrue(rot["r2"]["locations"][0]["display"].endswith("state.vscdb (chat database)"))
         self.assertEqual(rot["r2"]["tools"], ["Cursor"])
 

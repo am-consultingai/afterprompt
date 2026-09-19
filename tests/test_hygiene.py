@@ -56,3 +56,79 @@ class HygieneTests(unittest.TestCase):
                         names = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
                     offenders += [f"{fn}: {n}" for n in names if n in NETWORK_MODULES]
         self.assertEqual(offenders, [])
+
+    def test_windows_launcher_matches_shell_launcher(self):  # S-6 (W4)
+        """The two launchers must agree on the contract they share: the same ripgrep version,
+        the same environment variables and the same options handled before the scan starts."""
+        sh = open(os.path.join(REPO, "afterprompt.sh"), encoding="utf-8").read()
+        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
+        cmd = open(os.path.join(REPO, "afterprompt.cmd"), encoding="utf-8").read()
+
+        version = re.search(r'RG_VERSION="([\d.]+)"', sh).group(1)
+        self.assertIn(f"$RG_VERSION = '{version}'", ps1)
+
+        for var in ("AFTERPROMPT_DIR", "AFTERPROMPT_PYTHON", "AFTERPROMPT_RG", "AFTERPROMPT_RG_SHA256",
+                    "AFTERPROMPT_RG_BASE_URL", "AFTERPROMPT_IGNORE_SYSTEM_RG", "AFTERPROMPT_BOOTSTRAP_ONLY"):
+            self.assertIn(var, ps1, f"{var} is honoured by afterprompt.sh but not by afterprompt.ps1")
+
+        for opt in ("--no-download", "--help", "--version", "--status"):
+            self.assertIn(opt, ps1, f"{opt} is handled by afterprompt.sh but not by afterprompt.ps1")
+
+        # The checksum must be a real pin, not a placeholder.
+        for sha in re.findall(r"'([0-9a-f]{64})'", ps1):
+            self.assertEqual(len(sha), 64)
+        self.assertEqual(len(re.findall(r"'([0-9a-f]{64})'", ps1)), 2, "expected x86_64 and aarch64 pins")
+
+        # The .cmd shim exists so an unsigned .ps1 still runs under the default execution policy.
+        self.assertIn("-ExecutionPolicy Bypass", cmd)
+        self.assertIn("afterprompt.ps1", cmd)
+
+    def test_windows_launcher_does_not_bind_scan_options(self):  # S-7 (W4)
+        """A param() block would let PowerShell claim options like --out before the scan sees them."""
+        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
+        code = [ln for ln in ps1.splitlines() if not ln.lstrip().startswith("#")]
+        self.assertFalse([ln for ln in code if "[CmdletBinding()]" in ln])
+        self.assertFalse([ln for ln in code if re.match(r"\s*param\s*\(", ln)],
+                         "afterprompt.ps1 must read $args instead of declaring parameters")
+        self.assertIn("$ScanArgs = @($args)", ps1)
+
+    def test_no_machine_specific_paths(self):  # S-8
+        """Nothing that ships may hard-code one machine's paths, user or drive letter.
+
+        Locations must be derived at run time (%USERPROFILE%, $env:TEMP, $HOME, the WSL automount
+        root), or an install on any other machine inherits this one's layout.
+        """
+        files = ["afterprompt.sh", "afterprompt.ps1", "afterprompt.cmd", "tools/winrun.sh"]
+        for dp, dns, fns in os.walk(os.path.join(REPO, "afterprompt")):
+            dns[:] = [d for d in dns if d != "__pycache__"]
+            files += [os.path.relpath(os.path.join(dp, fn), REPO) for fn in fns if fn.endswith(".py")]
+
+        # An absolute Windows path with a real user or a fixed profile folder, rather than a variable.
+        absolute_win = re.compile(r"[A-Za-z]:\\\\?(?:Users|Documents and Settings)\\\\?(?!<)[A-Za-z0-9_.-]+", re.I)
+        # A unix home belonging to somebody in particular.
+        absolute_home = re.compile(r"/(?:home|Users)/(?!<|\$|me\b|u\b|you\b)[a-z][a-z0-9_-]*/")
+        offenders = []
+        for rel in files:
+            with open(os.path.join(REPO, rel), encoding="utf-8") as fh:
+                for i, line in enumerate(fh, 1):
+                    code = line.split("#", 1)[0] if rel.endswith((".sh", ".py")) else line
+                    for rx in (absolute_win, absolute_home):
+                        m = rx.search(code)
+                        if m:
+                            offenders.append(f"{rel}:{i}: {m.group(0)}")
+        self.assertEqual(offenders, [])
+
+    def test_windows_launcher_derives_its_locations(self):  # S-9
+        """The Windows launcher must discover Python and the architecture rather than assume them."""
+        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
+        # No fixed Python version folders: a list like Python313 stops working when 3.14 ships.
+        self.assertFalse(re.search(r"Python\d{2,3}\\python\.exe", ps1),
+                         "discover Python installs instead of listing version folders")
+        # A 32-bit PowerShell on 64-bit Windows would otherwise pick the wrong ripgrep build.
+        self.assertIn("PROCESSOR_ARCHITEW6432", ps1)
+        # GitHub refuses TLS below 1.2, which Windows PowerShell 5.1 may still default to.
+        self.assertIn("Tls12", ps1)
+        # Per-user locations, never a fixed folder.
+        self.assertIn("$env:USERPROFILE", ps1)
+        # The cmdlets it relies on arrived in PowerShell 5; an older machine gets a clear message.
+        self.assertIn("$PSVersionTable.PSVersion.Major -lt 5", ps1)

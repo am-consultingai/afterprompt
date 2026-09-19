@@ -4,7 +4,7 @@ import sqlite3
 import unittest
 
 from afterprompt import cursor
-from tests.helpers import TempDirTest, cursor_db, make_cfg
+from tests.helpers import TempDirTest, cursor_db, make_cfg, requires_posix
 
 
 def read_parts(cfg):
@@ -56,6 +56,7 @@ class CursorTests(TempDirTest):
         self.assertIn("from the backup", read_parts(self.cfg))
 
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read mode-000 files")
+    @requires_posix  # chmod 000 does not deny the owner on Windows
     def test_unreadable_db(self):  # U-CUR-4
         bad = os.path.join(self.tmp, "locked.vscdb")
         good = os.path.join(self.tmp, "good.vscdb")

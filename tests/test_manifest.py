@@ -2,7 +2,7 @@ import os
 import unittest
 
 from afterprompt import manifest
-from tests.helpers import TempDirTest, make_cfg, write
+from tests.helpers import TempDirTest, make_cfg, requires_posix, slash, write
 
 
 class ManifestTests(TempDirTest):
@@ -26,7 +26,7 @@ class ManifestTests(TempDirTest):
     def rows(self, **kw):
         cfg = make_cfg(self.tmp, "linux", self.home, **kw)
         stats = manifest.build(cfg, self.sources)
-        return {os.path.relpath(r.path, self.home): r for r in manifest.load(cfg)}, stats
+        return {slash(os.path.relpath(r.path, self.home)): r for r in manifest.load(cfg)}, stats
 
     def test_flags(self):  # U-MAN-1
         rows, stats = self.rows()
@@ -41,6 +41,7 @@ class ManifestTests(TempDirTest):
         self.assertNotIn(".claude/projects/-app/skip-me.jsonl", rows)
         self.assertEqual(stats["excluded"], 1)
 
+    @requires_posix  # creating a symlink on Windows needs SeCreateSymbolicLinkPrivilege
     def test_symlink_oddname_unreadable(self):  # U-MAN-3
         os.symlink(os.path.join(self.claude, "projects", "-app", "s.jsonl"), os.path.join(self.claude, "link.jsonl"))
         write(os.path.join(self.claude, "odd\tname.txt"), "x")
@@ -51,3 +52,23 @@ class ManifestTests(TempDirTest):
         self.assertEqual(stats["odd_names"], 1)
         if not (hasattr(os, "geteuid") and os.geteuid() == 0):
             self.assertEqual(stats["unreadable"], 1)
+
+
+class SeparatorTests(TempDirTest):
+    """W3: vendored detection must not depend on the path separator — on Windows a
+    node_modules copy of a key would otherwise be reported as a live finding."""
+
+    def test_vendored_matches_windows_separators(self):  # U-MAN-W1 (W3)
+        from afterprompt.manifest import VEND
+        for p in (r"C:\Users\me\.claude\plugins\p\node_modules\x.js",
+                  r"C:\Users\me\.local\share\claude\versions\1.2.3\cli.js",
+                  "/home/me/.claude/plugins/p/node_modules/x.js"):
+            self.assertTrue(VEND.search(p.replace("\\", "/")), p)
+        self.assertIsNone(VEND.search(r"C:\Users\me\app\.env".replace("\\", "/")))
+
+    def test_self_session_matches_windows_separators(self):  # U-MAN-W2 (W3)
+        """Our own transcript must be recognised on Windows too, or the tool reports its own output."""
+        sid = "0e8f9a52-1111-4222-8333-944455556666"
+        win = rf"C:\Users\me\.claude\projects\-app\{sid}.jsonl"
+        self.assertIn(f"/{sid}", win.replace("\\", "/"))
+        self.assertNotIn(f"/{sid}", win)  # what the code used to test, and why it failed

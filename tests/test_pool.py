@@ -1,5 +1,7 @@
 import json
+import multiprocessing
 import os
+import unittest
 
 from afterprompt import pool
 from tests.helpers import TempDirTest, make_cfg
@@ -37,6 +39,7 @@ class PoolTests(TempDirTest):
                                 lambda it, why: crashed.__setitem__(it[0], why), cfg, **kw)
         return crashed, skipped
 
+    @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "no fork start method")
     def test_fork(self):  # U-POOL-1
         cfg = make_cfg(self.tmp, "linux", mp_start="fork")
         crashed, _ = self.run_items(touch_item, self.items(8), cfg)
