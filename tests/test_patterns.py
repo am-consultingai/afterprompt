@@ -66,3 +66,57 @@ class PatternTests(unittest.TestCase):
         key = "xai-" + SecretFactory(5).chars("a", 108)
         self.assertIsNotNone(rx.search("GROKKEY" + key + " next"))
 
+
+
+class PatternFileTests(unittest.TestCase):
+    """Patterns are data (patterns.json): a vendor changing its key format is an edit there, checked here."""
+
+    def good(self):
+        return {"schema": 1, "patterns": [{"name": "demo_key", "tier": "A", "regex": r"\bdemo_[a-z0-9]{20}\b",
+                                           "label": "Demo key", "group": "Demo",
+                                           "revoke": {"where": "Demo console", "url": "https://demo.example/keys"}}]}
+
+    def test_shipped_file_is_valid(self):  # U-PAT-8
+        import json
+        with open(P.PATH, encoding="utf-8") as fh:
+            self.assertEqual(P.validate(json.load(fh)), [])
+        self.assertEqual(P.validate(self.good()), [])
+
+    def test_every_mistake_is_reported(self):  # U-PAT-9
+        import copy
+        first = lambda d: d["patterns"][0]  # noqa: E731
+        cases = {
+            "expected": lambda d: d.update(schema=3),
+            "lower_snake_case": lambda d: first(d).update(name="Demo Key"),
+            "listed twice": lambda d: d["patterns"].append(copy.deepcopy(first(d))),
+            "tier must be": lambda d: first(d).update(tier="D"),
+            "regex missing": lambda d: first(d).pop("regex"),
+            "does not compile": lambda d: first(d).update(regex="(unclosed"),
+            "lookaround": lambda d: first(d).update(regex=r"demo(?=_key)"),
+            "backreferences": lambda d: first(d).update(regex=r"(a)\1"),
+            "label missing": lambda d: first(d).update(label=" "),
+            "https:// url": lambda d: first(d)["revoke"].update(url="http://insecure.example"),
+            "true or absent": lambda d: first(d).update(header_only=False),
+            "only applies to tier B": lambda d: first(d).update(rotate_structural=True),
+            "unknown fields": lambda d: first(d).update(severity="high"),
+        }
+        for want, fn in cases.items():
+            with self.subTest(mistake=want):
+                d = self.good()
+                fn(d)
+                errors = P.validate(d)
+                self.assertTrue(any(want in e for e in errors), errors)
+
+    def test_load_refuses_an_invalid_file(self):  # U-PAT-10
+        import json
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump({"schema": 1, "patterns": [{"name": "x", "tier": "A", "regex": "(?<=a)b", "label": "X"}]}, fh)
+        try:
+            with self.assertRaises(P.PatternError) as cm:
+                P.load(fh.name)
+            self.assertIn("ripgrep", str(cm.exception))
+        finally:
+            os.remove(fh.name)
+
+    def test_every_pattern_has_a_group(self):  # U-PAT-11
+        self.assertTrue(all(r.get("group") for r in P.RULES))

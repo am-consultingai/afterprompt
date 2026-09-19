@@ -223,7 +223,7 @@ afterprompt/
   databases.py          SQLite extraction (Cursor's chat databases and the like)
   manifest.py           file enumeration
   vendor.py             pattern passes (one ripgrep run per pattern)
-  patterns.py           the 140 patterns, labels and revoke links
+  patterns.json         the 140 patterns, labels, revoke links and rotate/review flags (patterns.py checks them)
   decode.py             deep mode decoding
   entropy.py            deep mode entropy sweep
   stores.py, known.py   live credential collection and search
