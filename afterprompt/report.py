@@ -100,6 +100,7 @@ def build_findings(cfg, sources, run_meta):
                         "dismissed": sum(tri["dismissed"].values())},
             "rotate": tri["rotate"], "review": tri["review"], "review_totals": tri["review_totals"],
             "review_truncated": tri["review_truncated"], "dismissed": tri["dismissed"],
+            "review_dropped": tri.get("review_dropped", {}),
             "coverage": coverage(cfg, sources)}
     from afterprompt.util import display_path
     wh = sources.get("windows_home")
@@ -245,6 +246,10 @@ def coverage_rows(data):
         rows.append(("Prompts reviewed", f"{c['prompts'].get('unique_prompts', 0):,}"))
     if c["pattern_truncations"]:
         rows.append(("Pattern passes cut short", "; ".join(c["pattern_truncations"])))
+    dropped = (data.get("review_dropped") or {}).get("entropy") or {}
+    if dropped:
+        rows.append(("Random-looking tokens not shown",
+                     "; ".join(f"{k}: {v:,}" for k, v in sorted(dropped.items(), key=lambda kv: -kv[1]))))
     if "decode" in c:
         d = c["decode"]
         status = ", ".join(f"{k} {v}" for k, v in sorted(d["statuses"].items()))

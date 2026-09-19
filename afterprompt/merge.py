@@ -70,7 +70,7 @@ def merge_findings(parts):
     merged = {}     # hash -> [record, section]
     order = []
     extra_totals = {c: 0 for c in REVIEW_ORDER}
-    dismissed = {}
+    dismissed, dropped = {}, {}
     for data, side, prefix in parts:
         for section, recs in (("rotate", data.get("rotate", [])), ("review", data.get("review", []))):
             for rec in recs:
@@ -91,6 +91,8 @@ def merge_findings(parts):
                 extra_totals[c] += max(0, n - listed.get(c, 0))
         for k, v in (data.get("dismissed") or {}).items():
             dismissed[k] = dismissed.get(k, 0) + v
+        for k, v in ((data.get("review_dropped") or {}).get("entropy") or {}).items():
+            dropped[k] = dropped.get(k, 0) + v
     rotate = sorted((merged[h][0] for h in order if merged[h][1] == "rotate"), key=rotate_key)
     review = []
     totals = {}
@@ -105,7 +107,7 @@ def merge_findings(parts):
         r["id"] = f"V{i}"
     truncated = {c: n - CAPS[c] for c, n in totals.items() if n > CAPS[c]}
     return {"rotate": rotate, "review": review, "review_totals": totals, "review_truncated": truncated,
-            "dismissed": dismissed}
+            "dismissed": dismissed, "review_dropped": {"entropy": dropped} if dropped else {}}
 
 
 def _sum(a, b):

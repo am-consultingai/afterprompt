@@ -37,6 +37,8 @@ CLS_RULES = [
                             rb"tar|toml|ini|log)$", re.I)),
 ]
 KEEP = {"unclassified", "apps_script_id", "atlassian", "anthropic", "jwt", "long_token"}
+# Bits of entropy per character a token needs to be kept: less when a secret-related word is right before it.
+MIN_ENTROPY_NEAR_KEYWORD, MIN_ENTROPY = 3.5, 3.8
 
 
 def classify(v):
@@ -143,7 +145,7 @@ def sweep_path(path, idx, timeout, block=8 * 1024 ** 2):
                     nk = KEYWORD.search(lookback) is not None
                     nks = KEYWORD_STRICT.search(lookback) is not None
                     e = ent(v)
-                    if e < (3.5 if nk else 3.8):
+                    if e < (MIN_ENTROPY_NEAR_KEYWORD if nk else MIN_ENTROPY):
                         continue
                     c = classify(v)
                     if c is None:

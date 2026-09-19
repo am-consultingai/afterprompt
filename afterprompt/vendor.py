@@ -126,6 +126,12 @@ def value_part(name, m):
 
 
 CODE_CHARS = re.compile(rb"[$%{}()\[\]<>\\]")
+# A vendor-format value is only rotate-worthy when it looks generated: real keys are at least 20 characters with
+# at least 3.5 bits of entropy per character; below that they are examples, truncations or identifiers.
+VENDOR_MIN_LEN, VENDOR_MIN_ENTROPY = 20, 3.5
+# A structural value (password=…, a connection string) needs 8+ characters, a digit and 3.0 bits per character to
+# count as a possible secret; "password=changeme" and "token=${TOKEN}" fall below.
+SECRET_MIN_LEN, SECRET_MIN_ENTROPY = 8, 3.0
 HAS_DIGIT = re.compile(rb"[0-9]")
 
 
@@ -147,12 +153,13 @@ def decodes_to_text(v):
 
 def vendor_like(v):
     """A vendor-format value strong enough to rotate: 20+ characters, random-looking, no code syntax."""
-    return len(v) >= 20 and CODE_CHARS.search(v) is None and entropy(v) >= 3.5
+    return len(v) >= VENDOR_MIN_LEN and CODE_CHARS.search(v) is None and entropy(v) >= VENDOR_MIN_ENTROPY
 
 
 def secret_like(v):
     """A value that could be a real credential: long enough, has a digit, no code or template syntax."""
-    return len(v) >= 8 and HAS_DIGIT.search(v) is not None and CODE_CHARS.search(v) is None and entropy(v) >= 3.0
+    return (len(v) >= SECRET_MIN_LEN and HAS_DIGIT.search(v) is not None and CODE_CHARS.search(v) is None
+            and entropy(v) >= SECRET_MIN_ENTROPY)
 
 
 def hit_row(name, tier, path, off, m, before, after):

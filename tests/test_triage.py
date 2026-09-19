@@ -217,3 +217,47 @@ class TriageTests(TempDirTest):
         self.assertEqual(len(hashes), T.ENTROPY_KEEP_MAX)
         self.assertEqual(out["review_totals"]["entropy"], T.ENTROPY_KEEP_MAX + 6)
 
+
+    def test_every_dropped_entropy_token_has_a_reason(self):  # U-TRI-15
+        """Each rule that hides a random-looking token is named and counted, at its exact boundary."""
+        from afterprompt import triage as T
+        self.cfg.mode = "deep"
+        src = self.file(".claude/projects/p/s.jsonl")
+        vend = self.file(".claude/plugins/p/x.js", vendored=True)
+        others = [self.file(f".claude/projects/p/o{i}.jsonl") for i in range(T.ENTROPY_MAX_FILES)]
+        i, v = self.files[src][0], self.files[vend][0]
+        base = {"m": "Zx8Qw2…b7Kc", "n": 20, "c": "unclassified", "e": 4.3, "op": 0.3, "nk": True, "nks": True, "o": 1}
+        rows = [
+            dict(base, h="shown", f=i),
+            dict(base, h="edge_mixing", f=i, op=T.ENTROPY_MIN_MIXING),                  # exactly at the line: kept
+            dict(base, h="many_files", f=i),
+            dict(base, h="no_word", f=i, nks=False),
+            dict(base, h="slug", f=i, c="slug"),
+            dict(base, h="unmixed", f=i, op=T.ENTROPY_MIN_MIXING - 0.001),
+            dict(base, h="long_unmixed", f=i, c="long_token", op=0.0),                   # long tokens skip mixing
+            dict(base, h="hex_unmixed", f=i, c="hex", op=0.0),                           # hex and uuid do too
+            dict(base, h="shipped", f=v),
+        ]
+        extra = [dict(rows[2], f=self.files[o][0]) for o in others]                    # many_files in 3 files
+        os.makedirs(self.cfg.w("entropy_raw"), exist_ok=True)
+        with open(self.cfg.w("entropy_raw", "0.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"_counts": {}, "_status": "ok"}) + "\n")
+            fh.write("".join(json.dumps(r) + "\n" for r in rows + extra))
+        self.hit(".claude/projects/p/s.jsonl", "anthropic_key", "A", "patterned")
+        with open(self.cfg.w("entropy_raw", "1.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(base, h="patterned", f=i)) + "\n")
+        out = self.build()
+        shown = {r["hash"] for r in out["review"] if r["category"] == "entropy"}
+        self.assertEqual(shown, {"shown", "edge_mixing", "long_unmixed", "hex_unmixed"})
+        self.assertEqual(out["review_dropped"]["entropy"], {
+            f"in more than {T.ENTROPY_MAX_FILES} files (an identifier)": 1,
+            "no secret-related word right before it": 1,
+            "shape: slug": 1,
+            "letters not mixed like a generated key": 1,
+            "only in shipped code or this scan's own session": 1,
+            "already reported by a pattern or as a live credential": 1,
+        })
+        self.assertEqual(out["review_totals"]["entropy"], len(shown))
+
+    def test_quick_mode_has_no_entropy_accounting(self):  # U-TRI-16
+        self.assertEqual(self.build()["review_dropped"], {})

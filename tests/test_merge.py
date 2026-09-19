@@ -192,3 +192,11 @@ class SideLabelTests(unittest.TestCase):
         self.assertEqual(report.side_label("env:Box"), "Box")
         self.assertEqual(report.side_label("windows"), "Windows")
         self.assertEqual(report.side_label("wsl"), "WSL")
+
+
+class DroppedMergeTests(unittest.TestCase):
+    def test_drop_reasons_add_up(self):  # U-MRG-14
+        a = data(); a["review_dropped"] = {"entropy": {"shape: slug": 2}}
+        b = data(); b["review_dropped"] = {"entropy": {"shape: slug": 3, "shape: path": 1}}
+        out = merge.merge(a, HOST, [result("Ubuntu", b)])
+        self.assertEqual(out["review_dropped"], {"entropy": {"shape: slug": 5, "shape: path": 1}})

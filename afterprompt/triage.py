@@ -10,7 +10,13 @@ from afterprompt.entropy import KEEP as ENTROPY_KEEP
 from afterprompt.patterns import HEADER_ONLY, LABELS, REVOKE, ROTATE_B, SESSION_COOKIE, TIERS
 from afterprompt.util import display_path, is_under, read_json, write_json
 
+# How many of each review category the report shows; findings.json keeps every one and the totals are exact.
 CAPS = {"configuration": 20, "pattern": 60, "session_cookie": 20, "entropy": 30, "prompt": 30}
+# Entropy candidates (deep mode) that reach the report. Each rule that drops a token is counted in
+# review_dropped["entropy"], so a missing token can always be explained.
+ENTROPY_MAX_FILES = 2        # a token repeated across more files is an identifier (a model name, a build hash)
+ENTROPY_MIN_MIXING = 0.1     # "op": share of the rarer letter case, scaled by how few separators there are.
+                             # Generated keys mix cases; slugs and names do not.
 ENTROPY_KEEP_MAX = 500      # entropy candidates kept in findings.json; the total is still counted
 REVIEW_ORDER = ["configuration", "pattern", "session_cookie", "entropy", "prompt"]
 CONFIG_NAMES = catalogue.CONFIG_FILES      # a tool's configuration: secrets there are "stored in configuration"
@@ -108,6 +114,25 @@ def rotate_key(r):
 
 def review_key(r):
     return ({"A": 0, "B": 1, "C": 2}.get(r["tier"], 3), -r["entropy"], -r["files"])
+
+
+def entropy_drop_reason(g, known_h, res):
+    """Why an entropy candidate is not shown, or None when it is. The order is the order of the checks."""
+    if len(g["files"]) > ENTROPY_MAX_FILES:
+        return f"in more than {ENTROPY_MAX_FILES} files (an identifier)"
+    if g["h"] in known_h:
+        return "already reported by a pattern or as a live credential"
+    if not g.get("nks"):
+        return "no secret-related word right before it"
+    if g["c"] in ("hex", "uuid"):
+        pass
+    elif g["c"] not in ENTROPY_KEEP:
+        return f"shape: {g['c'].replace('_', ' ')}"
+    elif g["c"] != "long_token" and g["op"] < ENTROPY_MIN_MIXING:
+        return "letters not mixed like a generated key"
+    if not any(i in res.by_idx and not res.by_idx[i].self and not res.by_idx[i].vendored for i in g["files"]):
+        return "only in shipped code or this scan's own session"
+    return None
 
 
 def _jsonl(path):
@@ -298,6 +323,7 @@ def build(cfg, sources, now=None):
         review[cat].sort(key=review_key)
 
     # ---- entropy (deep)
+    entropy_dropped = collections.Counter()
     if cfg.deep:
         known_h = set(findings)
         for grp in groups.values():
@@ -319,11 +345,13 @@ def build(cfg, sources, now=None):
                     g["files"].add(r["f"])
         # A strict secret word (key, secret, password, auth, bearer, credential, token) right before the token,
         # and a token that looks generated: mixed case with digits, a long url-safe token, or hex/uuid.
-        cands = [g for g in E.values() if len(g["files"]) <= 2 and g["h"] not in known_h and g.get("nks")
-                 and ((g["c"] in ENTROPY_KEEP and (g["op"] >= 0.1 or g["c"] == "long_token"))
-                      or g["c"] in ("hex", "uuid"))]
-        cands = [g for g in cands if any(i in res.by_idx and not res.by_idx[i].self and not res.by_idx[i].vendored
-                                         for i in g["files"])]
+        cands = []
+        for g in E.values():
+            why = entropy_drop_reason(g, known_h, res)
+            if why:
+                entropy_dropped[why] += 1
+            else:
+                cands.append(g)
         cands.sort(key=lambda g: (-g["op"], -g["e"]))
         entropy_total = len(cands)
         for g in cands[:ENTROPY_KEEP_MAX]:
@@ -366,6 +394,7 @@ def build(cfg, sources, now=None):
         if entropy_total > CAPS["entropy"]:
             truncated["entropy"] = entropy_total - CAPS["entropy"]
     out = {"rotate": rotate, "review": review_out, "review_totals": totals,
-           "review_truncated": truncated, "dismissed": dict(dismissed)}
+           "review_truncated": truncated, "dismissed": dict(dismissed),
+           "review_dropped": {"entropy": dict(entropy_dropped)} if cfg.deep else {}}
     write_json(cfg.w("triage.json"), out)
     return out

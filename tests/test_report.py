@@ -76,7 +76,7 @@ class ReportTests(ReportCase):
         cfg, _ = self.write_report([FINDING])
         data = json.loads(self.read(cfg, "findings.json"))
         self.assertEqual(set(data), {"schema", "tool", "version", "run_id", "mode", "started", "finished", "platform",
-                                     "summary", "rotate", "review", "review_totals", "review_truncated", "dismissed",
+                                     "summary", "rotate", "review", "review_totals", "review_truncated", "dismissed", "review_dropped",
                                      "coverage"})
         self.assertEqual(set(data["rotate"][0]), set(FINDING))
         self.assertEqual(data["summary"]["rotate"], 1)
@@ -208,3 +208,16 @@ class ThemeTests(ReportCase):
             css = fh.read()
         self.assertIn("FSL-1.1-ALv2", css)
         self.assertNotIn("AM Consulting — brand.css", css)
+
+
+class DroppedReasonsTests(unittest.TestCase):
+    def test_reasons_listed_in_coverage(self):  # U-REP-D1
+        cov = {"platform": "linux", "sources": [], "databases": {"total": 0, "ok": 0, "failed": []},
+               "unreadable_files": 0, "excluded_files": 0, "vendored_files": 0, "scan_session_files": 0,
+               "live_values": {}, "prompts": {}, "limits": [], "missing_locations": [], "pattern_truncations": [],
+               "keychain": "not requested"}
+        rows = dict(report.coverage_rows({"coverage": cov, "review_dropped": {"entropy": {"shape: slug": 1200,
+                                                                                         "no secret-related word right before it": 40}}}))
+        self.assertEqual(rows["Random-looking tokens not shown"],
+                         "shape: slug: 1,200; no secret-related word right before it: 40")
+        self.assertNotIn("Random-looking tokens not shown", dict(report.coverage_rows({"coverage": cov})))
