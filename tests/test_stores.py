@@ -6,7 +6,7 @@ from unittest import mock
 
 from afterprompt import known, stores
 from afterprompt.util import sha16
-from tests.helpers import TempDirTest, jwt, make_cfg, requires_rg, write, requires_posix
+from tests.helpers import TempDirTest, jwt, make_cfg, no_resource_warnings, requires_rg, write, requires_posix
 from tests.samples import SecretFactory
 
 
@@ -224,7 +224,8 @@ class KnownTests(TempDirTest):
         write(os.path.join(data, "a.jsonl"), f"exact {full} and truncated {full[:30]}...\n")
         cfg = make_cfg(self.tmp, "linux", home)
         srcs = {"platform": "linux", "windows_home": None, "project_dirs": [os.path.join(home, "app")]}
-        stats = known.run(cfg, srcs, [data, os.path.join(home, "app")])
+        with no_resource_warnings(self):
+            stats = known.run(cfg, srcs, [data, os.path.join(home, "app")])
         with open(cfg.w("known.jsonl"), encoding="utf-8") as fh:
             rows = [json.loads(l) for l in fh]
         self.assertEqual({(r["vh"], r["prefix"]) for r in rows}, {(sha16(full), False), (sha16(full), True)})

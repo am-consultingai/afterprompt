@@ -1,5 +1,7 @@
 """Test helpers: config factory, fixture homes with planted (generated) secrets, and a afterprompt.sh runner."""
 import base64
+import contextlib
+import gc
 import json
 import os
 import shutil
@@ -9,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+import warnings
 
 from afterprompt import platforms
 from afterprompt.config import RunConfig
@@ -23,6 +26,16 @@ requires_rg = unittest.skipUnless(HAVE_RG, "ripgrep is not installed")
 WINDOWS = sys.platform == "win32"
 # POSIX-only behaviour: file modes, symlinks, chmod-based denial, shell scripts, fork.
 requires_posix = unittest.skipIf(WINDOWS, "POSIX-only behaviour")
+
+
+@contextlib.contextmanager
+def no_resource_warnings(test):
+    """Fail the test if the block leaves a file or pipe for the garbage collector to close."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        yield
+        gc.collect()
+    test.assertEqual([str(w.message) for w in caught if issubclass(w.category, ResourceWarning)], [])
 
 
 def slash(path):

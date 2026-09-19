@@ -185,27 +185,29 @@ def run(cfg, target, paths, patterns=None):
                 break
             cmd = [cfg.rg] + RG_BASE + (["-U"] if name in MULTILINE else []) + \
                 ["-g", "!*.part", "-e", escape_aware(rx), "--"] + paths
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             timed_out = []
-            watchdog = threading.Timer(cfg.pattern_timeout, lambda: (timed_out.append(1), p.kill()))
-            watchdog.start()
-            try:
-                for line in p.stdout:
-                    parts = line.rstrip(b"\n").split(b"\x01", 2)
-                    if len(parts) != 3 or not parts[1].isdigit():
-                        continue
-                    path = os.fsdecode(parts[0])
-                    m, off = strip_residue(parts[2], int(parts[1]))
-                    before, after = ctx.get(path, off, len(m))
-                    fo.write(json.dumps(hit_row(name, tier, path, off, m, before, after), ensure_ascii=False) + "\n")
-                    n += 1
-                    if n >= HIT_LIMIT:
-                        trunc.append(name)
-                        p.kill()
-                        break
-            finally:
-                p.wait()
-                watchdog.cancel()
+            # The with block closes stdout and reaps rg on every exit path, including an exception mid-loop.
+            with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as p:
+                watchdog = threading.Timer(cfg.pattern_timeout, lambda: (timed_out.append(1), p.kill()))
+                watchdog.start()
+                try:
+                    for line in p.stdout:
+                        parts = line.rstrip(b"\n").split(b"\x01", 2)
+                        if len(parts) != 3 or not parts[1].isdigit():
+                            continue
+                        path = os.fsdecode(parts[0])
+                        m, off = strip_residue(parts[2], int(parts[1]))
+                        before, after = ctx.get(path, off, len(m))
+                        fo.write(json.dumps(hit_row(name, tier, path, off, m, before, after), ensure_ascii=False) + "\n")
+                        n += 1
+                        if n >= HIT_LIMIT:
+                            trunc.append(name)
+                            p.kill()
+                            break
+                finally:
+                    p.stdout.close()
+                    p.wait()
+                    watchdog.cancel()
             if timed_out:
                 trunc.append(f"{name} (timed out after {cfg.pattern_timeout}s; results partial)")
                 log(f"  {stage} {name}: timed out, results partial")

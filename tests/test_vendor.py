@@ -4,7 +4,7 @@ import time
 
 from afterprompt import vendor
 from afterprompt.patterns import PATTERNS
-from tests.helpers import TempDirTest, jwt, make_cfg, requires_rg, write
+from tests.helpers import TempDirTest, jwt, make_cfg, no_resource_warnings, requires_rg, write
 from tests.samples import SecretFactory
 
 
@@ -21,7 +21,8 @@ class VendorTests(TempDirTest):
                      f"postgres://app:{pw}@localhost:5432/db\n")
         cfg = make_cfg(self.tmp)
         pats = [p for p in PATTERNS if p[0] in ("anthropic_key", "env_assignment", "jwt", "url_with_credentials")]
-        stats = vendor.run(cfg, "raw", [os.path.dirname(path)], patterns=pats)
+        with no_resource_warnings(self):
+            stats = vendor.run(cfg, "raw", [os.path.dirname(path)], patterns=pats)
         with open(cfg.w("vendor_raw.jsonl"), encoding="utf-8") as fh:
             raw = fh.read()
         rows = [json.loads(l) for l in raw.splitlines()]
@@ -38,7 +39,8 @@ class VendorTests(TempDirTest):
     def test_pattern_timeout(self):  # U-VEN-2
         path = write(os.path.join(self.tmp, "data", "big.txt"), ("a" * 5000 + "\n") * 2000)
         cfg = make_cfg(self.tmp, pattern_timeout=0.001)
-        stats = vendor.run(cfg, "raw", [os.path.dirname(path)], patterns=[("slow", r"(?:a|aa)+b", "C")])
+        with no_resource_warnings(self):  # the killed rg must still have its pipe closed
+            stats = vendor.run(cfg, "raw", [os.path.dirname(path)], patterns=[("slow", r"(?:a|aa)+b", "C")])
         self.assertTrue(any("timed out" in t for t in stats["truncated"]))
 
 

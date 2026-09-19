@@ -11,6 +11,11 @@ PUBLISHED = ["README.md", "LICENSE", "afterprompt.sh", "afterprompt", "tests", "
 NETWORK_MODULES = {"socket", "urllib.request", "http.client", "ftplib", "ssl", "smtplib"}
 
 
+def read_repo(rel):
+    with open(os.path.join(REPO, rel), encoding="utf-8") as fh:
+        return fh.read()
+
+
 def published_files():
     for entry in PUBLISHED:
         path = os.path.join(REPO, entry)
@@ -60,9 +65,9 @@ class HygieneTests(unittest.TestCase):
     def test_windows_launcher_matches_shell_launcher(self):  # S-6 (W4)
         """The two launchers must agree on the contract they share: the same ripgrep version,
         the same environment variables and the same options handled before the scan starts."""
-        sh = open(os.path.join(REPO, "afterprompt.sh"), encoding="utf-8").read()
-        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
-        cmd = open(os.path.join(REPO, "afterprompt.cmd"), encoding="utf-8").read()
+        sh = read_repo("afterprompt.sh")
+        ps1 = read_repo("afterprompt.ps1")
+        cmd = read_repo("afterprompt.cmd")
 
         version = re.search(r'RG_VERSION="([\d.]+)"', sh).group(1)
         self.assertIn(f"$RG_VERSION = '{version}'", ps1)
@@ -85,7 +90,7 @@ class HygieneTests(unittest.TestCase):
 
     def test_windows_launcher_does_not_bind_scan_options(self):  # S-7 (W4)
         """A param() block would let PowerShell claim options like --out before the scan sees them."""
-        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
+        ps1 = read_repo("afterprompt.ps1")
         code = [ln for ln in ps1.splitlines() if not ln.lstrip().startswith("#")]
         self.assertFalse([ln for ln in code if "[CmdletBinding()]" in ln])
         self.assertFalse([ln for ln in code if re.match(r"\s*param\s*\(", ln)],
@@ -120,7 +125,7 @@ class HygieneTests(unittest.TestCase):
 
     def test_windows_launcher_derives_its_locations(self):  # S-9
         """The Windows launcher must discover Python and the architecture rather than assume them."""
-        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
+        ps1 = read_repo("afterprompt.ps1")
         # No fixed Python version folders: a list like Python313 stops working when 3.14 ships.
         self.assertFalse(re.search(r"Python\d{2,3}\\python\.exe", ps1),
                          "discover Python installs instead of listing version folders")
@@ -140,7 +145,7 @@ class HygieneTests(unittest.TestCase):
         Get-Command rather than only Test-Path, or a bare name is rejected and the scan never runs.
         CI passes exactly that, and it is the failure this test exists to prevent.
         """
-        ps1 = open(os.path.join(REPO, "afterprompt.ps1"), encoding="utf-8").read()
+        ps1 = read_repo("afterprompt.ps1")
         block = re.search(r"function Find-Python \{.*?\n\}", ps1, re.S)
         self.assertTrue(block, "Find-Python not found in afterprompt.ps1")
         body = block.group(0)

@@ -23,30 +23,36 @@ def search(cfg, values, pref, paths):
     outp = cfg.w("known.jsonl")
     with open(outp + ".part", "w", encoding="utf-8") as fo:
         if lookup and paths:
-            proc = subprocess.Popen([cfg.rg] + RG + ["-F", "-g", "!*.part", "-f", "-", "--"] + paths,
-                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-
             import threading
 
-            def feed():
-                try:
-                    proc.stdin.write(b"\n".join(lookup) + b"\n")
-                finally:
-                    proc.stdin.close()
+            # The with block closes both pipes and reaps rg even if the loop raises; closing stdout first makes
+            # an rg still writing fail with EPIPE instead of blocking on a full pipe.
+            with subprocess.Popen([cfg.rg] + RG + ["-F", "-g", "!*.part", "-f", "-", "--"] + paths,
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as proc:
 
-            t = threading.Thread(target=feed, daemon=True)
-            t.start()
-            for line in proc.stdout:
-                parts = line.rstrip(b"\n").split(b"\x01", 2)
-                if len(parts) != 3 or not parts[1].isdigit() or parts[2] not in lookup:
-                    continue
-                path = os.fsdecode(parts[0])
-                if os.path.normpath(path) in store_files.get(parts[2], ()):
-                    continue
-                vh, is_prefix = lookup[parts[2]]
-                fo.write(json.dumps({"vh": vh, "prefix": is_prefix, "f": path, "o": int(parts[1])}) + "\n")
-                n += 1
-            proc.wait()
+                def feed():
+                    try:
+                        proc.stdin.write(b"\n".join(lookup) + b"\n")
+                    except (OSError, ValueError):
+                        pass  # rg exited early or the pipe was closed under us; its exit is handled below
+                    finally:
+                        try:
+                            proc.stdin.close()
+                        except OSError:
+                            pass
+
+                t = threading.Thread(target=feed, daemon=True)
+                t.start()
+                for line in proc.stdout:
+                    parts = line.rstrip(b"\n").split(b"\x01", 2)
+                    if len(parts) != 3 or not parts[1].isdigit() or parts[2] not in lookup:
+                        continue
+                    path = os.fsdecode(parts[0])
+                    if os.path.normpath(path) in store_files.get(parts[2], ()):
+                        continue
+                    vh, is_prefix = lookup[parts[2]]
+                    fo.write(json.dumps({"vh": vh, "prefix": is_prefix, "f": path, "o": int(parts[1])}) + "\n")
+                    n += 1
             t.join()
     os.replace(outp + ".part", outp)
     return n
