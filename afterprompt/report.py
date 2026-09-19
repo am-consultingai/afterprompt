@@ -62,6 +62,7 @@ def coverage(cfg, sources):
         "windows_home": sources.get("windows_home"),
         "windows_home_source": sources.get("windows_home_source"),
         "other_homes": envs.other_homes(cfg.home),
+        "installed": sources.get("installed", []),
         "sources": man.get("per_source", []),
         "files": man.get("files", 0), "bytes": man.get("bytes", 0),
         "missing_locations": sources.get("missing", []),
@@ -181,6 +182,10 @@ def render_md(data, theme=DEFAULT_THEME):
     return "\n".join(L)
 
 
+def _env_name(i):
+    return f"{i['product']} [{i['env']}]" if i.get("env") else i["product"]
+
+
 def environment_text(env):
     status = env["status"]
     if status in ("scanned", "scanned_share"):
@@ -214,6 +219,13 @@ def coverage_rows(data):
             rows.append((f"Other users on {env['label']}", other_homes_text(env["other_homes"])))
     if not data.get("environments") and c.get("other_homes"):
         rows.append(("Other users on this machine", other_homes_text(c["other_homes"])))
+    found = [i for i in c.get("installed") or [] if i["status"] == "scanned"]
+    uncovered = [i for i in c.get("installed") or [] if i["status"] != "scanned"]
+    if found:
+        rows.append(("AI tools found and scanned", ", ".join(_env_name(i) for i in found)))
+    if uncovered:
+        # Silence here would be a lie of omission: a clean report says nothing about a tool it cannot read.
+        rows.append(("Installed but NOT scanned", "; ".join(f"{_env_name(i)}: {i['note']}" for i in uncovered)))
     cd = c["databases"]
     rows.append(("Chat databases", f"{cd['ok']} of {cd['total']} read"))
     for f in cd["failed"]:

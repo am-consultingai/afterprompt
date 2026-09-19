@@ -107,6 +107,12 @@ class SchemaTests(unittest.TestCase):
             "sqlite_glob needs": lambda d: loc(d).update(role="sqlite_glob"),
             "bad regex": lambda d: t(d).update(config_files=["("]),
             "list of strings": lambda d: t(d).update(exclude_tables="credential"),
+            "detect keys": lambda d: t(d).update(detect={"registry": ["x"]}),
+            "non-empty list": lambda d: t(d).update(detect={"bins": []}),
+            "bare program names": lambda d: t(d).update(detect={"bins": ["/usr/bin/x"]}),
+            "detect.windows_apps: bad regex": lambda d: t(d).update(detect={"windows_apps": ["("]}),
+            "detect.home paths": lambda d: t(d).update(detect={"home": ["../x"]}),
+            "match is a non-empty": lambda d: loc(d).update(match=[]),
         }
         for want, fn in cases.items():
             with self.subTest(mistake=want):
@@ -115,7 +121,10 @@ class SchemaTests(unittest.TestCase):
 
     def test_planned_tools_are_listed_not_scanned(self):  # U-CAT-5
         d = self.good()
-        d["tools"].append({"product": "Later", "vendor": "V", "kind": "desktop", "status": "planned", "locations": []})
+        later = {"product": "Later", "vendor": "V", "kind": "desktop", "status": "planned", "locations": []}
+        d["tools"].append(later)
+        self.assertTrue(any("needs a note" in e for e in catalogue.validate(d)))
+        later.update(note="Not mapped yet.", detect={"bins": ["later"]})
         self.assertEqual(catalogue.validate(d), [])
         self.assertEqual({l.tool for l in catalogue.registry(d)}, {"Tool"})
 

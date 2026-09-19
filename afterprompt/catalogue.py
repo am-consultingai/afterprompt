@@ -18,6 +18,9 @@ Each tool:
   credential_stores JSON login files (relative to each home) read as live values, so the tool's own token is
                     caught when it turns up anywhere else
   vendored          regexes: code the tool ships. A match only there is dismissed
+  detect            how to tell the tool is installed (see detect.py); planned tools use it to be named in the
+                    report as "installed but not covered"
+  note              for planned tools: why they are not scanned yet
 
 Regexes are matched against a path with forward slashes. config_files and credential_files are anchored to a
 path boundary and the end of the path.
@@ -32,6 +35,7 @@ SIDES = {"unix": ("macos", "linux", "wsl"), "windows": ("wsl", "windows")}
 ROLES = ("root", "sqlite_glob", "sqlite_dir")
 KINDS = ("cli", "ide", "extension", "desktop", "runner")
 STATUSES = ("scanned", "planned")
+DETECT_KEYS = ("bins", "home", "vscode_extensions", "mac_bundles", "windows_apps", "linux_desktop")
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalogue.json")
 
 Loc = namedtuple("Loc", "tool platforms side path role globs exclude_tables match")
@@ -77,6 +81,26 @@ def validate(data):
         for key in ("sqlite_globs", "exclude_tables", "credential_stores"):
             if key in t and (not isinstance(t[key], list) or not all(isinstance(x, str) for x in t[key])):
                 errors.append(f"{name}: {key} must be a list of strings")
+        det = t.get("detect", {})
+        if not isinstance(det, dict) or set(det) - set(DETECT_KEYS):
+            errors.append(f"{name}: detect keys are {', '.join(DETECT_KEYS)}")
+        else:
+            for k, v in det.items():
+                if not isinstance(v, list) or not v or not all(isinstance(x, str) and x for x in v):
+                    errors.append(f"{name}: detect.{k} must be a non-empty list of strings")
+                    continue
+                if k == "windows_apps":
+                    for x in v:
+                        try:
+                            re.compile(x)
+                        except re.error as err:
+                            errors.append(f"{name}: detect.windows_apps: bad regex {x!r}: {err}")
+                if k == "home" and any(os.path.isabs(x) or x.startswith("/") or ".." in x.split("/") for x in v):
+                    errors.append(f"{name}: detect.home paths are relative to the home")
+                if k == "bins" and any(os.sep in x or "/" in x for x in v):
+                    errors.append(f"{name}: detect.bins are bare program names")
+        if t.get("status") == "planned" and not (t.get("note") and det):
+            errors.append(f"{name}: a planned tool needs a note (why it is not scanned) and a detect block")
         locs = t.get("locations")
         if not isinstance(locs, list) or (t.get("status") == "scanned" and not locs):
             errors.append(f"{name}: a scanned tool needs locations")

@@ -83,7 +83,16 @@
       "vendored": [
         "/\\.local/share/claude/versions/",
         "/\\.claude/plugins/"
-      ]
+      ],
+      "detect": {
+        "bins": [
+          "claude"
+        ],
+        "home": [
+          ".claude",
+          ".claude.json"
+        ]
+      }
     },
     {
       "product": "Cursor",
@@ -156,7 +165,25 @@
       ],
       "config_files": [
         "\\.cursor/mcp\\.json"
-      ]
+      ],
+      "detect": {
+        "bins": [
+          "cursor",
+          "cursor-agent"
+        ],
+        "home": [
+          ".cursor"
+        ],
+        "mac_bundles": [
+          "com.todesktop.230313mzl4w4u92"
+        ],
+        "windows_apps": [
+          "^Cursor\\b"
+        ],
+        "linux_desktop": [
+          "cursor"
+        ]
+      }
     },
     {
       "product": "Codex CLI",
@@ -286,7 +313,15 @@
       "credential_stores": [
         ".codex/auth.json",
         ".codex/.credentials.json"
-      ]
+      ],
+      "detect": {
+        "bins": [
+          "codex"
+        ],
+        "home": [
+          ".codex"
+        ]
+      }
     },
     {
       "product": "Gemini CLI",
@@ -334,7 +369,16 @@
       ],
       "vendored": [
         "/\\.gemini/tmp/bin/"
-      ]
+      ],
+      "detect": {
+        "bins": [
+          "gemini"
+        ],
+        "home": [
+          ".gemini/settings.json",
+          ".gemini/tmp"
+        ]
+      }
     },
     {
       "product": "OpenCode",
@@ -445,7 +489,16 @@
       "credential_stores": [
         ".local/share/opencode/auth.json",
         ".local/share/opencode/mcp-auth.json"
-      ]
+      ],
+      "detect": {
+        "bins": [
+          "opencode"
+        ],
+        "home": [
+          ".local/share/opencode",
+          ".config/opencode"
+        ]
+      }
     },
     {
       "product": "Ollama",
@@ -536,7 +589,21 @@
       ],
       "credential_files": [
         "\\.ollama/id_ed25519"
-      ]
+      ],
+      "detect": {
+        "bins": [
+          "ollama"
+        ],
+        "home": [
+          ".ollama"
+        ],
+        "mac_bundles": [
+          "com.electron.ollama"
+        ],
+        "windows_apps": [
+          "^Ollama\\b"
+        ]
+      }
     },
     {
       "product": "Windsurf",
@@ -544,7 +611,303 @@
       "kind": "ide",
       "status": "planned",
       "locations": [],
-      "note": "Cascade transcripts (~/.codeium/windsurf/cascade/*.pb) are AES-256-GCM encrypted protobuf: not readable as text. The editor's state.vscdb holds the login's plaintext apiKey. Covering only mcp_config.json and memories would be partial coverage."
+      "note": "Cascade transcripts (~/.codeium/windsurf/cascade/*.pb) are AES-256-GCM encrypted protobuf: not readable as text. The editor's state.vscdb holds the login's plaintext apiKey. Covering only mcp_config.json and memories would be partial coverage.",
+      "detect": {
+        "bins": [
+          "windsurf"
+        ],
+        "home": [
+          ".codeium/windsurf",
+          ".windsurf"
+        ],
+        "mac_bundles": [
+          "com.exafunction.windsurf"
+        ],
+        "windows_apps": [
+          "^Windsurf\\b",
+          "^Devin Desktop\\b"
+        ],
+        "linux_desktop": [
+          "windsurf"
+        ]
+      }
+    },
+    {
+      "product": "Claude Desktop",
+      "vendor": "Anthropic",
+      "kind": "desktop",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "mac_bundles": [
+          "com.anthropic.claudefordesktop"
+        ],
+        "windows_apps": [
+          "^Claude$"
+        ],
+        "home": [
+          "Library/Application Support/Claude",
+          "AppData/Roaming/Claude"
+        ]
+      },
+      "note": "Electron app: conversations are kept in LevelDB/IndexedDB, which needs a reader first (decision D2)."
+    },
+    {
+      "product": "ChatGPT desktop",
+      "vendor": "OpenAI",
+      "kind": "desktop",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "mac_bundles": [
+          "com.openai.chat"
+        ],
+        "windows_apps": [
+          "^ChatGPT\\b"
+        ]
+      },
+      "note": "Desktop app: its local conversation store has not been researched yet."
+    },
+    {
+      "product": "Google Antigravity",
+      "vendor": "Google",
+      "kind": "ide",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "bins": [
+          "antigravity"
+        ],
+        "home": [
+          ".gemini/antigravity",
+          ".gemini/antigravity-cli"
+        ]
+      },
+      "note": "Has JSONL transcripts under ~/.gemini/antigravity*/brain, not yet mapped and tested."
+    },
+    {
+      "product": "GitHub Copilot",
+      "vendor": "GitHub",
+      "kind": "extension",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "vscode_extensions": [
+          "github.copilot-chat",
+          "github.copilot"
+        ]
+      },
+      "note": "Chat history lives in the host editor's storage; covered by X6 (VS Code family)."
+    },
+    {
+      "product": "Cline",
+      "vendor": "Cline",
+      "kind": "extension",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "vscode_extensions": [
+          "saoudrizwan.claude-dev"
+        ]
+      },
+      "note": "Task history lives in the host editor's globalStorage; covered by X6."
+    },
+    {
+      "product": "Roo Code",
+      "vendor": "Roo Code",
+      "kind": "extension",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "vscode_extensions": [
+          "rooveterinaryinc.roo-cline"
+        ]
+      },
+      "note": "Task history lives in the host editor's globalStorage; covered by X6."
+    },
+    {
+      "product": "Continue",
+      "vendor": "Continue",
+      "kind": "extension",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "vscode_extensions": [
+          "continue.continue"
+        ],
+        "home": [
+          ".continue"
+        ]
+      },
+      "note": "Sessions under ~/.continue; not yet mapped and tested."
+    },
+    {
+      "product": "Sourcegraph Cody",
+      "vendor": "Sourcegraph",
+      "kind": "extension",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "vscode_extensions": [
+          "sourcegraph.cody-ai"
+        ]
+      },
+      "note": "Not yet mapped."
+    },
+    {
+      "product": "Amazon Q Developer",
+      "vendor": "AWS",
+      "kind": "extension",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "vscode_extensions": [
+          "amazonwebservices.amazon-q-vscode"
+        ]
+      },
+      "note": "Not yet mapped."
+    },
+    {
+      "product": "Augment",
+      "vendor": "Augment",
+      "kind": "extension",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "vscode_extensions": [
+          "augment.vscode-augment"
+        ]
+      },
+      "note": "Not yet mapped."
+    },
+    {
+      "product": "Aider",
+      "vendor": "Aider",
+      "kind": "cli",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "bins": [
+          "aider"
+        ]
+      },
+      "note": "Keeps .aider.chat.history.md in each project; not yet mapped."
+    },
+    {
+      "product": "Goose",
+      "vendor": "Block",
+      "kind": "cli",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "bins": [
+          "goose"
+        ],
+        "home": [
+          ".config/goose"
+        ]
+      },
+      "note": "Not yet mapped."
+    },
+    {
+      "product": "Qwen Code",
+      "vendor": "Alibaba",
+      "kind": "cli",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "bins": [
+          "qwen"
+        ],
+        "home": [
+          ".qwen"
+        ]
+      },
+      "note": "Gemini CLI fork; not yet mapped."
+    },
+    {
+      "product": "LM Studio",
+      "vendor": "Element Labs",
+      "kind": "runner",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "home": [
+          ".lmstudio",
+          ".cache/lm-studio"
+        ],
+        "mac_bundles": [
+          "ai.elementlabs.lmstudio"
+        ],
+        "windows_apps": [
+          "^LM Studio\\b"
+        ]
+      },
+      "note": "Keeps chats as JSON under ~/.lmstudio; not yet mapped."
+    },
+    {
+      "product": "Zed",
+      "vendor": "Zed Industries",
+      "kind": "ide",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "bins": [
+          "zed"
+        ],
+        "mac_bundles": [
+          "dev.zed.Zed"
+        ],
+        "home": [
+          ".config/zed"
+        ]
+      },
+      "note": "Not yet mapped."
+    },
+    {
+      "product": "Kiro",
+      "vendor": "AWS",
+      "kind": "ide",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "bins": [
+          "kiro"
+        ],
+        "home": [
+          ".kiro"
+        ]
+      },
+      "note": "VS Code fork; covered by X6."
+    },
+    {
+      "product": "Trae",
+      "vendor": "ByteDance",
+      "kind": "ide",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "bins": [
+          "trae"
+        ],
+        "home": [
+          ".trae"
+        ]
+      },
+      "note": "VS Code fork; covered by X6."
+    },
+    {
+      "product": "Devin CLI",
+      "vendor": "Cognition",
+      "kind": "cli",
+      "status": "planned",
+      "locations": [],
+      "detect": {
+        "home": [
+          ".local/share/devin"
+        ]
+      },
+      "note": "Plaintext sessions.db; not yet mapped and tested."
     }
   ]
 }

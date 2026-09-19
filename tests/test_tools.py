@@ -63,6 +63,7 @@ def plant(home, f, windows=False, macos=False):
     write(os.path.join(home, ".ollama", "history"), f"why does HF_TOKEN={s['ollama_history']} fail\n")
     write(os.path.join(home, ".ollama", "id_ed25519"), "-----BEGIN OPENSSH PRIVATE KEY-----\nnot a real key\n")
     write(os.path.join(home, ".ollama", "models", "blobs", "sha256-abc"), "model weights\n")
+    write(os.path.join(home, ".codeium", "windsurf", "mcp_config.json"), "{}")   # installed, not covered
     return s
 
 
@@ -176,6 +177,14 @@ class EndToEndTests(TempDirTest):
         tools = {src["tool"] for src in d["coverage"]["sources"]}
         self.assertTrue({"Codex CLI", "Gemini CLI", "OpenCode", "Ollama"} <= tools, tools)
         self.assertGreaterEqual(d["coverage"]["databases"]["ok"], 1)
+        # X11: an installed tool Afterprompt cannot read is named, with the reason, never silently skipped.
+        installed = {i["product"]: i["status"] for i in d["coverage"]["installed"]}
+        for tool in ("Codex CLI", "Gemini CLI", "OpenCode", "Ollama"):
+            self.assertEqual(installed.get(tool), "scanned", tool)
+        self.assertEqual(installed.get("Windsurf"), "planned")
+        self.assertIn("Installed but not scanned: Windsurf", out)
+        with open(os.path.join(run, "report.html"), encoding="utf-8") as fh:
+            self.assertIn("Installed but NOT scanned", fh.read())
 
     def test_linux(self):  # I-TOOL-1
         self.check("linux")

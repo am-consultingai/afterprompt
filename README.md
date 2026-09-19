@@ -171,7 +171,9 @@ The report is written as `report.html`, `report.md` and `findings.json`, with th
 - **Review:** weaker signals you should look at. These are credentials stored in plain text in AI tool
   configuration, possible credentials in less specific formats, session cookies, and password-like strings from
   your own prompts.
-- **Coverage:** what was scanned, what could not be read, and what the scan cannot see.
+- **Coverage:** what was scanned, what could not be read, and what the scan cannot see. It also names AI tools
+  that are installed but not scanned yet, and why, so a clean result never hides a tool Afterprompt cannot read.
+  Detection only looks: it reads app lists, folders and PATH, and never runs anything.
 
 Every value is masked to its first 6 and last 4 characters. The report never contains a full credential.
 

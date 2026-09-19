@@ -476,5 +476,9 @@ def run(argv, emit):
     for r in env_results(cfg, ctx):
         if r["status"] == "not_scanned":
             say(f"  Not scanned: {r['label']} — {r['reason']}")
+    cov = (read_json(os.path.join(cfg.report_dir, "findings.json"), {}) or {}).get("coverage") or {}
+    uncovered = sorted({i["product"] for i in cov.get("installed") or [] if i.get("status") != "scanned"})
+    if uncovered:
+        say(f"  Installed but not scanned: {', '.join(uncovered)} (the report says why)")
     say(f"Report: {os.path.join(cfg.report_dir, 'report.html')}")
     return code
