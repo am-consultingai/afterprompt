@@ -17,9 +17,11 @@ FINDING = {"id": "R1", "category": "live_credential", "label": "Anthropic API ke
            "reason": "A credential that is set up on this machine appears in AI assistant history.", "context": "x"}
 
 
-class ReportTests(TempDirTest):
-    def write_report(self, rotate, review=()):
+class ReportCase(TempDirTest):
+    def write_report(self, rotate, review=(), theme=None):
         cfg = make_cfg(self.tmp, "wsl", os.path.join(self.tmp, "home"))
+        if theme:
+            cfg.theme = theme
         write_json(cfg.w("triage.json"), {"rotate": list(rotate), "review": list(review),
                                           "review_totals": {"pattern": len(review)}, "review_truncated": {},
                                           "dismissed": {"expired token": 2}})
@@ -33,6 +35,8 @@ class ReportTests(TempDirTest):
         with open(os.path.join(cfg.report_dir, name), encoding="utf-8") as fh:
             return fh.read()
 
+
+class ReportTests(ReportCase):
     def test_markdown(self):  # U-REP-1
         review = [dict(FINDING, id="V1", category="pattern", label="Prefixed API key", masked="api_ab…cdef")]
         cfg, _ = self.write_report([FINDING], review)
@@ -144,3 +148,63 @@ class WslDistroCoverageTests(unittest.TestCase):
         self.assertFalse(any(k.startswith(("Environment:", "Other users", "WSL distributions")) for k in rows))
         for text in rows.values():
             self.assertNotIn("run Afterprompt inside", text)
+
+
+class ThemeTests(ReportCase):
+    """The report is unbranded by default; the AM Consulting brand is opt-in (--theme am)."""
+
+    BRAND = ("AM Consulting", "am-logo", "am-favicon", "brand.css")
+
+    def assets(self, cfg):
+        return sorted(os.listdir(os.path.join(cfg.report_dir, "report-assets")))
+
+    def test_default_is_unbranded(self):  # U-REP-T1
+        cfg, _ = self.write_report([FINDING])
+        for name in ("report.html", "report.md"):
+            text = self.read(cfg, name)
+            for mark in self.BRAND:
+                self.assertNotIn(mark, text, f"{name} carries {mark}")
+        self.assertEqual(self.assets(cfg), ["report.css"])
+        html = self.read(cfg, "report.html")
+        self.assertIn('href="report-assets/report.css"', html)
+        self.assertIn('content="light dark"', html)
+        self.assertIn('<span class="wordmark">Afterprompt</span>', html)
+
+    def test_am_theme_is_the_full_brand(self):  # U-REP-T2
+        cfg, _ = self.write_report([FINDING], theme="am")
+        html = self.read(cfg, "report.html")
+        for mark in ('href="report-assets/brand.css"', 'src="report-assets/am-logo-white-600.png"',
+                     'href="report-assets/am-favicon.png"', "Built by AM Consulting"):
+            self.assertIn(mark, html)
+        self.assertIn("Built by AM Consulting", self.read(cfg, "report.md"))
+        self.assertEqual(self.assets(cfg), ["am-favicon.png", "am-logo-white-600.png", "brand.css"])
+
+    def test_switching_theme_leaves_no_stale_assets(self):  # U-REP-T3
+        self.write_report([FINDING], theme="am")
+        cfg, _ = self.write_report([FINDING])
+        self.assertEqual(self.assets(cfg), ["report.css"])
+
+    def test_every_theme_is_self_contained(self):  # U-REP-T4
+        for theme in report.THEMES:
+            with self.subTest(theme=theme):
+                cfg, _ = self.write_report([FINDING], theme=theme)
+                html = self.read(cfg, "report.html")
+                self.assertFalse(re.search(r'(?:src|href)="(?!report-assets/|#|https://console)[^"]+"', html))
+                for a in report.THEMES[theme]["assets"]:
+                    self.assertTrue(os.path.exists(os.path.join(os.path.dirname(report.__file__), "assets", a)))
+                css = os.path.join(os.path.dirname(report.__file__), "assets", report.THEMES[theme]["css"])
+                with open(css, encoding="utf-8") as fh:
+                    self.assertNotIn("@import", fh.read())
+
+    def test_neutral_css_is_not_a_brand_asset(self):  # U-REP-T5
+        """report.css ships under the project license; the NOTICE must not claim it and must name the brand files."""
+        here = os.path.join(os.path.dirname(report.__file__), "assets")
+        with open(os.path.join(here, "NOTICE.md"), encoding="utf-8") as fh:
+            notice = fh.read()
+        for a in report.THEMES["am"]["assets"]:
+            self.assertIn(a, notice)
+        self.assertIn("report.css", notice)
+        with open(os.path.join(here, "report.css"), encoding="utf-8") as fh:
+            css = fh.read()
+        self.assertIn("FSL-1.1-ALv2", css)
+        self.assertNotIn("AM Consulting — brand.css", css)

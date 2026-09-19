@@ -86,6 +86,8 @@ def parser():
                    help="macOS: also check Claude Code's Keychain login (shows a permission prompt)")
     p.add_argument("--windows-home", metavar="PATH",
                    help="WSL: the Windows profile to scan, or 'none' to skip the Windows side")
+    p.add_argument("--theme", choices=("neutral", "am"), default="neutral",
+                   help="report look: neutral (default) or am, the AM Consulting brand")
     p.add_argument("--no-wsl", action="store_true",
                    help="scan only this machine, not the WSL distributions on it")
     p.add_argument("--no-download", action="store_true", help="never download ripgrep; fail if it is not installed")

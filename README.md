@@ -132,6 +132,7 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
   --include-keychain     macOS: also check Claude Code's Keychain login (shows a permission prompt)
   --windows-home PATH    WSL: the Windows profile to scan, or "none" to skip the Windows side
   --no-wsl               scan only this machine, not the WSL distributions on it
+  --theme neutral|am     report look: neutral (default, unbranded) or am (AM Consulting brand)
   --no-download          never download ripgrep; fail if it is not installed
   --fresh                discard an unfinished scan and start over
   --status               show progress of a running or interrupted scan
@@ -256,6 +257,6 @@ Afterprompt is **free to use**, including at work and for client engagements, un
   commercial product or service.
 - **Becomes Apache 2.0:** each release converts to the Apache License 2.0 two years after it is published.
 
-The license is "source-available", not OSI open source. Built by AM Consulting. The AM Consulting name, logo and
-report styling in `afterprompt/assets/` are not covered by the license; see
-[`afterprompt/assets/NOTICE.md`](afterprompt/assets/NOTICE.md).
+The license is "source-available", not OSI open source. Built by AM Consulting. Reports are unbranded by default;
+the AM Consulting name, logo and brand styling used by `--theme am` (in `afterprompt/assets/`) are not covered by
+the license; see [`afterprompt/assets/NOTICE.md`](afterprompt/assets/NOTICE.md).

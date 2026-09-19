@@ -1,0 +1,58 @@
+/* Afterprompt report — the default, unbranded theme. Part of Afterprompt (FSL-1.1-ALv2).
+   System fonts only, so the report renders offline and identically everywhere. Follows the viewer's light or
+   dark preference. The optional AM Consulting theme (--theme am) uses brand.css instead; see NOTICE.md. */
+:root{
+  --bg:#f7f8fa; --card:#ffffff; --tile:#f1f3f6;
+  --ink:#111827; --s2:#374151; --s3:#4b5563; --s4:#6b7280;
+  --line:#dde1e7; --line-soft:#eceef2;
+  --accent:#2563eb; --good:#047857; --bad:#b91c1c; --warn:#a16207;
+  --display:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --maxw:1080px; --pad:28px; --ls:.12em;
+  color-scheme:light dark;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0f1115; --card:#161a21; --tile:#1b2029;
+  --ink:#f3f4f6; --s2:#d1d5db; --s3:#9ca3af; --s4:#8b93a1;
+  --line:#2a303b; --line-soft:#20252e;
+  --accent:#60a5fa; --good:#34d399; --bad:#f87171; --warn:#fbbf24;
+}}
+@media(max-width:640px){:root{--pad:16px}}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;
+  overflow-wrap:break-word}
+h1,h2,h3{font-family:var(--display);font-weight:650;line-height:1.2;margin:0}
+p{margin:0}
+a{color:var(--accent)}
+code{font-family:var(--mono);font-size:.88em;padding:1px 6px;border-radius:4px;background:var(--tile);color:var(--ink)}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+
+.nav{position:sticky;top:0;z-index:10;background:var(--card);border-bottom:1px solid var(--line)}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:0 var(--pad);min-height:56px;display:flex;align-items:center}
+.wordmark{font-family:var(--display);font-weight:700;font-size:17px;color:var(--ink)}
+
+.sec{max-width:var(--maxw);margin:0 auto;padding:48px var(--pad) 8px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:var(--ls);text-transform:uppercase;color:var(--s4)}
+h2{font-size:clamp(24px,4.6vw,34px);margin-top:10px}
+.sub{margin-top:12px;font-size:17px;color:var(--s2);max-width:65ch}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px}
+.rule{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:10px;padding:16px 18px}
+.rule .ic{flex:none;width:24px;height:24px;border-radius:6px;background:var(--tile);display:grid;place-items:center;
+  font-size:13px;color:var(--accent)}
+.rule p{font-size:15.5px;color:var(--s2)}
+.rule b{color:var(--ink)}
+
+.acc{border-bottom:1px solid var(--line)}
+.acc summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 0;
+  font-weight:600;color:var(--ink)}
+.acc summary::-webkit-details-marker{display:none}
+.acc .chev{margin-left:auto;flex:none;width:18px;height:18px;stroke:var(--s4);fill:none;stroke-width:1.8}
+.acc[open] .chev{transform:rotate(180deg)}
+.acc-b{padding:0 0 16px;font-size:15px;color:var(--s2);max-width:75ch}
+
+footer{border-top:1px solid var(--line);padding:22px var(--pad);text-align:center;font-family:var(--mono);
+  font-size:11px;color:var(--s4)}

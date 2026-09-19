@@ -1,4 +1,7 @@
-"""findings.json, report.md and report.html (AM Consulting branded, self-contained, no remote resources)."""
+"""findings.json, report.md and report.html (self-contained, no remote resources).
+
+The HTML report is unbranded by default (assets/report.css, part of Afterprompt). --theme am applies the AM
+Consulting brand, whose assets are not covered by the project's license (assets/NOTICE.md)."""
 import datetime
 import html
 import os
@@ -8,7 +11,14 @@ from afterprompt import __version__, envs, merge
 from afterprompt.triage import CAPS
 from afterprompt.util import human_bytes, read_json, write_json
 
-ASSETS = ("brand.css", "am-logo-white-600.png", "am-favicon.png")
+THEMES = {
+    "neutral": {"assets": ("report.css",), "css": "report.css", "icon": None, "scheme": "light dark",
+                "credit": ""},
+    "am": {"assets": ("brand.css", "am-logo-white-600.png", "am-favicon.png"), "css": "brand.css",
+           "icon": "am-favicon.png", "scheme": "dark", "credit": " · Built by AM Consulting"},
+}
+DEFAULT_THEME = "neutral"
+ASSETS = THEMES[DEFAULT_THEME]["assets"]
 SIDE_NAMES = {"wsl": "WSL", "windows": "Windows", "macos": "macOS", "linux": "Linux"}
 PLATFORM_NAMES = {"wsl": "Windows (WSL)", "macos": "macOS", "linux": "Linux", "windows": "Windows"}
 CATEGORY_TITLES = {
@@ -117,7 +127,7 @@ def where(rec):
 
 
 # ------------------------------------------------------------------ markdown
-def render_md(data):
+def render_md(data, theme=DEFAULT_THEME):
     L = []
     P = L.append
     s = data["summary"]
@@ -167,7 +177,7 @@ def render_md(data):
     P("\n## What this scan cannot see\n")
     for x in data["coverage"]["limits"]:
         P(f"- {x}")
-    P(f"\n---\nAfterprompt {data['version']} · FSL-1.1-ALv2 · Built by AM Consulting\n")
+    P(f"\n---\nAfterprompt {data['version']} · FSL-1.1-ALv2{THEMES[theme]['credit']}\n")
     return "\n".join(L)
 
 
@@ -275,20 +285,25 @@ def e(s):
     return html.escape("" if s is None else str(s), quote=True)
 
 
-def render_html(data):
+def render_html(data, theme=DEFAULT_THEME):
+    th = THEMES[theme]
     s = data["summary"]
     out = []
     P = out.append
     title = f"{s['rotate']} credential{'s' if s['rotate'] != 1 else ''} to rotate" if s["rotate"] else "Nothing to rotate"
     P("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
     P("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
-    P("<meta name=\"color-scheme\" content=\"dark\">")
+    P(f"<meta name=\"color-scheme\" content=\"{th['scheme']}\">")
     P(f"<title>Afterprompt report</title>")
-    P("<link rel=\"icon\" href=\"report-assets/am-favicon.png\">")
-    P("<link rel=\"stylesheet\" href=\"report-assets/brand.css\">")
+    if th["icon"]:
+        P(f"<link rel=\"icon\" href=\"report-assets/{th['icon']}\">")
+    P(f"<link rel=\"stylesheet\" href=\"report-assets/{th['css']}\">")
     P(f"<style>{CSS}</style></head><body>")
-    P("<nav class=\"nav\"><div class=\"nav-in\"><img class=\"nav-logo\" src=\"report-assets/am-logo-white-600.png\" "
-      "alt=\"AM Consulting\"><span class=\"brandname\">Afterprompt</span></div></nav>")
+    if theme == "am":
+        P("<nav class=\"nav\"><div class=\"nav-in\"><img class=\"nav-logo\" src=\"report-assets/am-logo-white-600.png\" "
+          "alt=\"AM Consulting\"><span class=\"brandname\">Afterprompt</span></div></nav>")
+    else:
+        P("<nav class=\"nav\"><div class=\"nav-in\"><span class=\"wordmark\">Afterprompt</span></div></nav>")
     P("<main>")
     P("<section class=\"sec hero\"><div class=\"eyebrow\">Credential exposure report</div>")
     P(f"<h2>{e(title)}</h2><p class=\"sub\">{e(context_line(data))}</p>")
@@ -372,7 +387,7 @@ def render_html(data):
     for x in data["coverage"]["limits"]:
         P(f"<li>{e(x)}</li>")
     P("</ul></section></main>")
-    P(f"<footer>Afterprompt {e(data['version'])} · FSL-1.1-ALv2 · Built by AM Consulting</footer>")
+    P(f"<footer>Afterprompt {e(data['version'])} · FSL-1.1-ALv2{e(th['credit'])}</footer>")
     P("</body></html>")
     return "\n".join(out)
 
@@ -381,15 +396,22 @@ def write(cfg, sources, run_meta, host_env=None, env_results=None):
     data = build_findings(cfg, sources, run_meta)
     if env_results:
         data = merge.merge(data, host_env, env_results)
+    theme = getattr(cfg, "theme", None) or DEFAULT_THEME
     os.makedirs(cfg.report_dir, mode=0o700, exist_ok=True)
     write_json(os.path.join(cfg.report_dir, "findings.json"), data)
     with open(os.path.join(cfg.report_dir, "report.md"), "w", encoding="utf-8") as fh:
-        fh.write(render_md(data))
+        fh.write(render_md(data, theme))
     with open(os.path.join(cfg.report_dir, "report.html"), "w", encoding="utf-8") as fh:
-        fh.write(render_html(data))
+        fh.write(render_html(data, theme))
     assets_out = os.path.join(cfg.report_dir, "report-assets")
     os.makedirs(assets_out, mode=0o700, exist_ok=True)
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
-    for a in ASSETS:
+    # A report folder reused with another theme must not keep the other theme's files.
+    for other in {a for t in THEMES.values() for a in t["assets"]} - set(THEMES[theme]["assets"]):
+        try:
+            os.remove(os.path.join(assets_out, other))
+        except OSError:
+            pass
+    for a in THEMES[theme]["assets"]:
         shutil.copyfile(os.path.join(here, a), os.path.join(assets_out, a))
     return data
