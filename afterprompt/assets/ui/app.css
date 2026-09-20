@@ -354,3 +354,53 @@ input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(
 }
 :root[data-theme="dark"] .am-light { display: none; }
 :root[data-theme="dark"] .am-dark { display: block; }
+
+/* --- status: what you decided, and what the watchdog can still see ---------- */
+.status { margin-block-start: 26px; max-inline-size: var(--measure); }
+.status-head { display: flex; align-items: baseline; gap: 10px; }
+.status-head h3 { margin: 0; }
+.choices { display: flex; gap: 2px; margin-block-start: 10px; flex-wrap: wrap; }
+.choice {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 6px 12px;
+  color: var(--text-secondary);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: default;
+  transition: background-color var(--duration-hover) var(--ease-out);
+}
+.choice:hover { background: var(--surface-2); }
+.choice[aria-pressed="true"] {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-weight: var(--weight-label);
+  border-color: var(--border-strong);
+}
+.seen {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-block-start: 14px; padding: 12px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+.seen .mono { display: block; color: var(--text-secondary); }
+.seen .button { flex: none; }
+
+/* --- everything that takes the same steps ---------------------------------- */
+.siblings { margin-block-start: 26px; max-inline-size: var(--measure); }
+.sib-list { display: grid; gap: 2px; margin-block-start: 12px; }
+.sib {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-row);
+  background: var(--surface-1);
+}
+.sib .mono { color: var(--text-tertiary); font-size: var(--text-xs); }
+.siblings .button { margin-block-start: 12px; }
+.linkish {
+  font: inherit; font-size: var(--text-sm);
+  background: none; border: none; color: var(--accent); cursor: default; padding: 0;
+}
+.row.ignored { opacity: 0.55; }

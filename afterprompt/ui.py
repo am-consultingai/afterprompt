@@ -24,7 +24,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from afterprompt import settings
+from afterprompt import exposures, settings, watch
 from afterprompt.util import read_json, write_json
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
@@ -48,6 +48,7 @@ LOGO_STATIC = {"/logo/afterprompt-mark.svg": ("afterprompt-mark.svg", "image/svg
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 MAX_BODY = 4096
+WATCH_EVERY = 180.0        # seconds between watchdog passes while the page is open
 HEARTBEAT_GRACE = 45.0     # seconds without a heartbeat before a finished scan's server stops
 IDLE_LIMIT = 30 * 60.0     # seconds a finished scan's server stays up with no page at all
 
@@ -67,6 +68,13 @@ class State:
         self.finished = False
         self.findings_path = None
         self.checklist_path = os.path.join(base_dir, "checklist.json")
+        # Where to look when re-checking an exposure, and which environment's findings are ours to re-read.
+        self.home = None
+        self.side = None
+        self.watchdog = None
+        self.watch_every = WATCH_EVERY
+        self.watch_first = True
+        self._stop = threading.Event()
         self.subscribers = []
         self.last_beat = None
         self.started = time.monotonic()
@@ -130,6 +138,61 @@ class State:
             data[value_hash] = bool(done)
             write_json(self.checklist_path, data)
             return data
+
+    # ---- what has been done about each exposure, and what the watchdog last saw
+    def statuses(self):
+        return exposures.load(self.base_dir)
+
+    def set_status(self, value_hash, value):
+        row = exposures.set_status(self.base_dir, value_hash, value)
+        if row is not None:
+            self._publish({"type": "status", "hash": value_hash, "row": row})
+        return row
+
+    def findings(self):
+        return read_json(self.findings_path, None) if self.findings_path else None
+
+    def recheck(self, value_hash=None):
+        """Re-read the files the findings came from and see whether the values are still in them.
+
+        Nothing is asked of any vendor and no plaintext is kept: the files are hashed the way the scan
+        hashed them, and only hashes are compared."""
+        data = self.findings()
+        if not data or not self.home:
+            return {}
+        items = list(data.get("rotate") or []) + list(data.get("review") or [])
+        if value_hash:
+            items = [f for f in items if f.get("hash") == value_hash]
+            seen = {f["hash"]: watch.check(f, self.home, self.side) for f in items if f.get("hash")}
+        else:
+            seen = watch.check_all({"rotate": items, "review": []}, self.home, self.side)
+        changed = exposures.record_seen(self.base_dir, seen)
+        if seen:
+            rows = self.statuses()
+            self._publish({"type": "seen", "seen": {h: rows.get(h, {}).get("seen") for h in seen},
+                           "changed": changed})
+        return seen
+
+    def _watchdog(self):
+        """One pass now (so a reopened page is not showing yesterday's answer), then every interval."""
+        while not self._stop.wait(2 if self.watch_first else self.watch_every):
+            self.watch_first = False
+            try:
+                if self.finished:
+                    self.recheck()
+            except Exception:                      # a watchdog must never take the page down with it
+                pass
+
+    def start_watchdog(self, every=None):
+        if self.watchdog or not self.home:
+            return None
+        self.watch_every = every or self.watch_every
+        self.watchdog = threading.Thread(target=self._watchdog, name="afterprompt-watchdog", daemon=True)
+        self.watchdog.start()
+        return self.watchdog
+
+    def stop_watchdog(self):
+        self._stop.set()
 
 
 def about():
@@ -232,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
             if data is None:
                 self._send(404, {"error": "no findings yet"})
             else:
-                self._send(200, {"findings": data, "checklist": st.checklist()})
+                self._send(200, {"findings": data, "checklist": st.checklist(), "statuses": st.statuses()})
         elif path == "/api/settings":
             self._send(200, settings.describe(st.base_dir))
         elif path == "/api/about":
@@ -283,6 +346,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "hash must be a value hash"})
                 return
             self._send(200, {"checklist": st.tick(h, bool(body.get("done")))})
+        elif path == "/api/status":
+            h = body.get("hash") if isinstance(body, dict) else None
+            row = st.set_status(h, body.get("status")) if isinstance(h, str) else None
+            if row is None:
+                self._send(400, {"error": "hash must be a value hash and status one of " +
+                                          ", ".join(exposures.STATUSES)})
+            else:
+                self._send(200, {"hash": h, "row": row, "statuses": st.statuses()})
+        elif path == "/api/recheck":
+            h = body.get("hash") if isinstance(body, dict) else None
+            if h is not None and not exposures.valid_hash(h):
+                self._send(400, {"error": "hash must be a value hash"})
+                return
+            seen = st.recheck(h)
+            self._send(200, {"seen": seen, "statuses": st.statuses()})
         else:
             self._send(404, {"error": "not found"})
 

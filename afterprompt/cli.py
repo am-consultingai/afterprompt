@@ -9,7 +9,7 @@ import sys
 import time
 import traceback
 
-from afterprompt import __version__, config, envs, platforms, progress, worker
+from afterprompt import __version__, config, envs, exposures, platforms, progress, worker
 from afterprompt.util import (human_bytes, human_duration, log, makedirs, read_json, say, set_console_sink, set_log,
                               write_json)
 
@@ -183,6 +183,7 @@ def stop_ui(view):
     if view:
         set_console_sink(None)
         progress.set_sink(None)
+        view.state.stop_watchdog()
         view.stop()
 
 
@@ -604,7 +605,11 @@ def run(argv, emit):
         say(f"  Installed but not scanned: {', '.join(uncovered)} (the report says why)")
     say(f"Report: {os.path.join(cfg.report_dir, 'report.html')}")
     if view:
+        # The watchdog needs to know where to look, and which environment's files are ours to re-read.
+        view.state.home, view.state.side = cfg.home, cfg.platform
         view.state.finish(os.path.join(cfg.report_dir, "findings.json"))
+        exposures.adopt_checklist(base)      # a tick from an older version meant rotated
+        view.state.start_watchdog()
         say("The browser view stays open until you close its tab (or press Ctrl-C).")
         from afterprompt import ui
         ui.wait_until_done(view)

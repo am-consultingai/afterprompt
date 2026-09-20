@@ -39,8 +39,21 @@
     whatToDo: "What to do", about: "about", minutes: "min", openConsole: "Open", checkAudit: "Check the audit log",
     overlap: "can be rotated without downtime", breaksAtOnce: "revoking breaks callers at once",
     endsSession: "signing out ends the session at once",
-    tickLabel: "Rotated and revoked", tickWhy: "Kept on this machine, by value hash, so it survives the next scan.",
-    tickFailed: "Could not save that tick — the scanner may have closed. Your report on disk is unaffected.",
+    tickFailed: "Could not save that change — the scanner may have closed. Your report on disk is unaffected.",
+    status: "Status", statusOpen: "Needs rotating", statusRotating: "Rotating", statusRotated: "Rotated",
+    statusIgnored: "Ignored",
+    statusWhy: "Kept on this machine by value hash, so it survives the next scan.",
+    seen: "On this machine", seenPresent: "Still in the files it was found in",
+    seenGone: "No longer in the files it was found in", seenUnknown: "Not re-checked",
+    seenChecked: "checked", justNow: "just now", minutesAgo: "min ago", hoursAgo: "h ago",
+    checkNow: "Check now", checking: "Checking…",
+    watchdogWhy: "Afterprompt re-reads those files every few minutes while this page is open and tells you " +
+                 "whether the value is still in them. Whether the credential still works is the vendor's to " +
+                 "say, and this never asks them.",
+    rotatedButPresent: "Rotated at the vendor, but the value is still in a file here. Deleting that history " +
+                       "is a separate step.",
+    sameSteps: "These need the same steps", sameStepsWhy: "Same vendor, same answer: do it once for all of them.",
+    markAll: "Mark all rotated", openItem: "Open",
     groupBy: "Grouped by", groupVendor: "vendor", groupSeverity: "urgency", groupTool: "AI tool",
     otherCreds: "Other credentials", privateKeys: "Private keys", sessionCookies: "Session cookies",
     passwords: "Passwords in text", connectionStrings: "Connection strings",
@@ -143,7 +156,7 @@
   const state = {
     screen: ["scan", "findings", "machines", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
-    collapsed: {}, settings: null, about: null, conn: "connecting", notice: null,
+    collapsed: {}, settings: null, about: null, statuses: {}, checking: {}, conn: "connecting", notice: null,
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -309,11 +322,11 @@
         vendor = vendorOf(it.f);
         label = key = vendor || TEXT.otherCreds;
       }
-      if (!out.has(key)) out.set(key, { key, label, vendor, items: [], rotate: 0, review: 0, ticked: 0 });
+      if (!out.has(key)) out.set(key, { key, label, vendor, items: [], rotate: 0, review: 0, done: 0 });
       const g = out.get(key);
       g.items.push(it);
       g[it.section] += 1;
-      if (state.checklist[it.f.hash]) g.ticked += 1;
+      if (["rotated", "ignored"].includes(statusOf(it.f))) g.done += 1;
     }
     // Groups with something to rotate come first, then by how much there is to do.
     return [...out.values()].sort((a, b) => (b.rotate > 0) - (a.rotate > 0) || b.rotate - a.rotate ||
@@ -359,7 +372,7 @@
       head.append(el("span", g.label, "group-name"));
       if (g.rotate) head.append(el("span", `${g.rotate}`, "pip danger"));
       if (g.review) head.append(el("span", `${g.review}`, "pip"));
-      if (g.ticked) head.append(el("span", `${g.ticked} ${TEXT.done}`, "pip success"));
+      if (g.done) head.append(el("span", `${g.done} ${TEXT.done}`, "pip success"));
       head.addEventListener("click", () => {
         state.collapsed[g.key] = !collapsed;
         render();
@@ -367,12 +380,15 @@
       list.append(head);
       if (collapsed) continue;
       for (const { f, section } of g.items) {
-        const row = el("div", null, "row" + (state.checklist[f.hash] ? " ticked" : ""));
+        const st = statusOf(f);
+        const row = el("div", null, "row" + (st === "rotated" ? " ticked" : "") +
+                                    (st === "ignored" ? " ignored" : ""));
         row.id = "row-" + f.hash;
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", String(f.hash === state.selected));
         const sev = severityOf(f, section);
-        row.append(state.checklist[f.hash] ? icon("check", "success")
+        row.append(st === "rotated" ? icon("check", "success")
+                   : st === "ignored" ? icon("dot", "quiet")
                    : icon(sev === "review" ? "key" : "alert", sev === "review" ? "warning" : "danger"));
         row.append(el("span", f.label, "title"), el("span", f.masked, "value"));
         if (f.files > 1) row.append(el("span", `${f.files}`, "pip"));
@@ -408,7 +424,7 @@
     } else if (key === "Enter" || key === "o") $("detail").focus();
     else if (key === " ") {
       const found = items().find((i) => i.f.hash === state.selected);
-      if (found) tickValue(found.f, !state.checklist[found.f.hash]);
+      if (found) setStatus(found.f, statusOf(found.f) === "rotated" ? "open" : "rotated");
     } else return;
     ev.preventDefault();
   }
@@ -467,8 +483,9 @@
     }
     add(TEXT.occurrences, (dd) => dd.append(el("span", `${f.occurrences} ${TEXT.ofTotal} ${f.files} ${TEXT.inFiles}`)));
     box.append(facts);
+    box.append(statusBlock(f));
     box.append(actions(f, section, vendor));
-    if (section === "rotate") box.append(tick(f));
+    box.append(sameSteps(f, section));
   }
 
   /* What to do, from rotation.json: the vendor's own steps when we have them, the generic ones for the category
@@ -542,30 +559,154 @@
     return section === "review" ? "entropy" : "pattern";
   }
 
-  function tick(f) {
-    const wrap = el("div", null, "tick");
-    const cb = el("input");
-    cb.type = "checkbox";
-    cb.id = "tick-" + f.hash;
-    cb.checked = !!state.checklist[f.hash];
-    const label = el("label", TEXT.tickLabel);
-    label.htmlFor = cb.id;
-    const text = el("div", null, "grow");
-    text.append(label, el("div", TEXT.tickWhy, "why"));
-    wrap.append(cb, text);
-    cb.addEventListener("change", () => tickValue(f, cb.checked));
+  const STATUS_TEXT = { open: "statusOpen", rotating: "statusRotating", rotated: "statusRotated",
+                        ignored: "statusIgnored" };
+
+  function statusOf(f) {
+    const row = state.statuses[f.hash];
+    if (row && row.status) return row.status;
+    return state.checklist[f.hash] ? "rotated" : "open";     // a tick from an older run meant rotated
+  }
+
+  function seenOf(f) {
+    const row = state.statuses[f.hash];
+    return (row && row.seen) || null;
+  }
+
+  function ago(seconds) {
+    if (!seconds) return null;
+    const mins = Math.round((Date.now() / 1000 - seconds) / 60);
+    if (mins < 1) return TEXT.justNow;
+    if (mins < 60) return `${mins} ${TEXT.minutesAgo}`;
+    return `${Math.round(mins / 60)} ${TEXT.hoursAgo}`;
+  }
+
+  /* Two separate facts, side by side: what you decided, and what the machine can still see. */
+  function statusBlock(f) {
+    const wrap = el("section", null, "status");
+    const head = el("div", null, "status-head");
+    head.append(el("h3", TEXT.status));
+    wrap.append(head);
+
+    const choices = el("div", null, "choices");
+    choices.setAttribute("role", "group");
+    const now = statusOf(f);
+    for (const value of ["open", "rotating", "rotated", "ignored"]) {
+      const b = el("button", TEXT[STATUS_TEXT[value]], "choice");
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(value === now));
+      b.addEventListener("click", () => setStatus(f, value));
+      choices.append(b);
+    }
+    wrap.append(choices, el("p", TEXT.statusWhy, "why"));
+
+    const seen = seenOf(f);
+    const line = el("div", null, "seen");
+    const state_ = seen ? seen.state : null;
+    line.append(icon(state_ === "present" ? "alert" : state_ === "gone" ? "check" : "dot",
+                     state_ === "present" ? "warning" : state_ === "gone" ? "success" : "quiet"));
+    const words = el("div", null, "grow");
+    const what = state_ === "present" ? TEXT.seenPresent : state_ === "gone" ? TEXT.seenGone : TEXT.seenUnknown;
+    words.append(el("div", what));
+    if (seen && seen.state === "present" && (seen.in || []).length) {
+      for (const where of seen.in) words.append(el("div", where, "mono"));
+    }
+    const when = seen && ago(seen.checked);
+    if (when) words.append(el("div", `${TEXT.seenChecked} ${when}`, "why"));
+    if (seen && seen.why) words.append(el("div", seen.why, "why"));
+    const again = el("button", state.checking[f.hash] ? TEXT.checking : TEXT.checkNow, "button");
+    again.type = "button";
+    again.disabled = !!state.checking[f.hash];
+    again.addEventListener("click", () => recheck(f));
+    line.append(words, again);
+    wrap.append(line);
+    if (now === "rotated" && state_ === "present") wrap.append(note(TEXT.rotatedButPresent, "warning"));
+    wrap.append(el("p", TEXT.watchdogWhy, "why"));
     return wrap;
   }
 
-  async function tickValue(f, want) {
-    state.checklist[f.hash] = want;        // optimistic: the control's own state is the acknowledgement
+  async function setStatus(f, value) {
+    const before = state.statuses[f.hash];
+    state.statuses[f.hash] = Object.assign({}, before, { status: value });   // optimistic, like the tick was
     render();
-    const res = await post("/api/checklist", { hash: f.hash, done: want }).catch(() => null);
+    const res = await post("/api/status", { hash: f.hash, status: value }).catch(() => null);
     if (!res || !res.ok) {
-      state.checklist[f.hash] = !want;
+      state.statuses[f.hash] = before;
       state.notice = TEXT.tickFailed;
       render();
+      return;
     }
+    const body = await res.json();
+    state.statuses = body.statuses || state.statuses;
+    state.notice = null;
+    render();
+  }
+
+  async function recheck(f) {
+    state.checking[f.hash] = true;
+    render();
+    const res = await post("/api/recheck", { hash: f.hash }).catch(() => null);
+    delete state.checking[f.hash];
+    if (res && res.ok) {
+      const body = await res.json();
+      state.statuses = body.statuses || state.statuses;
+    } else {
+      state.notice = TEXT.tickFailed;
+    }
+    render();
+  }
+
+  /* What identifies "the same job". Two Anthropic keys take the same steps whether one is confirmed live
+     and the other only matched the format, so the category is not part of it — but a Google cookie and a
+     Google API key do not, and the vendor's kind-specific block is what says so. */
+  function actionKey(f, section) {
+    const vendor = vendorOf(f);
+    if (!vendor) return null;
+    const base = (REF.rotation.vendors || {})[vendor];
+    if (!base || !base.steps) return null;          // no vendor steps: nothing to do once for all of them
+    const kind = genericKey(f, section);
+    return vendor + "\u0000" + (base.kinds && base.kinds[kind] ? kind : "");
+  }
+
+  /* Everything that takes the same steps as this one. Rotating a Stripe key is one job whether it leaked
+     once or nine times. */
+  function siblings(f, section) {
+    const key = actionKey(f, section);
+    if (!key) return [];
+    return items().filter((it) => it.f.hash !== f.hash && actionKey(it.f, it.section) === key);
+  }
+
+  function sameSteps(f, section) {
+    const rest = siblings(f, section);
+    const wrap = el("section", null, "siblings");
+    if (!rest.length) return wrap;
+    const head = el("div", null, "actions-head");
+    head.append(el("h3", TEXT.sameSteps), el("span", String(rest.length + 1), "pip"));
+    wrap.append(head, el("p", TEXT.sameStepsWhy, "sub"));
+    const list = el("div", null, "sib-list");
+    for (const it of [{ f, section }].concat(rest)) {
+      const row = el("div", null, "sib");
+      const st = statusOf(it.f);
+      row.append(icon(st === "rotated" ? "check" : "dot", st === "rotated" ? "success" : "quiet"));
+      const words = el("div", null, "grow");
+      words.append(el("div", it.f.label), el("div", it.f.masked, "mono"));
+      row.append(words, el("span", TEXT[STATUS_TEXT[st]], "pill"));
+      if (it.f.hash !== f.hash) {
+        const open = el("button", TEXT.openItem, "linkish");
+        open.type = "button";
+        open.addEventListener("click", () => select(it.f.hash));
+        row.append(open);
+      }
+      list.append(row);
+    }
+    wrap.append(list);
+    const all = el("button", TEXT.markAll, "button");
+    all.type = "button";
+    all.addEventListener("click", async () => {
+      for (const it of [{ f, section }].concat(rest)) await setStatus(it.f, "rotated");
+    });
+    wrap.append(all);
+    return wrap;
   }
 
   /* A WSL distribution is a separate machine as far as a leaked key is concerned: its own home folder,
@@ -831,10 +972,11 @@
   async function loadFindings() {
     const r = await api("/api/findings");
     if (!r.ok) return;
-    const { findings, checklist } = await r.json();
+    const { findings, checklist, statuses } = await r.json();
     const before = state.selected;
     state.findings = findings;
     state.checklist = checklist || {};
+    state.statuses = statuses || {};
     applyViewSettings();
     const all = items().map((i) => i.f.hash);
     // Selection survives by id, never by index; if it is gone, take its nearest surviving neighbour.
@@ -916,6 +1058,16 @@
     } else if (ev.type === "progress") {
       state.progress[ev.stage] = { done: ev.done, total: ev.total, note: ev.note };
       if (state.screen === "scan") render();
+    } else if (ev.type === "status") {
+      state.statuses[ev.hash] = ev.row;
+      if (state.screen === "findings") render();
+    } else if (ev.type === "seen") {
+      // The watchdog looked again: keep what it saw beside what the person decided.
+      for (const [h, seen] of Object.entries(ev.seen || {})) {
+        if (!seen) continue;
+        state.statuses[h] = Object.assign({}, state.statuses[h], { seen });
+      }
+      if (state.screen === "findings") render();
     } else if (ev.type === "finished") {
       loadFindings();
     } else if (ev.type === "stage" || ev.type === "stages") {

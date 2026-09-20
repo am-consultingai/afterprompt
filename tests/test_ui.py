@@ -15,7 +15,7 @@ from unittest import mock
 
 from afterprompt import cli, ui
 from afterprompt.util import write_json
-from tests.helpers import Fixture, TempDirTest, requires_rg
+from tests.helpers import Fixture, TempDirTest, requires_rg, write
 
 PORT = 50505
 TOKEN = "t" * 43
@@ -539,3 +539,72 @@ class LogoAndAboutTests(TempDirTest):
         self.assertIn("aboutPoweredBy", js)
         self.assertIn("/logo/am-logo.png", js)
         self.assertIn("/logo/am-logo-white.png", js)     # the white mark for the dark background
+
+
+class StatusApiTests(TempDirTest):
+    """The endpoints behind the status control and the watchdog."""
+
+    def setUp(self):
+        super().setUp()
+        self.state = ui.State(self.tmp)
+        self.state.home = self.tmp
+        self.server = ui.Server(self.state).start()
+        self.addCleanup(self.server.stop)
+        self.addCleanup(self.state.stop_watchdog)
+
+    def req(self, method, path, body=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        headers = {"Authorization": f"Bearer {self.server.token}"}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        c.request(method, path, json.dumps(body).encode() if body is not None else None, headers)
+        r = c.getresponse()
+        out = (r.status, json.loads(r.read() or b"{}"))
+        c.close()
+        return out
+
+    def test_a_status_is_set_and_comes_back_with_the_findings(self):  # U-UI-40
+        h = "a1b2c3d4e5f60718"
+        write_json(os.path.join(self.tmp, "findings.json"), {"rotate": [{"hash": h, "masked": "sk…1"}], "review": []})
+        self.state.finish(os.path.join(self.tmp, "findings.json"))
+        status, body = self.req("POST", "/api/status", {"hash": h, "status": "rotating"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["row"]["status"], "rotating")
+        self.assertEqual(self.req("GET", "/api/findings")[1]["statuses"][h]["status"], "rotating")
+
+    def test_a_status_the_product_does_not_have_is_refused(self):  # U-UI-41
+        for bad in ({"hash": "a" * 16, "status": "solved"}, {"hash": "../etc", "status": "rotated"},
+                    {"status": "rotated"}, {"hash": "a" * 16}):
+            with self.subTest(body=bad):
+                self.assertEqual(self.req("POST", "/api/status", bad)[0], 400)
+
+    def test_a_recheck_reports_what_is_still_on_disk(self):  # U-UI-42
+        from tests.samples import SecretFactory
+        from afterprompt.util import sha16
+        from afterprompt.vendor import value_part
+        key = SecretFactory(31).sample("anthropic_key")
+        write(os.path.join(self.tmp, "history.jsonl"), 'pasted %s here\n' % key)
+        h = sha16(value_part("anthropic_key", key.encode()))
+        finding = {"hash": h, "match_hashes": [sha16(key.encode())], "patterns": ["anthropic_key"],
+                   "masked": "sk-ant…x", "locations": [{"display": "~/history.jsonl", "side": "linux",
+                                                        "decoded": False}], "still_on_disk": []}
+        write_json(os.path.join(self.tmp, "findings.json"), {"rotate": [finding], "review": []})
+        self.state.finish(os.path.join(self.tmp, "findings.json"))
+        status, body = self.req("POST", "/api/recheck", {"hash": h})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["seen"][h]["state"], "present")
+        # Clean the file the way someone would, and the answer changes.
+        write(os.path.join(self.tmp, "history.jsonl"), "pasted [removed] here\n")
+        self.assertEqual(self.req("POST", "/api/recheck", {"hash": h})[1]["seen"][h]["state"], "gone")
+        self.assertEqual(self.req("GET", "/api/findings")[1]["statuses"][h]["seen"]["state"], "gone")
+
+    def test_the_page_is_told_when_the_watchdog_changes_its_mind(self):  # U-UI-43
+        """A status the person set and a fact the watchdog observed are published as separate events."""
+        events = []
+        q = __import__("queue").Queue(maxsize=100)
+        self.state.subscribers.append(q)
+        self.state.set_status("b" * 16, "rotated")
+        while not q.empty():
+            events.append(q.get_nowait())
+        self.assertEqual(events[0]["type"], "status")
+        self.assertEqual(events[0]["row"]["status"], "rotated")
