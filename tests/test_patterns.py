@@ -69,6 +69,9 @@ class PatternTests(unittest.TestCase):
         # Fine-grained tokens are not on the classic tokens page.
         self.assertEqual(P.REVOKE["github_fine_grained_pat"][1], "https://github.com/settings/personal-access-tokens")
         self.assertNotEqual(P.REVOKE["github_fine_grained_pat"][1], P.REVOKE["github_token"][1])
+        # Vendors whose findings used to carry no link at all.
+        self.assertIn("replicate_token", P.REVOKE)
+        self.assertIn("elevenlabs_key", P.REVOKE)
         for n in ("azure_devops_pat", "azure_devops_pat_ctx"):
             self.assertNotIn("portal.azure.com", P.REVOKE[n][1])   # a PAT is not managed from the Azure portal
         for n, (where, url) in P.REVOKE.items():
