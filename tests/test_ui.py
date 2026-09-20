@@ -326,6 +326,16 @@ class PageTests(TempDirTest):
         self.assertNotIn("brand", js.lower())
         self.assertIn("trademarks:", js)                      # and the page says whose marks these are
 
+    def test_the_card_answers_for_this_credential_not_just_this_vendor(self):  # U-UI-32
+        js = self.js_without_comments()
+        # A vendor can issue several kinds of credential, and the page must not give a cookie key-rotation steps.
+        self.assertIn("function vendorGuide(vendor, kind)", js)
+        self.assertIn("base.kinds && base.kinds[kind]", js)
+        self.assertIn('kind === "session_cookie" ? TEXT.endsSession', js)
+        # GitHub's fine-grained tokens live on their own page: the per-format link beats the vendor-wide console.
+        links = js[js.index("const links = el("):js.index("if (links.children.length)")]
+        self.assertLess(links.index("f.revoke.url"), links.index("guide.console.url"))
+
     def test_keyboard_contract(self):  # U-UI-24
         js = self.js_without_comments()
         for key in ('"ArrowDown"', '"ArrowUp"', '"j"', '"k"', '"Home"', '"End"', '"Enter"', '"Escape"'):

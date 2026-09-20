@@ -36,6 +36,8 @@
     weaker: "Weaker evidence", weakerWhy: "Worth a look; decide whether it is a credential of yours.",
     exposedIn: "Exposed in", stillOnDisk: "Still on disk", occurrences: "Occurrences", inFiles: "files",
     whatToDo: "What to do", about: "about", minutes: "min", openConsole: "Open", checkAudit: "Check the audit log",
+    overlap: "can be rotated without downtime", breaksAtOnce: "revoking breaks callers at once",
+    endsSession: "signing out ends the session at once",
     tickLabel: "Rotated and revoked", tickWhy: "Kept on this machine, by value hash, so it survives the next scan.",
     tickFailed: "Could not save that tick — the scanner may have closed. Your report on disk is unaffected.",
     groupBy: "Grouped by", groupVendor: "vendor", groupSeverity: "urgency", groupTool: "AI tool",
@@ -450,16 +452,25 @@
      otherwise, and always the two that hold whatever the credential is. */
   function actions(f, section, vendor) {
     const wrap = el("section", null, "actions");
-    const guide = (REF.rotation.vendors || {})[vendor];
-    const generic = (REF.rotation.generic || {})[genericKey(f, section)] || {};
+    const kind = genericKey(f, section);
+    const guide = vendorGuide(vendor, kind);
+    const generic = (REF.rotation.generic || {})[kind] || {};
     const head = el("div", null, "actions-head");
     head.append(el("h3", TEXT.whatToDo));
     const mins = (guide && guide.minutes) || generic.minutes;
     if (mins) head.append(el("span", `${TEXT.about} ${mins} ${TEXT.minutes}`, "field-label"));
+    if (guide && guide.downtime) {
+      // A cookie has no callers to break: ending the session is the whole of the fix.
+      const cost = guide.downtime === "overlap" ? TEXT.overlap
+        : kind === "session_cookie" ? TEXT.endsSession : TEXT.breaksAtOnce;
+      head.append(el("span", cost, "downtime"));
+    }
     wrap.append(head);
     if (generic.headline) wrap.append(el("p", generic.headline, "sub"));
 
     const steps = el("ol", null, "steps");
+    // A vendor's procedure is confident; the evidence here may not be. Say which to settle first.
+    if (guide && guide.steps && generic.confirm_first) steps.append(el("li", generic.confirm_first));
     for (const s of (guide && guide.steps) || generic.steps || []) steps.append(el("li", s));
     for (const s of REF.rotation.universal || []) steps.append(el("li", s));
     wrap.append(steps);
@@ -473,8 +484,10 @@
       a.append(el("span", label), icon(name || "external", null));
       links.append(a);
     };
-    if (guide && guide.console) link(`${TEXT.openConsole} ${guide.console.where}`, guide.console.url);
-    else if (f.revoke && f.revoke.url && /^https:\/\//.test(f.revoke.url)) link(`${TEXT.openConsole} ${f.revoke.where}`, f.revoke.url);
+    // The finding's own revoke link is per credential format — GitHub's fine-grained tokens have their own page —
+    // so it wins over the vendor-wide console link.
+    if (f.revoke && f.revoke.url && /^https:\/\//.test(f.revoke.url)) link(`${TEXT.openConsole} ${f.revoke.where}`, f.revoke.url);
+    else if (guide && guide.console) link(`${TEXT.openConsole} ${guide.console.where}`, guide.console.url);
     if (guide && guide.audit) link(TEXT.checkAudit, guide.audit.url);
     if (links.children.length) wrap.append(links);
 
@@ -485,6 +498,15 @@
     return wrap;
   }
 
+  /* One vendor can issue several kinds of credential — Google hands out API keys and sets session cookies, and the
+     answer is not the same for both. A "kinds" block overrides the vendor's own fields for that finding kind. */
+  function vendorGuide(vendor, kind) {
+    const base = (REF.rotation.vendors || {})[vendor];
+    if (!base) return null;
+    const special = base.kinds && base.kinds[kind];
+    return special ? Object.assign({}, base, special) : base;
+  }
+
   function genericKey(f, section) {
     if (f.category === "live_credential") return "live_credential";
     if (f.category === "configuration") return "configuration";
@@ -493,6 +515,7 @@
     if (f.category === "prompt") return "prompt";
     const p = (f.patterns || []).join(" ");
     if (/private_key|openssh|pkcs|pgp|putty|age_secret/.test(p)) return "private_key";
+    if (/conn_string|url_with_credentials/.test(p)) return "connection_string";
     return section === "review" ? "entropy" : "pattern";
   }
 

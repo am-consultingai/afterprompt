@@ -154,18 +154,53 @@ class ReferenceDataTests(unittest.TestCase):
                 self.assertTrue(g["steps"] and all(s.strip().endswith(".") for s in g["steps"]))
                 self.assertIn(g["confidence"], ("verified", "partly verified"))
                 self.assertTrue(g["source"].startswith("https://"))
+                # What the vendor's procedure costs you: an overlap window, or callers breaking on revocation.
+                self.assertIn(g["downtime"], ("overlap", "immediate"))
                 for link in ("console", "audit"):
                     if link in g:
                         self.assertTrue(g[link]["url"].startswith("https://"), link)
                         self.assertTrue(g[link]["where"])
 
+    def test_the_vendors_that_matter_most_are_covered(self):  # U-SET-19
+        """The credentials people actually leak: guidance, not just a revoke link."""
+        r = self.load("rotation.json")
+        for vendor in ("Anthropic", "OpenAI", "AWS", "GitHub", "Google", "Google Cloud", "Azure", "GitLab",
+                       "Hugging Face", "npm", "Docker Hub"):
+            with self.subTest(vendor=vendor):
+                self.assertIn(vendor, r["vendors"])
+
+    def test_a_vendor_can_answer_per_finding_kind(self):  # U-SET-20
+        """Google issues API keys and sets session cookies; a cookie must not be told to rotate a key."""
+        r = self.load("rotation.json")
+        kinds = set(r["generic"])
+        cookie = r["vendors"]["Google"]["kinds"]["session_cookie"]
+        self.assertTrue(any("sign out" in s.lower() for s in cookie["steps"]))
+        self.assertFalse(any("Rotate key" in s for s in cookie["steps"]))
+        for name, g in r["vendors"].items():
+            for kind, special in (g.get("kinds") or {}).items():
+                with self.subTest(vendor=name, kind=kind):
+                    self.assertIn(kind, kinds, "a finding kind the view never asks for")
+                    self.assertTrue(special["steps"] and all(s.strip().endswith(".") for s in special["steps"]))
+                    self.assertIn(special.get("downtime", g["downtime"]), ("overlap", "immediate"))
+
     def test_every_finding_kind_has_generic_steps(self):  # U-SET-13
         r = self.load("rotation.json")
-        for kind in ("live_credential", "pattern", "configuration", "session_cookie", "private_key", "prompt",
-                     "entropy"):
+        for kind in ("live_credential", "pattern", "configuration", "session_cookie", "private_key",
+                     "connection_string", "prompt", "entropy"):
             with self.subTest(kind=kind):
                 g = r["generic"][kind]
                 self.assertTrue(g["headline"] and g["steps"])
+        # A connection string leaks the address as well as the password, and rotating cannot take that back.
+        conn = " ".join(r["generic"]["connection_string"]["steps"] + [r["generic"]["connection_string"]["headline"]])
+        self.assertIn("host", conn)
+        # A passphrase is no defence once the key's plain text has been pasted into a transcript.
+        self.assertIn("passphrase", r["generic"]["private_key"]["headline"])
+        # A weak match with a confident vendor procedure attached has to say "confirm this is yours" first.
+        for kind in ("entropy", "prompt"):
+            self.assertTrue(r["generic"][kind]["confirm_first"].strip().endswith("."), kind)
+        # Ending the session is the fix for a cookie; a password change on its own may not be.
+        self.assertTrue(any("password" in s for s in r["generic"]["session_cookie"]["steps"]))
+        self.assertTrue(any("invalidates the cookie" in s for s in r["generic"]["session_cookie"]["steps"]))
         # The two things that hold whatever the credential is.
         self.assertTrue(any("already sent to the model vendor" in u for u in r["universal"]))
         self.assertTrue(any("Revoke first" in u for u in r["universal"]))

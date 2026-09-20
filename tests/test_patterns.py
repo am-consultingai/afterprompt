@@ -61,6 +61,21 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(P.label_for_value(self.samples["anthropic_key"].encode()), "Anthropic API key")
         self.assertIsNone(P.label_for_value(b"justsomewordshere"))
 
+    def test_revoke_links_point_where_the_credential_lives(self):  # U-PAT-8
+        """Checked against the live redirects on 2026-09-20: a stale link sends someone to the wrong console."""
+        self.assertEqual(P.REVOKE["anthropic_key"][1], "https://platform.claude.com/settings/keys")
+        self.assertEqual(P.REVOKE["openrouter_key"][1], "https://openrouter.ai/workspaces/default/keys")
+        self.assertEqual(P.REVOKE["vercel_token_ctx"][1], "https://vercel.com/account/settings/tokens")
+        # Fine-grained tokens are not on the classic tokens page.
+        self.assertEqual(P.REVOKE["github_fine_grained_pat"][1], "https://github.com/settings/personal-access-tokens")
+        self.assertNotEqual(P.REVOKE["github_fine_grained_pat"][1], P.REVOKE["github_token"][1])
+        for n in ("azure_devops_pat", "azure_devops_pat_ctx"):
+            self.assertNotIn("portal.azure.com", P.REVOKE[n][1])   # a PAT is not managed from the Azure portal
+        for n, (where, url) in P.REVOKE.items():
+            with self.subTest(pattern=n):
+                self.assertTrue(url.startswith("https://") and where)
+                self.assertNotIn("console.anthropic.com", url)     # 301 since Anthropic moved the console
+
     def test_xai_glued_and_long(self):  # U-PAT-7
         rx = re.compile(P.escape_aware(dict((n, r) for n, r, _ in P.PATTERNS)["xai_key"]))
         key = "xai-" + SecretFactory(5).chars("a", 108)

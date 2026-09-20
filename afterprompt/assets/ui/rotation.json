@@ -12,7 +12,7 @@
       "steps": [
         "Revoke it wherever it was issued, then create a replacement.",
         "Update every place that used it — the copy still on disk is listed on this card.",
-        "Check the service's audit or usage log for activity you do not recognise."
+        "Check the service's audit or usage log for the window between the leak and the revocation, not just that the old value is dead."
       ]
     },
     "pattern": {
@@ -21,7 +21,7 @@
       "steps": [
         "Confirm it is yours and still valid — the masked value here is enough to find it.",
         "Revoke it at the vendor and issue a replacement.",
-        "Check the vendor's audit or usage log for activity you do not recognise."
+        "Check the vendor's audit or usage log for the window between the leak and the revocation, not just that the old value is dead."
       ]
     },
     "configuration": {
@@ -36,23 +36,36 @@
       "headline": "A session cookie is a live sign-in. Rotating it means ending the session, not changing a key.",
       "minutes": "2–5",
       "steps": [
-        "Sign out of all sessions for that account in its security settings; that invalidates the cookie.",
-        "Change the account password if you cannot end sessions individually.",
-        "Turn on two-factor authentication if it is not on already."
+        "Sign out of all sessions for that account in its security settings: that is what invalidates the cookie, and a password change on its own may not.",
+        "Change the account password as well if the service gives you no way to end sessions.",
+        "Turn on two-factor authentication, and re-enrol it or your passkeys if the session could have been used to change your security settings."
       ]
     },
     "private_key": {
-      "headline": "A private key cannot be rotated in place: it has to be replaced everywhere it is trusted.",
+      "headline": "A private key cannot be rotated in place: it has to be replaced everywhere it is trusted. A passphrase protects the file on disk, not a key whose plain text has been pasted into a transcript.",
       "minutes": "15–30",
       "steps": [
-        "Generate a new key pair.",
-        "Add the new public key everywhere the old one was trusted (servers, Git hosts, CI).",
-        "Remove the old public key from each of those places.",
-        "Delete the exposed private key file once nothing uses it."
+        "Generate a new key pair — ssh-keygen -t ed25519, or RSA of at least 3072 bits.",
+        "Add the new public key everywhere the old one was trusted: authorized_keys files, Git hosts, cloud key lists, deploy keys and CI.",
+        "Remove the old public key from every one of those places; that removal is what actually revokes it.",
+        "Check those hosts' authentication logs for logins since the key was exposed.",
+        "Delete the exposed private key file once nothing uses it.",
+        "If it is a TLS key, have the certificate revoked by its issuer as well: until that revocation propagates, the old key still speaks for you."
+      ]
+    },
+    "connection_string": {
+      "headline": "A connection string carries the password and the address. Changing the password does not un-publish the host, port, database name and user.",
+      "minutes": "15",
+      "steps": [
+        "Change that database user's password: ALTER ROLE in PostgreSQL, ALTER USER … PASSWORD EXPIRE in MySQL, db.changeUserPassword in MongoDB, or Database Access in a managed console.",
+        "Disconnect sessions still using the old password — PostgreSQL leaves them running until you terminate them.",
+        "Update the connection string wherever it is configured, and avoid typing the new password where a shell history or log will keep it.",
+        "Check whether that host is reachable from the internet at all, and look through the database log for connections from addresses you do not know."
       ]
     },
     "prompt": {
       "headline": "A password-like string was typed into an AI assistant.",
+      "confirm_first": "Decide first whether this is a real password of yours; the steps below only apply if it is.",
       "minutes": "5",
       "steps": [
         "If it is a real password, change it on that service.",
@@ -61,6 +74,7 @@
     },
     "entropy": {
       "headline": "A random-looking token near a secret-related word. Only the deep scan found it, and it may be nothing.",
+      "confirm_first": "Look at the value and decide whether it is a credential of yours; the steps below only apply if it is.",
       "minutes": "2",
       "steps": [
         "Look at the value and decide whether it is a credential of yours.",
@@ -69,10 +83,288 @@
     }
   },
   "vendors": {
+    "Anthropic": {
+      "console": {"where": "Anthropic Console API keys", "url": "https://platform.claude.com/settings/keys"},
+      "minutes": "5",
+      "downtime": "immediate",
+      "steps": [
+        "On the API keys page, open the key's ⋯ menu and choose Delete API Key; it stops working at once.",
+        "Press Create Key for a replacement, and keep it in a secrets manager rather than in a file.",
+        "Use separate keys for development, test and production, so the next leak only costs you one of them.",
+        "Contact Anthropic support if you still see activity you cannot account for after replacing the key."
+      ],
+      "notes": [
+        "There is no overlap window: everything using the key breaks the moment you delete it.",
+        "console.anthropic.com now redirects to platform.claude.com; both lead to the same page.",
+        "Anthropic documents no per-key request log, and recommends rotating keys every 90 days."
+      ],
+      "source": "https://support.claude.com/en/articles/9767949-api-key-best-practices-keeping-your-keys-safe-and-secure",
+      "confidence": "verified"
+    },
+    "OpenAI": {
+      "console": {"where": "OpenAI API keys", "url": "https://platform.openai.com/api-keys"},
+      "audit": {"where": "Usage", "url": "https://platform.openai.com/usage"},
+      "minutes": "5",
+      "downtime": "immediate",
+      "steps": [
+        "Revoke the leaked key on the API keys page; requests using it start failing straight away.",
+        "Create a replacement scoped to a single project, with an expiry if your organisation allows one.",
+        "Update the application and confirm it works on the new key.",
+        "Check the usage page for spend between when the key leaked and when you revoked it."
+      ],
+      "notes": [
+        "An sk-proj- key belongs to one project; a legacy sk- key covers the whole organisation, so replace it with a project key.",
+        "Admin keys are a separate credential that only an organisation owner can see.",
+        "OpenAI's own guide creates the replacement first — that is for planned rotation, not for a leak."
+      ],
+      "source": "https://platform.openai.com/docs/api-reference/audit-logs",
+      "confidence": "partly verified"
+    },
+    "Google Cloud": {
+      "console": {"where": "Google Cloud credentials", "url": "https://console.cloud.google.com/apis/credentials"},
+      "audit": {"where": "Logs Explorer", "url": "https://console.cloud.google.com/logs/query"},
+      "minutes": "15–30",
+      "downtime": "overlap",
+      "steps": [
+        "For an API key, open it on the Credentials page and choose Rotate key, keeping the same restrictions; update your apps, then delete the old key.",
+        "For an OAuth client, add a second client secret, move your apps onto it, then disable and delete the old one.",
+        "For a service account key, disable it first and delete it afterwards — deletion cannot be undone.",
+        "If the service account itself is exposed, disable the account, wait at least an hour for tokens already minted from it to expire, then re-enable it.",
+        "In Logs Explorer, search that identity's API calls for service accounts, virtual machines or buckets you did not create."
+      ],
+      "notes": [
+        "Deleting a service-account key does not revoke access tokens already issued from it; that is why Google's guidance is to disable the account and wait.",
+        "A deleted API key or OAuth client can be restored for 30 days; a deleted service-account key cannot.",
+        "Data Access audit logs only cover the period since you turned them on."
+      ],
+      "source": "https://docs.cloud.google.com/docs/security/compromised-credentials",
+      "confidence": "verified"
+    },
+    "Google": {
+      "console": {"where": "Google Cloud credentials", "url": "https://console.cloud.google.com/apis/credentials"},
+      "minutes": "10",
+      "downtime": "overlap",
+      "steps": [
+        "For an API key, open it on the Credentials page, choose Rotate key, keep the same restrictions, update your apps and delete the old key.",
+        "For an OAuth client secret, add a second secret, move your apps onto it, then disable and delete the old one.",
+        "Restrict the replacement to the APIs, addresses or apps that actually need it."
+      ],
+      "notes": [
+        "A deleted API key or OAuth client can be restored for 30 days."
+      ],
+      "source": "https://docs.cloud.google.com/docs/security/compromised-credentials",
+      "confidence": "verified",
+      "kinds": {
+        "session_cookie": {
+          "console": {"where": "Google account security", "url": "https://myaccount.google.com/security"},
+          "minutes": "5",
+          "downtime": "immediate",
+          "steps": [
+            "Open your Google account's Security page, go to Your devices, and sign out of the devices you do not recognise.",
+            "Change the account password if you cannot account for every session.",
+            "Check Recent security activity, and re-enrol two-step verification or your passkeys if the session could have changed those settings."
+          ],
+          "notes": [
+            "A cookie is an already-signed-in session: there is nothing to re-key, so signing out is the whole of the fix.",
+            "Google documents signing out per device rather than one button that ends every session."
+          ],
+          "confidence": "partly verified"
+        }
+      }
+    },
+    "AWS": {
+      "console": {"where": "AWS IAM", "url": "https://console.aws.amazon.com/iam/"},
+      "audit": {"where": "CloudTrail event history", "url": "https://console.aws.amazon.com/cloudtrail/"},
+      "minutes": "15–30",
+      "downtime": "overlap",
+      "steps": [
+        "In IAM, open the user's Security credentials tab and set the leaked key to Inactive now; that stops it working while still letting you put it back.",
+        "Create a second access key and move every application, CLI profile and CI job onto it.",
+        "Delete the inactive key once nothing is failing — a user can only hold two keys at a time.",
+        "In CloudTrail event history, look for access keys, users, roles or policies created using the leaked key.",
+        "Replace it with an IAM user or a role, never with a root-user access key."
+      ],
+      "notes": [
+        "AKIA… is a long-lived user key; ASIA… is a temporary session credential that expires by itself.",
+        "The secret half is shown only when the key is created: if you have lost it, delete the key and make a new one.",
+        "AWS says it quarantines keys it finds exposed publicly with an AWSCompromisedKeyQuarantine policy, opens a support case and notifies you; its guidance is to leave that policy in place until you have finished cleaning up."
+      ],
+      "source": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
+      "confidence": "verified"
+    },
+    "GitHub": {
+      "console": {"where": "GitHub tokens", "url": "https://github.com/settings/tokens"},
+      "audit": {"where": "Security log", "url": "https://github.com/settings/security-log"},
+      "minutes": "10",
+      "downtime": "immediate",
+      "steps": [
+        "Delete the token: classic ones under Settings → Developer settings → Tokens (classic), fine-grained ones under Fine-grained tokens.",
+        "Create a replacement — a token cannot be regenerated — and prefer a fine-grained token limited to the repositories it needs.",
+        "Update your Git credential helper, CI secrets and anything else that stored it.",
+        "Read the security log for pushes, key additions or setting changes you did not make.",
+        "For a GitHub App or OAuth app token, revoke that app's authorisation in your account settings, which kills every token it holds."
+      ],
+      "notes": [
+        "GitHub revokes tokens it finds in public repositories and gists by itself.",
+        "Anyone who finds a token can revoke it through GitHub's public revocation API without owning the account; that revocation appears in your security log.",
+        "A classic token unused for a year is removed automatically."
+      ],
+      "source": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
+      "confidence": "verified"
+    },
+    "GitLab": {
+      "console": {"where": "GitLab access tokens", "url": "https://gitlab.com/-/user_settings/personal_access_tokens"},
+      "minutes": "5",
+      "downtime": "overlap",
+      "steps": [
+        "Use the token's Rotate action: GitLab issues a replacement with the same scopes and revokes the old one in one step.",
+        "Copy the new token — it is shown only once — and update whatever used the old one.",
+        "If you do not need the same scopes, revoke it instead and create a narrower token with a short expiry."
+      ],
+      "notes": [
+        "Personal access tokens start with glpat-; on gitlab.com they expire within a year by default.",
+        "Audit events exist for groups and self-managed instances; the page for them on gitlab.com is not confirmed here."
+      ],
+      "source": "https://docs.gitlab.com/user/profile/personal_access_tokens/",
+      "confidence": "verified"
+    },
+    "Azure": {
+      "console": {"where": "Azure portal", "url": "https://portal.azure.com"},
+      "minutes": "15–30",
+      "downtime": "overlap",
+      "steps": [
+        "For a storage account key, point your apps at key2, regenerate key1, move the apps to the new key1, then regenerate key2.",
+        "Reissue every account and service SAS you signed with the regenerated key: they stop working with it.",
+        "For an application secret, add a new client secret under Certificates & secrets, deploy it, then delete the old one.",
+        "Update Azure DevOps service connections from the DevOps portal rather than editing the secret in place."
+      ],
+      "notes": [
+        "A leaked storage key is both full access to the data and the power to mint SAS tokens; Microsoft suggests disallowing Shared Key access altogether.",
+        "User delegation SAS tokens are signed with Entra credentials, so regenerating account keys does not affect them.",
+        "Microsoft's advice is to keep only one of the two keys in use at a time, otherwise there is never a free key to rotate into."
+      ],
+      "source": "https://learn.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage",
+      "confidence": "verified"
+    },
+    "Microsoft Entra": {
+      "console": {"where": "Entra app registrations", "url": "https://portal.azure.com"},
+      "minutes": "10",
+      "downtime": "overlap",
+      "steps": [
+        "Open the app registration's Certificates & secrets and add a new client secret.",
+        "Deploy the new secret everywhere the app runs, then delete the old one.",
+        "Update Azure DevOps service connections from the DevOps portal rather than editing the secret in place."
+      ],
+      "notes": [
+        "A secret's value is shown only once, when it is created.",
+        "The maximum lifetime is 24 months and Microsoft recommends a year or less; a certificate is the stronger option."
+      ],
+      "source": "https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials",
+      "confidence": "verified"
+    },
+    "Azure DevOps": {
+      "console": {"where": "how to revoke a personal access token", "url": "https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate"},
+      "minutes": "5",
+      "downtime": "immediate",
+      "steps": [
+        "Open User settings → Personal access tokens in your organisation — dev.azure.com/{organisation}/_usersSettings/tokens — and revoke the token.",
+        "Create a replacement with the narrowest scopes and a short expiry.",
+        "Ask an administrator to check Organization settings → Audit log for PatCreated, PatRevoked and PatRegenerated events, which are kept for 90 days."
+      ],
+      "notes": [
+        "Revocation is immediate and ends sessions that were using the token.",
+        "The token is 84 characters with a fixed AZDO marker near the end, which is what makes it recognisable in a transcript.",
+        "Azure DevOps revokes PATs it finds in public GitHub repositories unless the tenant has turned that off.",
+        "There is no single URL for the page: it lives under your organisation's name."
+      ],
+      "source": "https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate",
+      "confidence": "verified"
+    },
+    "Hugging Face": {
+      "console": {"where": "Hugging Face access tokens", "url": "https://huggingface.co/settings/tokens"},
+      "minutes": "5",
+      "downtime": "immediate",
+      "steps": [
+        "Open Settings → Access Tokens, use Manage on the token, and delete or refresh it.",
+        "Create a fine-grained replacement carrying only the permissions the job needs.",
+        "Update your HF_TOKEN variables, CI secrets and the token cached by huggingface-cli login."
+      ],
+      "notes": [
+        "Anyone who finds an hf_ token can invalidate it without any access to your account; Hugging Face emails the owner when that happens.",
+        "An organisation on a Team or Enterprise plan can revoke a token's access to the organisation permanently."
+      ],
+      "source": "https://huggingface.co/docs/hub/security-tokens",
+      "confidence": "verified"
+    },
+    "npm": {
+      "minutes": "10",
+      "downtime": "immediate",
+      "steps": [
+        "Delete the token on the Access Tokens page of your npm account, or run npm token list and npm token delete with the token's id.",
+        "Create a granular access token limited to the packages that need it, and update your CI secrets and .npmrc.",
+        "Check your packages' version history for releases you did not publish."
+      ],
+      "notes": [
+        "npm says revocation can take up to an hour to take full effect, so watch for publishes during that window.",
+        "npm token delete takes the token's id, not the token itself."
+      ],
+      "source": "https://docs.npmjs.com/revoking-access-tokens/",
+      "confidence": "verified"
+    },
+    "PyPI": {
+      "console": {"where": "PyPI API tokens", "url": "https://pypi.org/manage/account/token/"},
+      "minutes": "10",
+      "downtime": "immediate",
+      "steps": [
+        "Remove the token under Account settings → API tokens, then add one scoped to a single project.",
+        "Update your CI secrets and any .pypirc that held it.",
+        "Check each project's release history for versions you did not publish.",
+        "Move publishing to Trusted Publishing, so your CI no longer needs a long-lived token at all."
+      ],
+      "notes": [
+        "PyPI revokes tokens it finds posted publicly and emails the owner.",
+        "Tokens start with pypi- and are shown only once."
+      ],
+      "source": "https://pypi.org/help/",
+      "confidence": "partly verified"
+    },
+    "Docker Hub": {
+      "console": {"where": "Docker personal access tokens", "url": "https://app.docker.com/settings/personal-access-tokens"},
+      "minutes": "5",
+      "downtime": "immediate",
+      "steps": [
+        "Open Account settings → Personal access tokens and deactivate the token, which is reversible, or delete it outright.",
+        "Generate a replacement with the least permission that works — read-only where that is enough — and copy it immediately.",
+        "Run docker login again wherever the old token was used, and update your CI secrets."
+      ],
+      "notes": [
+        "A token's expiry cannot be changed after it is created; make a new token instead.",
+        "Docker's documentation gives no specific guidance for a leaked token, so these are its ordinary token-management steps."
+      ],
+      "source": "https://docs.docker.com/security/access-tokens/personal-access-tokens/",
+      "confidence": "verified"
+    },
+    "LinkedIn": {
+      "console": {"where": "LinkedIn sign in & security", "url": "https://www.linkedin.com/mypreferences/d/categories/sign-in-and-security"},
+      "minutes": "5",
+      "downtime": "immediate",
+      "steps": [
+        "Open Settings & Privacy → Sign in & security → Where you're signed in, and choose Sign out of all these sessions; LinkedIn asks for your password to confirm.",
+        "Change your password as well if you cannot account for the sessions you saw there.",
+        "Turn on two-step verification if it is not on already."
+      ],
+      "notes": [
+        "A li_at cookie is a signed-in session, not a key: ending the session is the only thing that invalidates it.",
+        "Signing out of all sessions ends every one except the one you are using."
+      ],
+      "source": "https://www.linkedin.com/help/linkedin/answer/a1342354",
+      "confidence": "verified"
+    },
     "Stripe": {
       "console": {"where": "Stripe API keys", "url": "https://dashboard.stripe.com/apikeys"},
       "audit": {"where": "Workbench request logs", "url": "https://dashboard.stripe.com/workbench/logs"},
       "minutes": "5–10",
+      "downtime": "overlap",
       "steps": [
         "On the API keys page, open the key's ⋯ menu and choose Rotate key.",
         "Pick when the old key expires: now, or after a grace period of up to seven days while you migrate.",
@@ -90,6 +382,7 @@
     "Slack": {
       "console": {"where": "Your Slack apps", "url": "https://api.slack.com/apps"},
       "minutes": "5–10",
+      "downtime": "immediate",
       "steps": [
         "Invalidate the token immediately with the auth.revoke API call.",
         "For a bot or user token, reinstall the app from OAuth & Permissions to mint a replacement.",
@@ -108,6 +401,7 @@
       "console": {"where": "SendGrid API keys", "url": "https://app.sendgrid.com/settings/api_keys"},
       "audit": {"where": "Email activity feed", "url": "https://app.sendgrid.com/email_activity"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "Open Settings → API Keys and delete the exposed key; it starts returning 401 at once.",
         "Create a replacement with the narrowest permission level that works, and copy it immediately.",
@@ -125,6 +419,7 @@
       "console": {"where": "Twilio API keys & tokens", "url": "https://console.twilio.com/us1/account/keys-credentials/api-keys"},
       "audit": {"where": "Monitor → Events", "url": "https://console.twilio.com/us1/monitor/logs/events"},
       "minutes": "10",
+      "downtime": "overlap",
       "steps": [
         "For an API key: open it and choose Delete this key, then create a replacement.",
         "For the Auth Token, do it in stages: create a secondary token, move your integrations to it, then promote it to primary.",
@@ -141,6 +436,7 @@
     "Notion": {
       "console": {"where": "Notion integrations", "url": "https://www.notion.so/my-integrations"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "Open Settings → Connections → Develop or manage connections and find the integration.",
         "For an internal integration choose Refresh, which issues a new secret and invalidates the old one at once; for a personal access token, revoke it.",
@@ -156,6 +452,7 @@
     "Linear": {
       "console": {"where": "Linear security & access", "url": "https://linear.app/settings/account/security"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "Open Settings → Account → Security & Access and revoke the key; it stops working immediately.",
         "Create a replacement and update whatever used it.",
@@ -172,6 +469,7 @@
       "console": {"where": "Cloudflare API tokens", "url": "https://dash.cloudflare.com/profile/api-tokens"},
       "audit": {"where": "Cloudflare audit log", "url": "https://dash.cloudflare.com/?to=/:account/audit-log"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "For an API token, open its ⋯ menu and choose Roll: the old token stops working and the new one keeps the same permissions.",
         "For the Global API Key, use Change in the API Keys section — but prefer replacing it with a scoped token.",
@@ -188,6 +486,7 @@
       "console": {"where": "DigitalOcean API tokens", "url": "https://cloud.digitalocean.com/account/api/tokens"},
       "audit": {"where": "Security history", "url": "https://cloud.digitalocean.com/account/security"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "On the Tokens page, use the token's menu to delete or regenerate it.",
         "Copy the new secret immediately — it is shown only once — and update your integrations.",
@@ -202,8 +501,9 @@
       "confidence": "verified"
     },
     "Vercel": {
-      "console": {"where": "Vercel account tokens", "url": "https://vercel.com/account/tokens"},
+      "console": {"where": "Vercel account tokens", "url": "https://vercel.com/account/settings/tokens"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "Open the account tokens page, find the token and revoke it; revocation is immediate.",
         "Create a replacement with the narrowest scope that works and an expiry, and copy it immediately.",
@@ -220,6 +520,7 @@
     "Atlassian": {
       "console": {"where": "Atlassian API tokens", "url": "https://id.atlassian.com/manage-profile/security/api-tokens"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "On the API tokens page, revoke the token (or revoke all of them if you are unsure which leaked).",
         "Create a replacement with an expiry, and scopes if you use scoped tokens; copy it immediately.",
@@ -236,6 +537,7 @@
     "Telegram": {
       "console": {"where": "@BotFather in Telegram", "url": "https://t.me/BotFather"},
       "minutes": "2",
+      "downtime": "immediate",
       "steps": [
         "Open the chat with @BotFather and send /mybots, or send /token.",
         "Pick the bot and revoke the current token; BotFather issues a new one and the old one stops working at once.",
@@ -252,6 +554,7 @@
       "console": {"where": "Discord developer portal", "url": "https://discord.com/developers/applications"},
       "audit": {"where": "Server settings → Audit log", "url": "https://discord.com/developers/docs/resources/audit-log"},
       "minutes": "5",
+      "downtime": "immediate",
       "steps": [
         "Open your application → Bot and press Reset Token, confirming with two-factor authentication if you have it on.",
         "Copy the new token immediately and restart your bot with it.",
