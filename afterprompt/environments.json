@@ -5,7 +5,12 @@
     {
       "id": "host",
       "label": "This machine",
-      "platforms": ["windows", "macos", "linux", "wsl"],
+      "platforms": [
+        "windows",
+        "macos",
+        "linux",
+        "wsl"
+      ],
       "detect": "always",
       "scan": "in-process",
       "note": "The filesystem the scan runs on."
@@ -13,7 +18,10 @@
     {
       "id": "wsl",
       "label": "WSL distributions",
-      "platforms": ["windows", "wsl"],
+      "platforms": [
+        "windows",
+        "wsl"
+      ],
       "detect": "wsl.exe -l -q",
       "scan": "worker",
       "note": "Each distribution has its own home. Scanned from inside itself, because reading it from Windows over \\\\wsl.localhost is about fourteen times slower."
@@ -21,15 +29,24 @@
     {
       "id": "docker",
       "label": "Docker containers",
-      "platforms": ["windows", "macos", "linux", "wsl"],
+      "platforms": [
+        "windows",
+        "macos",
+        "linux",
+        "wsl"
+      ],
       "detect": "docker ps -a",
       "scan": "copy",
-      "note": "A container has its own home folder, and a devcontainer is where a lot of AI coding actually happens. The known AI tool paths are copied out read-only; nothing is executed inside the container."
+      "note": "A container has its own home folder, so an assistant run inside one — a devcontainer is the usual case — keeps its transcripts where the host cannot see them. The AI tool folders are copied out read-only; nothing is executed inside the container."
     },
     {
       "id": "podman",
       "label": "Podman containers",
-      "platforms": ["macos", "linux", "wsl"],
+      "platforms": [
+        "macos",
+        "linux",
+        "wsl"
+      ],
       "detect": "podman ps -a",
       "scan": "copy",
       "note": "Same as Docker, through the podman CLI."
@@ -37,16 +54,26 @@
     {
       "id": "docker_image",
       "label": "Docker images",
-      "platforms": ["windows", "macos", "linux", "wsl"],
+      "platforms": [
+        "windows",
+        "macos",
+        "linux",
+        "wsl"
+      ],
       "detect": "docker images",
       "scan": "never",
-      "why": "Reading an image means creating a container from it, which changes the machine's Docker state. Afterprompt lists them and leaves them alone.",
-      "note": "An image can hold a key baked into a layer; the layer is visible to anyone who pulls it."
+      "why": "An image is a filesystem nobody has typed into: it holds no conversation history, which is the only thing this tool looks for.",
+      "note": "A key baked into an image layer is a real problem and a different tool's job: this one reports credentials that reached an assistant."
     },
     {
       "id": "devcontainer",
       "label": "Dev container configuration",
-      "platforms": ["windows", "macos", "linux", "wsl"],
+      "platforms": [
+        "windows",
+        "macos",
+        "linux",
+        "wsl"
+      ],
       "detect": ".devcontainer/devcontainer.json under the home folder",
       "scan": "via docker",
       "note": "The configuration says a container exists; the container itself is scanned as a Docker container when it is running."
@@ -54,7 +81,9 @@
     {
       "id": "codespace",
       "label": "GitHub Codespace",
-      "platforms": ["linux"],
+      "platforms": [
+        "linux"
+      ],
       "detect": "$CODESPACES environment variable",
       "scan": "in-process",
       "note": "A Codespace is the machine the scan is running on, not another environment to reach."
@@ -62,7 +91,9 @@
     {
       "id": "lima",
       "label": "Lima or Colima virtual machines",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "detect": "limactl list",
       "scan": "never",
       "why": "Reachable only over its own ssh, which Afterprompt does not do yet.",
@@ -71,7 +102,11 @@
     {
       "id": "multipass",
       "label": "Multipass virtual machines",
-      "platforms": ["windows", "macos", "linux"],
+      "platforms": [
+        "windows",
+        "macos",
+        "linux"
+      ],
       "detect": "multipass list",
       "scan": "never",
       "why": "Reachable only over its own shell, which Afterprompt does not do yet."
@@ -79,7 +114,12 @@
     {
       "id": "other_home",
       "label": "Other accounts on this machine",
-      "platforms": ["windows", "macos", "linux", "wsl"],
+      "platforms": [
+        "windows",
+        "macos",
+        "linux",
+        "wsl"
+      ],
       "detect": "sibling folders beside this home",
       "scan": "never",
       "why": "Reading another account's files needs elevation, and Afterprompt never elevates.",
@@ -88,7 +128,12 @@
     {
       "id": "folder",
       "label": "Extra home folders",
-      "platforms": ["windows", "macos", "linux", "wsl"],
+      "platforms": [
+        "windows",
+        "macos",
+        "linux",
+        "wsl"
+      ],
       "detect": "AFTERPROMPT_TEST_ENVS",
       "scan": "worker",
       "note": "A mounted disk or a fixture, scanned through the same worker protocol a distribution uses."

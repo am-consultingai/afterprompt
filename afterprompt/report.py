@@ -26,7 +26,8 @@ ICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0
 SIDE_NAMES = {"wsl": "WSL", "windows": "Windows", "macos": "macOS", "linux": "Linux"}
 ENV_STATUS = {"scanned": "scanned", "absent": "none on this machine", "not_installed": "not installed",
               "found_not_scanned": "not scanned", "not_applicable": "does not apply here",
-              "not_checked": "not checked", "skipped": "skipped"}
+              "not_checked": "not checked", "skipped": "skipped",
+              "out_of_scope": "listed, not opened"}
 PLATFORM_NAMES = {"wsl": "Windows (WSL)", "macos": "macOS", "linux": "Linux", "windows": "Windows"}
 CATEGORY_TITLES = {
     "configuration": "Stored in AI tool configuration",

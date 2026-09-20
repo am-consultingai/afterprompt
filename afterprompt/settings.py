@@ -67,6 +67,10 @@ FIELDS = [
     Field("keep_work", "bool", False, "Keep intermediate files",
           "For debugging a scan. These include decoded plaintext copies of your history, so they are removed by "
           "default."),
+    Field("containers", "choice", "running", "Scan containers",
+          "Docker and Podman containers have their own home folders, and a devcontainer is where a lot of AI "
+          "coding happens. Their AI tool folders are copied out read-only; nothing is run inside them.",
+          choices=[("running", "Running only"), ("all", "Running and stopped"), ("none", "Skip them")]),
     Field("sarif", "bool", False, "Also write SARIF",
           "Writes report.sarif next to the report, for code-scanning and SIEM pipelines."),
     Field("ui_theme", "choice", "auto", "Appearance",

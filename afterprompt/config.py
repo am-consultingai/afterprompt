@@ -54,6 +54,7 @@ class RunConfig:
     worker: bool = False
     sarif: bool = False
     no_wsl: bool = False
+    containers: str = "running"          # running | all | none
     now: float = 0.0
 
     @property
@@ -64,7 +65,8 @@ class RunConfig:
         data = {"version": __version__, "mode": self.mode, "home": self.home,
                 "windows_home_arg": self.windows_home_arg, "extra_roots": sorted(self.extra_roots),
                 "excludes": sorted(self.excludes), "max_disk_bytes": self.max_disk_bytes,
-                "include_keychain": self.include_keychain, "no_wsl": self.no_wsl}
+                "include_keychain": self.include_keychain, "no_wsl": self.no_wsl,
+                "containers": self.containers}
         return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
     def worker_dict(self):
@@ -119,6 +121,7 @@ def from_args(args, run_dir):
         stop_after=os.environ.get("AFTERPROMPT_STOP_AFTER") or None,
         worker=bool(getattr(args, "worker", False)),
         no_wsl=bool(getattr(args, "no_wsl", False)) or saved["no_wsl"],
+        containers=getattr(args, "containers", None) or saved["containers"],
         sarif=bool(getattr(args, "sarif", False)) or saved["sarif"],
     )
     return cfg

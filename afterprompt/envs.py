@@ -87,7 +87,36 @@ def folder_provider(cfg, env=None):
     return out
 
 
-PROVIDERS = [wsl_provider, folder_provider]
+def container_provider(cfg, env=None, listing=None):
+    """Each container as an environment. Its home is copied out at scan time, not now: listing is cheap,
+    copying is not, and a container that turns out to hold no AI tool data should cost nothing."""
+    env = os.environ if env is None else env
+    # A fixture home describes another machine, so this machine's containers are not its environments.
+    # AFTERPROMPT_TEST_CONTAINERS is the hook that lets a test scan a real container anyway.
+    if (env.get("AFTERPROMPT_HOME") or env.get("AFTERPROMPT_PLATFORM")) \
+            and not env.get("AFTERPROMPT_TEST_CONTAINERS"):
+        return []
+    want = getattr(cfg, "containers", "running")
+    only = env.get("AFTERPROMPT_TEST_CONTAINERS", "")
+    if want == "none":
+        return []
+    from afterprompt import containers as dock
+    from afterprompt.detect import Probe
+    probe = Probe([cfg.home], cfg.platform)
+    out = []
+    for exe in dock.CLIS:
+        if not probe.which(exe):
+            continue
+        rows = listing(exe) if listing else dock.containers(exe, running_only=(want == "running"))
+        for row in rows or []:
+            name = row["name"]
+            if only not in ("", "1") and name != only:
+                continue
+            out.append(Environment(name, "docker", f"{exe.title()}: {name}", f"docker:{name}"))
+    return out
+
+
+PROVIDERS = [wsl_provider, folder_provider, container_provider]
 
 
 def discover(cfg, providers=None):
@@ -154,13 +183,44 @@ def scan(e, cfg, worker_args, say, state_dir, stdin=None):
     stdin: bytes for the worker's stdin (the host's live values, M5); the record's "values" holds the worker's
     own, in memory only."""
     os.makedirs(state_dir, exist_ok=True)
-    if e.kind == "wsl":
+    if e.kind == "docker":
+        res = _scan_container(e, cfg, worker_args, say, state_dir, stdin)
+    elif e.kind == "wsl":
         res = _scan_wsl(e, cfg, worker_args, say, state_dir, stdin)
     elif e.kind == "folder":
         res = _record(e, run_local(e, e.home, cfg, worker_args, say, state_dir, stdin), "scanned")
     else:
         raise ValueError(f"cannot scan a {e.kind} environment with a worker")
     return save_result(state_dir, res)
+
+
+def _scan_container(e, cfg, worker_args, say, state_dir, stdin):
+    """Copy the container's AI tool folders out, scan the copy, then delete it.
+
+    Nothing is executed inside the container and the container is not modified; see containers.py."""
+    import shutil
+    from afterprompt import containers as dock
+    work = os.path.join(state_dir, e.slug + ".home")
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        got = dock.collect(e.name, work, exe="docker" if e.label.startswith("Docker") else "podman")
+    except Exception as err:                          # noqa: BLE001 - one bad container is not a failed scan
+        shutil.rmtree(work, ignore_errors=True)
+        return dict(e.to_dict(), status="not_scanned", reason=f"could not read it: {err}", notice=None,
+                    other_homes=[], findings=None, exit=None)
+    if not got["paths"]:
+        # The common case by far: a container that runs a database, not an assistant.
+        shutil.rmtree(work, ignore_errors=True)
+        return dict(e.to_dict(), status="skipped", reason="no AI tool history in it",
+                    notice=None, other_homes=[], findings=None, exit=None)
+    try:
+        res = _record(e, run_local(e, work, cfg, worker_args, say, state_dir, stdin), "scanned",
+                      notice=f"{len(got['paths'])} AI tool paths copied out")
+    finally:
+        # The copy holds someone's history in plain text: it does not outlive the scan of it.
+        if not cfg.keep_work:
+            shutil.rmtree(work, ignore_errors=True)
+    return res
 
 
 def _record(e, run, ok_status, notice=None):
@@ -463,7 +523,8 @@ def survey(cfg, envs_found=None, run=subprocess.run, env=None):
             rows.append(row)
             continue
         kid = kind["id"]
-        if describing_elsewhere and kid in ("docker", "podman", "docker_image", "lima", "multipass"):
+        if describing_elsewhere and not env.get("AFTERPROMPT_TEST_CONTAINERS") \
+                and kid in ("docker", "podman", "docker_image", "lima", "multipass"):
             row.update(status="not_checked", why="this scan describes another machine")
             rows.append(row)
             continue
@@ -481,14 +542,23 @@ def survey(cfg, envs_found=None, run=subprocess.run, env=None):
                 row.update(status="not_installed")
             else:
                 running = [c for c in found if c["state"] == "running"]
-                row.update(found=len(found), running=len(running),
-                           status="found_not_scanned" if found else "absent",
-                           why=kind.get("why") or "not scanned yet: containers are the next environment to cover",
-                           names=[c["name"] for c in found[:12]])
+                want = getattr(cfg, "containers", "running")
+                covered = found if want == "all" else running
+                row.update(found=len(found), running=len(running), names=[c["name"] for c in found[:12]])
+                if want == "none":
+                    row.update(status="skipped", why="turned off for this scan")
+                elif covered:
+                    row.update(status="scanned", covered=len(covered),
+                               why=None if want == "all" else "running containers; --containers all "
+                                                              "includes stopped ones")
+                else:
+                    row.update(status="absent" if not found else "found_not_scanned",
+                               why="none of them are running" if found else None)
         elif kid == "docker_image":
+            # Listed, never opened: an image holds no conversation, which is the only thing we look for.
             found = images(cfg, "docker", run)
             row.update(found=0 if found is None else len(found),
-                       status="not_installed" if found is None else ("found_not_scanned" if found else "absent"))
+                       status="not_installed" if found is None else ("out_of_scope" if found else "absent"))
         elif kid == "devcontainer":
             found = devcontainers(cfg.home)
             row.update(found=len(found), status="found_not_scanned" if found else "absent",

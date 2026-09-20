@@ -422,19 +422,30 @@ class SurveyTests(TempDirTest):
         for row in rows.values():
             self.assertTrue(row["label"])
             self.assertIn(row["status"], ("scanned", "absent", "not_installed", "found_not_scanned",
-                                          "not_applicable", "not_checked", "skipped"))
+                                          "not_applicable", "not_checked", "skipped", "out_of_scope"))
 
-    def test_containers_are_found_and_said_to_be_unscanned(self):  # U-ENV-21
+    def test_containers_are_found_and_the_running_ones_are_covered(self):  # U-ENV-21
         cfg = self.cfg()
         run = self.fake_run({"docker ps": "api\tmyimage\trunning\ndb\tpostgres:16\texited\n",
                              "docker images": "myimage:latest\npostgres:16\n"})
         rows = self.rows(cfg, [envs.host(cfg)], run=run)
         self.assertEqual(rows["docker"]["found"], 2)
         self.assertEqual(rows["docker"]["running"], 1)
-        self.assertEqual(rows["docker"]["status"], "found_not_scanned")
-        self.assertTrue(rows["docker"]["why"])                      # it says why, not just that
+        self.assertEqual(rows["docker"]["status"], "scanned")
+        self.assertEqual(rows["docker"]["covered"], 1)              # the running one, by default
+        self.assertIn("--containers all", rows["docker"]["why"])
         self.assertEqual(rows["docker"]["names"], ["api", "db"])
+
+    def test_images_are_listed_and_deliberately_not_opened(self):  # U-ENV-27
+        """An image holds no conversation history, so it is out of scope rather than a gap."""
+        cfg = self.cfg()
+        run = self.fake_run({"docker ps": "", "docker images": "myimage:latest\npostgres:16\n"})
+        rows = self.rows(cfg, [envs.host(cfg)], run=run)
         self.assertEqual(rows["docker_image"]["found"], 2)
+        self.assertEqual(rows["docker_image"]["status"], "out_of_scope")
+        kind = [k for k in envs.catalogue()["kinds"] if k["id"] == "docker_image"][0]
+        self.assertEqual(kind["scan"], "never")
+        self.assertIn("no conversation history", kind["why"])
 
     def test_a_missing_cli_is_not_an_error(self):  # U-ENV-22
         cfg = self.cfg()
