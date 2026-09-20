@@ -14,7 +14,8 @@ FINDING = {"id": "R1", "category": "live_credential", "label": "Anthropic API ke
                           "side": "wsl", "count": 2, "decoded": False}],
            "decoded_only": False, "still_on_disk": [{"store": "~/app/.env", "key": "ANTHROPIC_API_KEY"}],
            "revoke": {"where": "Anthropic Console", "url": "https://console.anthropic.com/settings/keys"},
-           "reason": "A credential that is set up on this machine appears in AI assistant history.", "context": "x"}
+           "reason": "A credential that is set up on this machine appears in AI assistant history.", "context": "x",
+           "impact": "money"}
 
 
 class ReportCase(TempDirTest):
@@ -79,19 +80,76 @@ class ReportTests(ReportCase):
         self.assertEqual(set(data["rotate"][0]), set(FINDING))
         self.assertEqual(data["summary"]["rotate"], 1)
 
-    def test_review_capped_in_report_not_in_findings(self):  # U-REP-6
-        review = [dict(FINDING, id=f"V{i}", category="pattern", label="Prefixed API key", masked=f"api_{i:02d}…cdef",
-                       hash=f"h{i}") for i in range(70)]
+    def write_review(self, review, totals=None):
         cfg = make_cfg(self.tmp, "wsl", os.path.join(self.tmp, "home"))
-        write_json(cfg.w("triage.json"), {"rotate": [], "review": review, "review_totals": {"pattern": 70},
-                                          "review_truncated": {"pattern": 10}, "dismissed": {}})
+        write_json(cfg.w("triage.json"), {"rotate": [], "review": review,
+                                          "review_totals": totals or {"pattern": len(review)},
+                                          "review_truncated": {}, "dismissed": {}})
         write_json(cfg.w("state", "manifest.done"), {"files": 1, "bytes": 1, "per_source": [], "unreadable": 0})
-        report.write(cfg, {"platform": "wsl", "windows_home": None, "windows_home_source": "not found", "missing": []},
-                     {"run_id": "r", "started": "2026-09-17T12:00:00"})
+        report.write(cfg, {"platform": "wsl", "windows_home": None, "windows_home_source": "not found",
+                           "missing": []}, {"run_id": "r", "started": "2026-09-17T12:00:00"})
+        return cfg
+
+    def test_repeats_from_one_file_are_one_row(self):  # U-REP-6
+        """70 values of the same kind out of one transcript used to spend the whole shown budget."""
+        review = [dict(FINDING, id=f"V{i}", category="pattern", label="Airtable API key",
+                       masked=f"key{i:02d}…cdef", hash=f"h{i}") for i in range(70)]
+        cfg = self.write_review(review)
+        md = self.read(cfg, "report.md")
+        self.assertEqual(md.count("Airtable API key"), 1)
+        self.assertIn("Airtable API key ×70", md)
+        self.assertNotIn("more in findings.json", md)
+        self.assertIn("×70", self.read(cfg, "report.html"))
+        self.assertEqual(len(json.loads(self.read(cfg, "findings.json"))["review"]), 70)
+
+    def test_variety_is_still_capped(self):  # U-REP-6b
+        """Different findings in different places are still rows, and the cap still bites."""
+        review = [dict(FINDING, id=f"V{i}", category="pattern", label=f"Prefixed API key {i}",
+                       masked=f"api_{i:02d}…cdef", hash=f"h{i}",
+                       locations=[dict(FINDING["locations"][0], display=f"~/p/{i}.jsonl")]) for i in range(70)]
+        cfg = self.write_review(review, {"pattern": 70})
         md = self.read(cfg, "report.md")
         self.assertEqual(md.count("Prefixed API key"), 60)
         self.assertIn("and 10 more in findings.json", md)
         self.assertEqual(len(json.loads(self.read(cfg, "findings.json"))["review"]), 70)
+
+    def test_clusters_do_not_cross_places(self):  # U-REP-6c
+        a = [dict(FINDING, id=f"V{i}", category="pattern", label="Airtable API key", masked=f"key{i}…cdef",
+                  hash=f"a{i}") for i in range(3)]
+        b = [dict(FINDING, id=f"W{i}", category="pattern", label="Airtable API key", masked=f"key{i}…wxyz",
+                  hash=f"b{i}", locations=[dict(FINDING["locations"][0], display="~/other.jsonl")])
+             for i in range(2)]
+        md = self.read(self.write_review(a + b), "report.md")
+        self.assertIn("Airtable API key ×3", md)
+        self.assertIn("Airtable API key ×2", md)
+
+    def test_the_list_has_an_entry_point(self):  # U-REP-8
+        """Twenty findings with no order reads as an afternoon; the report picks the first three."""
+        rotate = [dict(FINDING, id=f"R{i}", hash=f"r{i}", label=f"Key {i}",
+                       impact=["data", "access", "money", "service"][i % 4]) for i in range(6)]
+        cfg, _ = self.write_report(rotate)
+        md, html = self.read(cfg, "report.md"), self.read(cfg, "report.html")
+        self.assertIn("Start here", md)
+        self.assertIn("Start here", html)
+        self.assertIn('id="R1"', html)
+        self.assertIn('href="#R1"', html)
+        # The impact of each finding is on the card, in words rather than a rank number.
+        self.assertIn("Can reach stored data", html)
+        self.assertIn("Impact: Can reach stored data", md)
+
+    def test_a_short_list_needs_no_lead(self):  # U-REP-8b
+        cfg, _ = self.write_report([FINDING])
+        self.assertNotIn("Start here", self.read(cfg, "report.md"))
+
+    def test_the_headline_is_one_number(self):  # U-REP-9
+        """Two big numbers side by side, the second in red, read as two piles of work."""
+        review = [dict(FINDING, id=f"V{i}", category="pattern", hash=f"h{i}") for i in range(5)]
+        cfg, _ = self.write_report([FINDING], review)
+        html, md = self.read(cfg, "report.html"), self.read(cfg, "report.md")
+        self.assertIn("Weaker signals to review", html)
+        self.assertIn("Weaker signals to review: 5", md)
+        self.assertNotIn("<span>To review</span>", html)
+        self.assertNotIn('class="stat warn"', html)
 
     def test_entropy_counted_separately(self):  # U-REP-7
         cfg = make_cfg(self.tmp, "wsl", os.path.join(self.tmp, "home"), mode="deep")
@@ -164,8 +222,8 @@ class LookTests(ReportCase):
         self.assertIn("Built by AM Consulting", self.read(cfg, "report.md"))
         # The style is not selectable any more: no theme anywhere in the code that writes it.
         self.assertFalse(hasattr(report, "THEMES"))
-        self.assertNotIn("--theme", open(os.path.join(os.path.dirname(report.__file__), "cli.py"),
-                                         encoding="utf-8").read())
+        with open(os.path.join(os.path.dirname(report.__file__), "cli.py"), encoding="utf-8") as fh:
+            self.assertNotIn("--theme", fh.read())
 
     def test_the_report_is_one_file(self):  # U-REP-T2
         """It gets emailed and opened somewhere else; a sibling folder it depends on is a footgun."""

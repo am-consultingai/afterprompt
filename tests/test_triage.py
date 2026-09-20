@@ -64,7 +64,9 @@ class TriageTests(TempDirTest):
         self.assertEqual(slash(r["label"]), "Secret from ~/app/.env (DB_PASSWORD)")
         self.assertEqual([{**d, "store": slash(d["store"])} for d in r["still_on_disk"]],
                          [{"store": "~/app/.env", "key": "DB_PASSWORD"}])
-        self.assertEqual(r["revoke"]["where"], "The service that issued DB_PASSWORD")
+        # A variable name with no vendor behind it still ends at an instruction, not at a question.
+        self.assertEqual(r["revoke"]["where"],
+                         "Change the database password, then update every service that connects with it")
 
     def test_tier_a(self):  # U-TRI-2
         self.hit(".claude/projects/p/s.jsonl", "anthropic_key", "A", "a1")
@@ -137,14 +139,27 @@ class TriageTests(TempDirTest):
         self.assertEqual(out["review_totals"]["pattern"], 70)
 
     def test_ordering(self):  # U-TRI-9
+        """Within one blast radius, certainty still orders: live credential, then tier A, then tier B."""
         store = os.path.join(self.home, "app", ".env")
-        self.hit(".claude/projects/p/s.jsonl", "url_with_credentials", "B", "o3")
+        self.hit(".claude/projects/p/s.jsonl", "basic_auth_header", "B", "o3")
         self.hit(".claude/projects/p/s.jsonl", "github_token", "A", "o2")
+        self.live["o1"] = {"stores": [{"store": store, "key": "GITHUB_TOKEN", "designed": False}], "label": None,
+                           "masked": "m", "n": 20}
+        self.known.append({"vh": "o1", "prefix": False, "f": self.file(".claude/projects/p/s.jsonl"), "o": 1})
+        out = self.build()
+        self.assertEqual([r["impact"] for r in out["rotate"]], ["access"] * 3)
+        self.assertEqual([r["hash"] for r in out["rotate"]], ["o1", "o2", "o3"])
+
+    def test_blast_radius_leads(self):  # U-TRI-9b
+        """A credential that reaches data outranks a surer one that reaches a single service."""
+        store = os.path.join(self.home, "app", ".env")
+        self.hit(".claude/projects/p/s.jsonl", "url_with_credentials", "B", "o2")
         self.live["o1"] = {"stores": [{"store": store, "key": "TOKEN", "designed": False}], "label": None,
                            "masked": "m", "n": 20}
         self.known.append({"vh": "o1", "prefix": False, "f": self.file(".claude/projects/p/s.jsonl"), "o": 1})
         out = self.build()
-        self.assertEqual([r["hash"] for r in out["rotate"]], ["o1", "o2", "o3"])
+        self.assertEqual([(r["hash"], r["impact"]) for r in out["rotate"]],
+                         [("o2", "data"), ("o1", "service")])
 
     def test_unknown_files_ignored(self):  # U-TRI-10
         self.hit(".claude/projects/p/s.jsonl", "github_token", "A", "u1")

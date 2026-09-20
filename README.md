@@ -202,12 +202,19 @@ Everything it shows was already masked for `findings.json`.
 The report is written as `report.html`, `report.md` and `findings.json`, with three sections:
 
 - **Rotate now:** your live credentials found in AI history, and vendor-specific keys. Each entry shows:
+  - what it opens: whether the value can spend money, reach stored data, act as you, or only use one service
   - which tool and session exposed it
   - whether the value is still on disk (for example, in a `.env` file)
-  - where to revoke it
+  - where to revoke it — a link to that vendor's page wherever one is known, and what to do instead when it
+    is not
+
+  The list is ordered by how far the credential reaches, worst first, and names the first three, so a long
+  list still has somewhere to start. Within a group, the surest findings come first.
 - **Review:** weaker signals you should look at. These are credentials stored in plain text in AI tool
   configuration, possible credentials in less specific formats, session cookies, and password-like strings from
-  your own prompts.
+  your own prompts. Nothing here is confirmed. Repeats are folded: many values of the same kind in the same
+  file are one row with a count, so a single transcript full of generated test values cannot crowd out the
+  rest. Each value is still listed individually in `findings.json`.
 - **Coverage:** what was scanned, what could not be read, and what the scan cannot see. It also names AI tools
   that are installed but not scanned yet, and why, so a clean result never hides a tool Afterprompt cannot read.
   Detection only looks: it reads app lists, folders and PATH, and never runs anything.
@@ -281,7 +288,8 @@ afterprompt/
   entropy.py            deep mode entropy sweep
   stores.py, known.py   live credential collection and search
   prompts.py            password-like strings in prompts
-  triage.py             grouping, dismissal rules, rotate / review decisions
+  triage.py             grouping, dismissal rules, rotate / review decisions, where to revoke
+  impact.py             how far a leaked credential reaches, which is the order of "Rotate now"
   report.py             findings.json, report.md, report.html
   pool.py               crash-tolerant process pool with a memory watchdog
   assets/               report styling and logo (see NOTICE.md)

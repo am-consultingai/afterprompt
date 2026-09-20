@@ -12,6 +12,7 @@ A gap in one environment must never hide behind a clean total, so every environm
 """
 import copy
 
+from afterprompt import impact
 from afterprompt.triage import CAPS, REVIEW_ORDER, review_key, rotate_key
 
 STATUS_TEXT = {"scanned": "scanned", "scanned_share": "scanned over the network share (slower)",
@@ -60,6 +61,10 @@ def combine(a, a_section, b, b_section):
     out["context"] = base.get("context") or other.get("context")
     out["entropy"] = max(a.get("entropy") or 0, b.get("entropy") or 0)
     out["decoded_only"] = a["decoded_only"] and b["decoded_only"]
+    # The same value seen in two environments is one credential: it is worth whatever the worse view of it says.
+    blast = impact.worst(a.get("impact"), b.get("impact"))
+    if blast:
+        out["impact"] = blast
     if base["label"] == "Credential" and other["label"] != "Credential":
         out["label"] = other["label"]
     return out, section

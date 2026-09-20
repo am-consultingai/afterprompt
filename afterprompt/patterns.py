@@ -86,6 +86,8 @@ ROTATE_B = {p["name"] for p in RULES if p.get("rotate_structural")}
 # Which service issued a credential, for grouping and for the vendor mark on a card. Structural patterns
 # (private keys, cookies, passwords) have no vendor and group by what they are instead.
 VENDORS = {p["name"]: p["vendor"] for p in RULES if p.get("vendor")}
+# What kind of thing issued it. impact.py turns this into how urgent a leak of it is.
+GROUPS = {p["name"]: p["group"] for p in RULES if p.get("group")}
 VENDOR_ICONS = {p["vendor"]: p["vendor_icon"] for p in RULES if p.get("vendor_icon")}
 # Patterns that match only a fixed key header or DER prefix, not key material: evidence to review, not rotate.
 HEADER_ONLY = {p["name"] for p in RULES if p.get("header_only")}

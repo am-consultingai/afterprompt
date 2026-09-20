@@ -5,7 +5,7 @@ import os
 import re
 import time
 
-from afterprompt import catalogue, manifest
+from afterprompt import catalogue, impact, manifest
 from afterprompt.entropy import KEEP as ENTROPY_KEEP
 from afterprompt.patterns import HEADER_ONLY, LABELS, REVOKE, ROTATE_B, SESSION_COOKIE, TIERS
 from afterprompt.util import display_path, is_under, read_json, write_json
@@ -35,6 +35,69 @@ REASONS = {
 }
 
 
+# A credential found in a .env carries no pattern, so its revoke page has to come from the variable's name.
+# Each entry names a pattern that already knows where that vendor revokes keys, so the URL is written down
+# once, in patterns.json. First match wins, so the specific names come before the general ones.
+KEY_REVOKE = [
+    (r"AZURE_(OPENAI|FOUNDRY)|AI_FOUNDRY", "azure_openai_key_ctx"),
+    (r"AZURE_STORAGE|STORAGE_(ACCOUNT|CONNECTION)", "azure_conn_string"),
+    (r"AZURE_(CLIENT_SECRET|AD)|ENTRA", "entra_client_secret"),
+    (r"AZURE|MICROSOFT", "azure_identifiable_key"),
+    (r"GOOGLE_(CLIENT_SECRET|OAUTH)|GCP_CLIENT|OAUTH_CLIENT_SECRET", "gcp_client_secret"),
+    (r"GEMINI|GOOGLE_(API|GENAI|AI)|VERTEX|^GOOGLE_KEY", "google_api_key"),
+    (r"^AWS|_AWS", "aws_access_key_id"),
+    (r"ANTHROPIC|CLAUDE", "anthropic_key"),
+    (r"OPENAI", "openai_project_key"),
+    (r"OPENROUTER", "openrouter_key"),
+    (r"GROQ", "groq_key"),
+    (r"XAI|GROK", "xai_key"),
+    (r"ELEVEN", "elevenlabs_key"),
+    (r"REPLICATE", "replicate_token"),
+    (r"HUGGING|^HF_", "huggingface_token"),
+    (r"GITHUB", "github_token"),
+    (r"GITLAB", "gitlab_token"),
+    (r"DOCKER", "dockerhub_pat"),
+    (r"NPM", "npm_token"),
+    (r"PYPI", "pypi_token"),
+    (r"STRIPE", "stripe_secret_key"),
+    (r"SLACK", "slack_token"),
+    (r"NOTION", "notion_token"),
+    (r"LINEAR", "linear_key"),
+    (r"ATLASSIAN|JIRA|CONFLUENCE", "atlassian_api_token"),
+    (r"BRAVE", "brave_api_key"),
+    (r"SENDGRID", "sendgrid_key"),
+    (r"TELEGRAM", "telegram_bot_token"),
+    (r"DISCORD", "discord_bot_token"),
+    (r"CLOUDFLARE", "cloudflare_token_ctx"),
+    (r"DIGITALOCEAN|^DO_TOKEN", "digitalocean_token"),
+    (r"VERCEL", "vercel_token_ctx"),
+    (r"PORKBUN", "porkbun_api_key"),
+]
+_KEY_REVOKE = [(re.compile(rx, re.I), name) for rx, name in KEY_REVOKE]
+# Credentials with no vendor to send her to. Saying "the service that issued it" and stopping there is the
+# one place the report asks the reader a question instead of answering it, so each of these says what to do.
+SHAPE_HINTS = [
+    (re.compile(r"DATABASE|DB_(URL|PASS)|POSTGRES|MYSQL|MARIADB|MONGO|REDIS", re.I),
+     "Change the database password, then update every service that connects with it"),
+    (re.compile(r"PRIVATE_KEY|^SSH|_SSH|DEPLOY_KEY", re.I),
+     "Replace the key pair and remove the public key everywhere it is trusted"),
+    (re.compile(r"WEBHOOK", re.I), "Delete the webhook in the app that owns it and create a new one"),
+    (re.compile(r"JWT|SIGNING|SESSION", re.I),
+     "Change the signing secret and sign every session out"),
+]
+
+
+def key_revoke(key):
+    """Where to revoke a credential known only by the name it was stored under."""
+    for rx, name in _KEY_REVOKE:
+        if rx.search(key or "") and name in REVOKE:
+            return {"where": REVOKE[name][0], "url": REVOKE[name][1]}
+    for rx, advice in SHAPE_HINTS:
+        if rx.search(key or ""):
+            return {"where": advice, "url": None}
+    return None
+
+
 def store_hint(store, key):
     s = store.replace("\\", "/")
     table = [("/.aws/", ("AWS IAM security credentials", "https://console.aws.amazon.com/iam/home#/security_credentials")),
@@ -50,9 +113,13 @@ def store_hint(store, key):
             return {"where": hint[0], "url": hint[1]}
     if "/.ssh/" in s:
         return {"where": "Replace the key pair and remove the public key everywhere it is trusted", "url": None}
+    hint = key_revoke(key)
+    if hint:
+        return hint
     base = os.path.basename(s)
     if base == ".env" or base.startswith(".env.") or base.endswith(".env"):
-        return {"where": f"The service that issued {key}", "url": None}
+        return {"where": f"Revoke {key} wherever it was issued — look for API keys or credentials in that "
+                         f"service's account settings", "url": None}
     return None
 
 
@@ -108,8 +175,12 @@ class Resolver:
 
 
 def rotate_key(r):
+    """Worst blast radius first, then how sure we are. A report of twenty is only useful if the first
+    three are the three worth doing tonight. Records from an older version carry no impact; they sort last
+    within their confidence band rather than breaking the sort."""
+    blast = impact.ORDER.get(r.get("impact"), len(impact.RANKS))
     rank = 0 if r["category"] == "live_credential" else (1 if r["tier"] == "A" else 2)
-    return (rank, -r["files"], -r["occurrences"], r["label"])
+    return (blast, rank, -r["files"], -r["occurrences"], r["label"])
 
 
 def review_key(r):
@@ -312,7 +383,8 @@ def build(cfg, sources, now=None):
                "files": len({h["key"] for h in f["hits"]}), "occurrences": len(f["hits"]),
                "locations": locs[:5], "decoded_only": all(h["decoded"] for h in f["hits"]),
                "still_on_disk": [{"store": res.disp(s["store"]), "key": s["key"]} for s in stores],
-               "revoke": revoke, "reason": REASONS[reason_key], "context": f["ctx"], "entropy": f["entropy"]}
+               "revoke": revoke, "reason": REASONS[reason_key], "context": f["ctx"], "entropy": f["entropy"],
+               "impact": impact.rank(f["patterns"], [s["key"] for s in stores])}
         if f["section"] == "rotate":
             rotate.append(rec)
         else:
@@ -362,7 +434,7 @@ def build(cfg, sources, now=None):
                 "tier": None, "tools": sorted({l["tool"] for l in locs}), "sides": sorted({l["side"] for l in locs}),
                 "files": len(locs), "occurrences": len(locs), "locations": summarize_locations(locs)[:5],
                 "decoded_only": False, "still_on_disk": [], "revoke": None, "reason": REASONS["entropy"],
-                "context": None, "entropy": g["e"]})
+                "context": None, "entropy": g["e"], "impact": impact.DEFAULT})
 
     # ---- prompts
     taken = set(findings)
@@ -376,7 +448,7 @@ def build(cfg, sources, now=None):
             "files": 1, "occurrences": 1, "locations": [{"display": f"{p['src']}, {p['when']}", "tool": "", "side": "",
                                                          "count": 1, "decoded": False}],
             "decoded_only": False, "still_on_disk": [], "revoke": None, "reason": REASONS["prompt"],
-            "context": p["ctx"], "entropy": p.get("e", 0.0)})
+            "context": p["ctx"], "entropy": p.get("e", 0.0), "impact": impact.DEFAULT})
 
     review_out, truncated = [], {}
     for cat in REVIEW_ORDER:

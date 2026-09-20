@@ -7,7 +7,7 @@ import html
 import os
 import shutil
 
-from afterprompt import __version__, envs, merge
+from afterprompt import __version__, envs, impact, merge
 from afterprompt.triage import CAPS
 from afterprompt.util import display_path, human_bytes, read_json, write_json
 
@@ -148,6 +148,47 @@ def where(rec):
     return f"{tools} ({sides})" if sides else tools
 
 
+def impact_label(rec):
+    return impact.LABELS.get(rec.get("impact"))
+
+
+def start_here(rotate):
+    """The first few, named. A list of twenty reads as an afternoon's work and gets abandoned after three;
+    if three is what someone does, the report should choose which three."""
+    if len(rotate) <= 3:
+        return None
+    return [(r["id"], r["label"], impact_label(r)) for r in rotate[:3]]
+
+
+def cluster(items):
+    """Review rows that repeat, folded into one row with a count.
+
+    A single transcript that listed forty generated test values used to produce forty rows, spending the
+    whole of the section's shown budget on one file while genuinely different findings below it were cut.
+    Same label, same places, one row. Every individual record stays in findings.json; this is how they are
+    presented, not what was kept."""
+    out, index = [], {}
+    for r in items:
+        # The place a row names is its first location, which is the one it renders. Clustering on the whole
+        # location list would split two rows that print identically, which is worse than folding them.
+        locs = r.get("locations") or ()
+        key = (r["label"], locs[0]["display"] if locs else "")
+        group = index.get(key)
+        if group is None:
+            index[key] = group = {"rec": r, "count": 0}
+            out.append(group)
+        group["count"] += 1
+    return out
+
+
+def review_groups(data, cat):
+    """The clustered rows to show for a category, its true total, and how many values are not shown."""
+    items = [r for r in data["review"] if r["category"] == cat]
+    shown = cluster(items)[:CAPS[cat]]
+    total = data["review_totals"].get(cat, len(items))
+    return shown, total, max(0, total - sum(g["count"] for g in shown))
+
+
 # ------------------------------------------------------------------ markdown
 def render_md(data):
     L = []
@@ -156,12 +197,21 @@ def render_md(data):
     P("# Afterprompt report\n")
     P(context_line(data) + "\n")
     extra = f" · Random-looking tokens: {s['entropy_candidates']:,}" if s.get("entropy_candidates") else ""
-    P(f"**Rotate now: {s['rotate']}** · Review: {s['review']:,}{extra} · Dismissed automatically: {s['dismissed']:,}\n")
+    P(f"**Rotate now: {s['rotate']}** · Weaker signals to review: {s['review']:,}{extra} · "
+      f"Dismissed automatically: {s['dismissed']:,}\n")
     P("## Rotate now\n")
     if not data["rotate"]:
         P("Nothing to rotate. No credential from this machine and no vendor-specific key was found in AI tool history.\n")
+    lead = start_here(data["rotate"])
+    if lead:
+        P("**Start here.** These three have the widest reach; the rest are below, worst first.\n")
+        for rid, label, imp in lead:
+            P(f"1. **{rid}. {label}**" + (f" — {imp.lower()}" if imp else ""))
+        P("")
     for r in data["rotate"]:
         P(f"### {r['id']}. {r['label']} `{r['masked']}`\n")
+        if impact_label(r):
+            P(f"- Impact: {impact_label(r)} — {impact.NOTES[r['impact']]}")
         P(f"- Exposed in: {where(r)} — {r['files']} file(s), {r['occurrences']} occurrence(s)")
         for loc in r["locations"]:
             P(f"  - `{loc['display']}` ×{loc['count']}{' (decoded)' if loc['decoded'] else ''}")
@@ -174,17 +224,21 @@ def render_md(data):
     if not data["review"]:
         P("Nothing to review.\n")
     for cat in ("configuration", "pattern", "session_cookie", "entropy", "prompt"):
-        items = [r for r in data["review"] if r["category"] == cat][:CAPS[cat]]
-        if not items:
+        groups, total, rest = review_groups(data, cat)
+        if not groups:
             continue
-        total = data["review_totals"].get(cat, len(items))
         P(f"### {CATEGORY_TITLES[cat]} ({total})\n")
-        for r in items:
+        for g in groups:
+            r = g["rec"]
             loc = r["locations"][0]["display"] if r["locations"] else ""
+            if g["count"] > 1:
+                P(f"- {r['label']} ×{g['count']} — {loc} — {g['count']} values in the same place, "
+                  f"first `{r['masked']}`")
+                continue
             ctx = f" — context: `{r['context'][:160]}`" if r.get("context") else ""
             P(f"- {r['label']} `{r['masked']}` — {loc}{ctx}")
-        if data["review_truncated"].get(cat):
-            P(f"- …and {data['review_truncated'][cat]} more in findings.json")
+        if rest:
+            P(f"- …and {rest} more in findings.json")
         P("")
     P("## What to do next\n")
     for title, body in NEXT_STEPS:
@@ -304,6 +358,10 @@ CSS = """
 .stat b{display:block;font-family:var(--display);font-size:34px;font-weight:600;line-height:1.1}
 .stat span{font-family:var(--mono);font-size:10.5px;letter-spacing:var(--ls);text-transform:uppercase;color:var(--s4)}
 .stat.bad b{color:var(--bad)} .stat.warn b{color:var(--warn)} .stat.good b{color:var(--good)}
+.stat.quiet b{color:var(--s3)}
+.lead{margin-top:22px;padding:18px 20px;font-size:15.5px;color:var(--s2)}
+.lead ol{margin:10px 0 0;padding-left:20px} .lead li{margin:7px 0}
+.badge.impact{color:var(--s4)}
 .findings{display:grid;gap:14px;margin-top:26px}
 .finding .top{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 14px}
 .finding h3{font-size:19px}
@@ -356,7 +414,9 @@ def render_html(data):
     P(f"<h2>{e(title)}</h2><p class=\"sub\">{e(context_line(data))}</p>")
     P("<div class=\"stats\">")
     P(f"<div class=\"stat {'bad' if s['rotate'] else 'good'}\"><b>{s['rotate']}</b><span>Rotate now</span></div>")
-    P(f"<div class=\"stat {'warn' if s['review'] else ''}\"><b>{s['review']:,}</b><span>To review</span></div>")
+    # Not a warning colour: this half of the output is the uncertain half, and a second red number beside the
+    # certain one reads as a second pile of work rather than as context for the first.
+    P(f"<div class=\"stat quiet\"><b>{s['review']:,}</b><span>Weaker signals to review</span></div>")
     P(f"<div class=\"stat\"><b>{s['dismissed']:,}</b><span>Dismissed automatically</span></div>")
     P(f"<div class=\"stat\"><b>{data['coverage']['files']:,}</b><span>Files scanned · "
       f"{e(human_bytes(data['coverage']['bytes']))}</span></div>")
@@ -368,10 +428,22 @@ def render_html(data):
           "machine and no vendor-specific key was found in AI tool history.</p></div>")
     else:
         P("<p class=\"sub\">Each of these was found in AI assistant history. Revoke it and issue a new one; deleting "
-          "the transcript does not undo the exposure.</p><div class=\"findings\">")
+          "the transcript does not undo the exposure.</p>")
+        lead = start_here(data["rotate"])
+        if lead:
+            P("<div class=\"card lead\"><b>Start here.</b> These three have the widest reach. The rest follow, "
+              "worst first.<ol>")
+            for rid, label, imp in lead:
+                P(f"<li><a href=\"#{e(rid)}\">{e(rid)}. {e(label)}</a>" +
+                  (f" — {e(imp.lower())}" if imp else "") + "</li>")
+            P("</ol></div>")
+        P("<div class=\"findings\">")
         for r in data["rotate"]:
-            P("<article class=\"card finding\"><div class=\"top\">")
+            P(f"<article class=\"card finding\" id=\"{e(r['id'])}\"><div class=\"top\">")
             P(f"<span class=\"badge bad\">{e(r['id'])}</span><h3>{e(r['label'])}</h3><code>{e(r['masked'])}</code>")
+            if impact_label(r):
+                P(f"<span class=\"badge impact\" title=\"{e(impact.NOTES[r['impact']])}\">"
+                  f"{e(impact_label(r))}</span>")
             P("</div><dl>")
             P(f"<dt>Exposed in</dt><dd>{e(where(r))} · {r['files']} file{'s' if r['files'] != 1 else ''}, "
               f"{r['occurrences']} occurrence{'s' if r['occurrences'] != 1 else ''}<ul class=\"locs\">")
@@ -397,24 +469,31 @@ def render_html(data):
     if not data["review"]:
         P("<p class=\"sub\">Nothing to review.</p>")
     else:
-        P("<p class=\"sub\">Weaker signals. Open each group and decide whether the value is real and still valid.</p>")
+        P("<p class=\"sub\">Weaker signals. Nothing here is confirmed; open a group and decide whether the value "
+          "is real and still valid. Repeats from the same place are folded into one row.</p>")
         P("<div style=\"margin-top:18px\">")
         for cat in ("configuration", "pattern", "session_cookie", "entropy", "prompt"):
-            items = [r for r in data["review"] if r["category"] == cat][:CAPS[cat]]
-            if not items:
+            groups, total, rest = review_groups(data, cat)
+            if not groups:
                 continue
-            total = data["review_totals"].get(cat, len(items))
             P(f"<details class=\"acc\"><summary>{e(CATEGORY_TITLES[cat])} "
-              f"<span class=\"badge warn\">{total}</span><svg class=\"chev\" viewBox=\"0 0 24 24\">"
-              f"<path d=\"M6 9l6 6 6-6\"/></svg></summary><div class=\"acc-b\"><p>{e(items[0]['reason'])}</p><ul>")
-            for r in items:
+              f"<span class=\"badge\">{total}</span><svg class=\"chev\" viewBox=\"0 0 24 24\">"
+              f"<path d=\"M6 9l6 6 6-6\"/></svg></summary><div class=\"acc-b\">"
+              f"<p>{e(groups[0]['rec']['reason'])}</p><ul>")
+            for g in groups:
+                r = g["rec"]
                 loc = r["locations"][0]["display"] if r["locations"] else ""
+                if g["count"] > 1:
+                    P(f"<li><b>{e(r['label'])}</b> <span class=\"badge\">×{g['count']}</span> — {e(loc)}"
+                      f"<span class=\"ctx\">{g['count']} values in the same place, first "
+                      f"{e(r['masked'])}</span></li>")
+                    continue
                 P(f"<li><b>{e(r['label'])}</b> <code>{e(r['masked'])}</code> — {e(loc)}")
                 if r.get("context"):
                     P(f"<span class=\"ctx\">{e(r['context'][:200])}</span>")
                 P("</li>")
-            if data["review_truncated"].get(cat):
-                P(f"<li>…and {data['review_truncated'][cat]} more in findings.json</li>")
+            if rest:
+                P(f"<li>…and {rest} more in findings.json</li>")
             P("</ul></div></details>")
         P("</div>")
     P("</section>")
