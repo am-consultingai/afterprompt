@@ -9,6 +9,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 
+from afterprompt import progress
 from afterprompt.util import log
 
 WORKER = {}
@@ -139,6 +140,7 @@ def run_pool(fn, items, label, is_done, on_crash, cfg, should_stop=None):
                     except Exception as e:  # noqa: BLE001 - recorded per item
                         log(f"  {label}: item {futs[fut][0]} raised {type(e).__name__}: {e}")
                         record(futs[fut], f"error:{type(e).__name__}")
+                    progress.emit(label, done_n, len(futs))
                     if done_n % 250 == 0 or done_n == len(futs):
                         log(f"  {label}: {done_n}/{len(futs)} (round {rnd}, {time.monotonic() - t0:.0f}s)")
                     if should_stop and not stopping and should_stop(futs[fut]):

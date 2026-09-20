@@ -58,7 +58,7 @@ class RuleTests(TempDirTest):
 class LiveServerTests(TempDirTest):
     def setUp(self):
         super().setUp()
-        self.state = ui.State(os.path.join(self.tmp, "checklist.json"))
+        self.state = ui.State(self.tmp)
         self.server = ui.Server(self.state).start()
         self.port = self.server.server_port
         self.addCleanup(self.server.stop)
@@ -147,6 +147,27 @@ class LiveServerTests(TempDirTest):
         self.assertEqual(self.req("POST", "/api/heartbeat", body={})[0], 200)
         self.assertIsNotNone(self.state.last_beat)
 
+    def test_progress_and_summaries(self):  # U-UI-27
+        """A phase that can count says how far it is; one that cannot says so, and never invents a total."""
+        self.state.set_stages(["manifest", "expand"], {"manifest": "Listing files", "expand": "Decoding"})
+        self.state.progress_update("expand", 306, 1510)
+        self.state.progress_update("manifest", 4200, None, "files found")
+        body = json.loads(self.req("GET", "/api/status")[2])
+        self.assertEqual(body["progress"]["expand"], {"done": 306, "total": 1510, "note": None})
+        self.assertEqual(body["progress"]["manifest"], {"done": 4200, "total": None, "note": "files found"})
+        self.state.stage("expand", done=True, summary="7.5 GB decoded")
+        body = json.loads(self.req("GET", "/api/status")[2])
+        self.assertEqual([s["summary"] for s in body["stages"] if s["name"] == "expand"], ["7.5 GB decoded"])
+        self.assertNotIn("expand", body["progress"])          # a finished phase drops its bar
+
+    def test_reference_data_is_served_locally(self):  # U-UI-28
+        for path in ("/vendors.json", "/rotation.json"):
+            with self.subTest(path=path):
+                status, headers, body = self.req("GET", path, token=False)
+                self.assertEqual(status, 200)
+                self.assertTrue(headers["Content-Type"].startswith("application/json"))
+                self.assertIn("schema" if "rotation" in path else "icons", json.loads(body))
+
     def test_live_events(self):  # U-UI-12
         self.state.set_stages(["discover", "report"], {"discover": "Finding AI tool data"})
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
@@ -187,9 +208,10 @@ class PageTests(TempDirTest):
             self.assertNotIn(banned, js)
         self.assertIn("history.replaceState", js)          # the key leaves the address bar at once
         self.assertIn('credentials: "omit"', js)
-        # Browser storage holds the theme choice and nothing else: no finding, no key, no scan state.
-        self.assertEqual(re.findall(r"localStorage\.\w+\(([^)]*)", js),
-                         ["THEME_KEY, value", "THEME_KEY"])
+        # Nothing from the scan, and nothing else, is kept in the browser: even the theme lives in the
+        # scanner's settings file, so the page holds no state of its own.
+        for store in ("localStorage", "sessionStorage", "indexedDB", "document.cookie"):
+            self.assertNotIn(store, js)
 
     def test_every_colour_comes_from_a_token(self):  # U-UI-17
         """Three shades of grey invented per component is what unfinished looks like: app.css names no colour."""
@@ -245,10 +267,15 @@ class PageTests(TempDirTest):
 
     def test_icons_are_16px_at_stroke_1_5(self):  # U-UI-21
         js = self.read("app.js")
-        self.assertIn('setAttribute("viewBox", "0 0 16 16")', js)
-        self.assertIn('setAttribute("stroke-width", "1.5")', js)
-        self.assertNotIn('"0 0 24 24"', js)
-        self.assertIn("place-items: center; inline-size: 16px; block-size: 16px", self.read("app.css"))
+        self.assertIn('viewBox: "0 0 16 16"', js)
+        self.assertIn('"stroke-width": "1.5"', js)
+        # The only 24-box art is the vendor marks, which are filled glyphs, not strokes, and are drawn in a
+        # fixed 20px cell rather than scaled from a 24px stroke icon.
+        self.assertEqual(js.count('"0 0 24 24"'), 1)
+        self.assertIn('fill: "currentColor"', js)
+        css = self.read("app.css")
+        self.assertIn("place-items: center; inline-size: 16px; block-size: 16px", css)
+        self.assertIn(".mark svg { inline-size: 13px; block-size: 13px; }", css)
 
     def test_no_user_visible_string_is_inline(self):  # U-UI-22
         """Every sentence lives in the TEXT catalogue, so there is one place to translate and to proofread."""
@@ -265,23 +292,47 @@ class PageTests(TempDirTest):
     def test_accessibility_floor(self):  # U-UI-23
         html, js, css = self.read("index.html"), self.read("app.js"), self.read("app.css")
         self.assertIn('role="status"', html)                       # progress is announced without the user acting
-        self.assertIn('aria-live="polite"', html)
-        self.assertIn('role="listbox"', html)
-        self.assertIn('aria-activedescendant', html)
+        self.assertIn('setAttribute("aria-live", "polite")', js)
+        self.assertIn('setAttribute("role", "listbox")', js)
+        self.assertIn('setAttribute("aria-activedescendant"', js)
         self.assertIn('aria-selected', js)
+        self.assertIn('setAttribute("aria-expanded"', js)           # collapsible groups say whether they are open
+        self.assertIn('setAttribute("role", "progressbar")', js)    # and a bar reports its value
         self.assertIn("label.htmlFor", js)                         # clicking a label focuses its control
         self.assertIn(":focus-visible", css)
         # Selection and focus must look different: a persistent fill, and a ring only while the list has focus.
         self.assertIn('.row[aria-selected="true"]', css)
         self.assertIn(".list:focus-visible .row[aria-selected=\"true\"]", css)
         self.assertIn("prefers-reduced-motion", css)
-        self.assertIn('aria-hidden", "true"', js)                  # decorative icons are not announced
+        self.assertIn('"aria-hidden": "true"', js)                 # decorative icons are not announced
+
+    def test_progress_is_honest(self):  # U-UI-29
+        js = self.js_without_comments()
+        self.assertIn("if (p.total) {", js)                   # a bar only when a total is knowable
+        self.assertIn("TEXT.totalUnknown", js)                # and it says so when it is not
+        self.assertNotIn("estimate", js.lower())
+        self.assertIn('setAttribute("role", "progressbar")', js)
+
+    def test_screens_and_deep_links(self):  # U-UI-30
+        js = self.js_without_comments()
+        self.assertIn('["scan", "findings", "settings"].includes(wantedScreen)', js)
+        self.assertIn('params.get("screen")', js)
+        self.assertIn('show("findings")', js)                 # the result is shown when the scan finishes
+
+    def test_marks_identify_never_endorse(self):  # U-UI-31
+        js = self.js_without_comments()
+        self.assertIn("const isVendor =", js)                 # a kind of secret is not drawn as a brand
+        self.assertIn('fill: "currentColor"', js)             # one ink colour, never the brand's palette
+        self.assertNotIn("brand", js.lower())
+        self.assertIn("trademarks:", js)                      # and the page says whose marks these are
 
     def test_keyboard_contract(self):  # U-UI-24
         js = self.js_without_comments()
         for key in ('"ArrowDown"', '"ArrowUp"', '"j"', '"k"', '"Home"', '"End"', '"Enter"', '"Escape"'):
             self.assertIn(key, js, key)
-        self.assertIn('$("list").focus()', js)                     # the keyboard works before any click
+        self.assertIn('$("list").focus()', js)
+        for key in ('"ArrowRight"', '"ArrowLeft"', '" "'):         # collapse, expand, and tick without the mouse
+            self.assertIn(key, js, key)
         self.assertIn("scrollIntoView", js)
 
     def test_selection_survives_live_updates(self):  # U-UI-25
@@ -292,14 +343,15 @@ class PageTests(TempDirTest):
     def test_states_are_distinguished(self):  # U-UI-26
         """Nothing yet, nothing found and it broke are three different sentences, each saying what happens next."""
         js = self.read("app.js")
-        for key in ("scanning:", "nothing:", "connectionLost:", "refusedText:", "tickFailed:", "needKey:"):
+        for key in ("scanRunningSub:", "nothingYet:", "nothing:", "connectionLost:", "refusedText:",
+                    "tickFailed:", "needKey:", "settingsFailed:"):
             self.assertIn(key, js)
         self.assertNotIn("JSON.stringify(err", js)                 # never a raw exception in the interface
 
 
 class LifecycleTests(TempDirTest):
     def test_should_stop(self):  # U-UI-14
-        st = ui.State(os.path.join(self.tmp, "c.json"))
+        st = ui.State(self.tmp)
         now = st.started
         self.assertFalse(ui.should_stop(st, now + 10 ** 6))                 # never while the scan runs
         st.finished = True
@@ -310,7 +362,7 @@ class LifecycleTests(TempDirTest):
         self.assertTrue(ui.should_stop(st, now + 146, grace=45, idle=1800))   # the tab was closed
 
     def test_wait_stops_the_server(self):  # U-UI-15
-        st = ui.State(os.path.join(self.tmp, "c.json"))
+        st = ui.State(self.tmp)
         server = ui.Server(st).start()
         st.finished = True
         st.last_beat = time.monotonic()

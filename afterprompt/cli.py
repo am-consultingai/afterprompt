@@ -9,7 +9,7 @@ import sys
 import time
 import traceback
 
-from afterprompt import __version__, config, envs, platforms, worker
+from afterprompt import __version__, config, envs, platforms, progress, worker
 from afterprompt.util import (human_bytes, human_duration, log, makedirs, read_json, say, set_console_sink, set_log,
                               write_json)
 
@@ -73,11 +73,15 @@ def parser():
                       "but an environment could not be scanned, 2 usage error, 3 missing dependency, 4 unsupported "
                       "environment, 5 scan failed, 6 not enough disk space, 130 interrupted.")
     p.add_argument("--deep", action="store_true", help="decode nested payloads and run the entropy sweep")
+    p.add_argument("--quick", action="store_true",
+                   help="the faster scan, when your saved settings make deep the default")
     p.add_argument("--out", metavar="DIR", help="where to write the report (default: ~/.afterprompt/runs/<run-id>)")
     p.add_argument("--extra-root", metavar="PATH", action="append", help="also scan PATH (repeatable)")
     p.add_argument("--exclude", metavar="PATTERN", action="append",
                    help="skip files whose full path matches this regular expression (repeatable)")
-    p.add_argument("--max-disk", metavar="GB", type=positive_float, default=10.0,
+    # These default to None so a typed flag can be told apart from an untouched one; the saved settings fill
+    # the gap, and their own defaults are what the help text quotes.
+    p.add_argument("--max-disk", metavar="GB", type=positive_float, default=None,
                    help="cap on decoded plaintext in deep mode (default: 10)")
     p.add_argument("--workers", metavar="N", type=positive_int, help="parallel workers (default: automatic)")
     p.add_argument("--keep-work", action="store_true",
@@ -86,7 +90,7 @@ def parser():
                    help="macOS: also check Claude Code's Keychain login (shows a permission prompt)")
     p.add_argument("--windows-home", metavar="PATH",
                    help="WSL: the Windows profile to scan, or 'none' to skip the Windows side")
-    p.add_argument("--theme", choices=("neutral", "am"), default="neutral",
+    p.add_argument("--theme", choices=("neutral", "am"), default=None,
                    help="report look: neutral (default) or am, the AM Consulting brand")
     p.add_argument("--ui", action="store_true",
                    help="also show the scan in your browser, served only to this machine (127.0.0.1)")
@@ -164,7 +168,7 @@ def status(base, out=print):
 def start_ui(base):
     """Start the loopback UI and print its one-time link. Console lines go to the page as well."""
     from afterprompt import ui
-    state = ui.State(os.path.join(base, "checklist.json"))
+    state = ui.State(base)
     view = ui.Server(state).start()
     # Printed, not logged: the key must not end up in run.log.
     print(f"Browser view: {view.url}", flush=True)
@@ -180,7 +184,12 @@ def start_ui(base):
 def stop_ui(view):
     if view:
         set_console_sink(None)
+        progress.set_sink(None)
         view.stop()
+
+
+# A pool publishes under its own label ("decode"); the stage it belongs to is named differently.
+PROGRESS_STAGE = {"decode": "expand"}
 
 
 def stage_list(deep, other_envs):
@@ -194,7 +203,7 @@ def stage_list(deep, other_envs):
 def worker_args(cfg, args):
     """What a worker needs to scan its environment the way this run scans this one. Paths from this machine
     (--extra-root, --out, --windows-home) mean nothing there; the Windows profile is covered here, not twice."""
-    out = ["--worker", "--windows-home", "none", "--max-disk", str(args.max_disk)]
+    out = ["--worker", "--windows-home", "none", "--max-disk", str(cfg.max_disk_bytes / config.GIB)]
     out += ["--deep"] if cfg.deep else []
     out += ["--no-download"] if args.no_download else []
     out += ["--keep-work"] if cfg.keep_work else []
@@ -481,7 +490,7 @@ def run(argv, emit):
         meta = {"run_id": rid, "fingerprint": fp, "mode": cfg.mode, "version": __version__,
                 "started": datetime.datetime.now().isoformat(timespec="seconds"), "report_dir": cfg.report_dir,
                 "options": {"extra_roots": cfg.extra_roots, "excludes": cfg.excludes,
-                            "max_disk_gb": args.max_disk, "include_keychain": cfg.include_keychain,
+                            "max_disk_gb": cfg.max_disk_bytes / config.GIB, "include_keychain": cfg.include_keychain,
                             "windows_home": cfg.windows_home_arg}}
     if resumed and "environments" in meta:
         env_list = [envs.host(cfg)] + [envs.Environment.from_dict(d) for d in meta["environments"]]
@@ -516,6 +525,8 @@ def run(argv, emit):
     view = start_ui(base) if args.ui and not emit else None
     if view:
         view.state.set_stages(stages, DESCRIPTIONS)
+        progress.set_sink(lambda stage, done, total, note:
+                          view.state.progress_update(PROGRESS_STAGE.get(stage, stage), done, total, note))
     t0 = time.monotonic()
     current = None
     try:
@@ -541,11 +552,11 @@ def run(argv, emit):
             if marker:
                 write_json(marker, info)
             line = stage_result_line(name, info)
+            if view:
+                view.state.stage(name, done=True, summary=line)
             if line:
                 say(f"      {line}")
             log(f"=== stage {name} end ({info['elapsed_s']}s)")
-            if view:
-                view.state.stage(name, done=True)
             if cfg.stop_after == name:
                 say(f"Stopped after {name} (AFTERPROMPT_STOP_AFTER).")
                 return EXIT_INTERRUPTED

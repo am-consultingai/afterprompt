@@ -76,16 +76,27 @@ class RunConfig:
         return os.path.join(self.work_dir, *parts)
 
 
+def saved_defaults(base_dir, args, worker=False):
+    """Saved settings, ignored for a worker (the host passes it the run's options explicitly) and overridden by
+    any flag the user actually typed. argparse cannot tell "not given" from "given the default", so each flag is
+    compared with the parser's own default."""
+    from afterprompt import settings
+    if worker:
+        return dict(settings.DEFAULTS)
+    return settings.load(base_dir)
+
+
 def from_args(args, run_dir):
     install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     base_dir = base_dir_from_env()
+    saved = saved_defaults(base_dir, args, worker=bool(getattr(args, "worker", False)))
     plat = platforms.detect(os.environ.get("AFTERPROMPT_PLATFORM") or None)
     # spawn everywhere: fork is unavailable on Windows, and forking a parent that has live threads (the pool
     # watchdog, rg feeders) can hang a child on a lock held at fork time. fork stays reachable as an override.
     mp = os.environ.get("AFTERPROMPT_MP_START") or "spawn"
     win_arg = args.windows_home if args.windows_home is not None else (os.environ.get("AFTERPROMPT_WINDOWS_HOME") or None)
     cfg = RunConfig(
-        mode="deep" if args.deep else "quick",
+        mode="deep" if (args.deep or (saved["mode"] == "deep" and not getattr(args, "quick", False))) else "quick",
         base_dir=base_dir,
         run_dir=run_dir,
         work_dir=os.path.join(run_dir, "work"),
@@ -94,23 +105,23 @@ def from_args(args, run_dir):
         windows_home_arg=win_arg,
         extra_roots=[os.path.abspath(os.path.expanduser(p)) for p in (args.extra_root or [])],
         excludes=list(args.exclude or []),
-        max_disk_bytes=int(args.max_disk * GIB),
-        workers=args.workers or default_workers(),
+        max_disk_bytes=int((args.max_disk if args.max_disk is not None else saved["max_disk_gb"]) * GIB),
+        workers=args.workers or saved["workers"] or default_workers(),
         mem_cap_bytes=int(env_float("AFTERPROMPT_MEM_GB", 3) * GIB),
         file_timeout=int(env_float("AFTERPROMPT_FILE_TIMEOUT", 1800)),
         pattern_timeout=int(env_float("AFTERPROMPT_PATTERN_TIMEOUT", 900)),
         walk_budget=env_float("AFTERPROMPT_WALK_BUDGET", 180),
-        keep_work=args.keep_work,
-        include_keychain=args.include_keychain,
+        keep_work=args.keep_work or saved["keep_work"],
+        include_keychain=args.include_keychain or saved["include_keychain"],
         rg=os.environ.get("AFTERPROMPT_RG") or "rg",
         install_dir=install_dir,
         platform=plat,
         mp_start=mp,
         stop_after=os.environ.get("AFTERPROMPT_STOP_AFTER") or None,
         worker=bool(getattr(args, "worker", False)),
-        no_wsl=bool(getattr(args, "no_wsl", False)),
-        theme=getattr(args, "theme", None) or "neutral",
-        sarif=bool(getattr(args, "sarif", False)),
+        no_wsl=bool(getattr(args, "no_wsl", False)) or saved["no_wsl"],
+        theme=getattr(args, "theme", None) or saved["theme"],
+        sarif=bool(getattr(args, "sarif", False)) or saved["sarif"],
     )
     return cfg
 

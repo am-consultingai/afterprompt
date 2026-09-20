@@ -11,6 +11,7 @@ import time
 from urllib.parse import urlsplit
 
 from afterprompt.patterns import MULTILINE, PATTERNS, escape_aware, strip_residue
+from afterprompt import progress
 from afterprompt.util import entropy, log, mask, scrub, sha16
 
 RG_BASE = ["-uuu", "-a", "-o", "-b", "-N", "-H", "--no-heading", "--no-messages", "--field-match-separator", "\x01"]
@@ -220,6 +221,7 @@ def run(cfg, target, paths, patterns=None):
                 log(f"  {stage} {name}: timed out, results partial")
             timing[name] = round(time.monotonic() - t0, 2)
             total += n
+            progress.emit(stage, len(timing), len(patterns), f"{total:,} matches so far")
             log(f"  {stage} {name:28s} {timing[name]:7.2f}s  hits={n}")
     ctx.close()
     os.replace(outp + ".part", outp)

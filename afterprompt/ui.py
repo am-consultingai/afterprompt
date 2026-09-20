@@ -24,11 +24,16 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+from afterprompt import settings
 from afterprompt.util import read_json, write_json
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
 STATIC = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-          "/app.css": ("app.css", "text/css; charset=utf-8"), "/tokens.css": ("tokens.css", "text/css; charset=utf-8")}
+          "/app.css": ("app.css", "text/css; charset=utf-8"), "/tokens.css": ("tokens.css", "text/css; charset=utf-8"),
+          # Reference data the page needs and must not fetch from the internet: vendor marks (Simple Icons, CC0)
+          # and the rotation guidance keyed by vendor.
+          "/vendors.json": ("vendors.json", "application/json; charset=utf-8"),
+          "/rotation.json": ("rotation.json", "application/json; charset=utf-8")}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 MAX_BODY = 4096
@@ -39,15 +44,18 @@ IDLE_LIMIT = 30 * 60.0     # seconds a finished scan's server stays up with no p
 class State:
     """What the page can see: progress, console lines, the finished findings, the checklist."""
 
-    def __init__(self, checklist_path):
+    def __init__(self, base_dir):
+        self.base_dir = base_dir
         self.lock = threading.Lock()
         self.stages = []
         self.current = None
         self.done = set()
+        self.summaries = {}
+        self.progress = {}
         self.lines = []
         self.finished = False
         self.findings_path = None
-        self.checklist_path = checklist_path
+        self.checklist_path = os.path.join(base_dir, "checklist.json")
         self.subscribers = []
         self.last_beat = None
         self.started = time.monotonic()
@@ -64,13 +72,22 @@ class State:
             self.stages = [{"name": s, "label": descriptions.get(s, s)} for s in stages]
         self._publish({"type": "stages"})
 
-    def stage(self, name, done=False):
+    def stage(self, name, done=False, summary=None):
         with self.lock:
             if done:
                 self.done.add(name)
+                if summary:
+                    self.summaries[name] = summary
+                self.progress.pop(name, None)
             else:
                 self.current = name
         self._publish({"type": "stage", "name": name, "done": done})
+
+    def progress_update(self, stage, done, total=None, note=None):
+        """One phase's live count. total None means the total is not knowable, and the view says so."""
+        with self.lock:
+            self.progress[stage] = {"done": done, "total": total, "note": note}
+        self._publish({"type": "progress", "stage": stage, "done": done, "total": total, "note": note})
 
     def say(self, line):
         with self.lock:
@@ -86,8 +103,10 @@ class State:
 
     def snapshot(self):
         with self.lock:
-            return {"stages": [dict(s, done=s["name"] in self.done, current=s["name"] == self.current)
+            return {"stages": [dict(s, done=s["name"] in self.done, current=s["name"] == self.current,
+                                    summary=self.summaries.get(s["name"]))
                                for s in self.stages],
+                    "progress": dict(self.progress),
                     "finished": self.finished, "lines": self.lines[-400:]}
 
     def checklist(self):
@@ -184,6 +203,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, {"error": "no findings yet"})
             else:
                 self._send(200, {"findings": data, "checklist": st.checklist()})
+        elif path == "/api/settings":
+            self._send(200, settings.describe(st.base_dir))
         elif path == "/api/events":
             self._events()
         else:
@@ -217,6 +238,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/heartbeat":
             st.last_beat = time.monotonic()
             self._send(200, {"ok": True})
+        elif path == "/api/settings":
+            key = body.get("key") if isinstance(body, dict) else None
+            values = settings.set_value(st.base_dir, key, body.get("value")) if isinstance(key, str) else None
+            if values is None:
+                self._send(400, {"error": "unknown setting or value out of range"})
+            else:
+                self._send(200, {"values": values})
         elif path == "/api/checklist":
             h = body.get("hash") if isinstance(body, dict) else None
             if not (isinstance(h, str) and 8 <= len(h) <= 64 and all(c in "0123456789abcdef" for c in h)):

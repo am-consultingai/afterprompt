@@ -10,3 +10,8 @@ offline.
 They are **not** covered by this project's license. The AM Consulting name, logo and visual identity are
 trademarks of AM Consulting. You may keep them in unmodified copies and forks of Afterprompt. If you distribute a
 modified version, remove or replace them and do not present your version as an AM Consulting product.
+
+`assets/ui/vendors.json` holds vendor marks from [Simple Icons](https://github.com/simple-icons/simple-icons),
+which are released under CC0 1.0. The marks themselves are the trademarks of their respective owners and are used
+here only to identify which service a credential belongs to. Brands that asked Simple Icons to remove their mark
+are shown as a plain monogram instead, not as a reproduction of their logo.

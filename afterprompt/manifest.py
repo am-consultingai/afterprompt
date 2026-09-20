@@ -4,7 +4,7 @@ import re
 import stat
 from collections import Counter, namedtuple
 
-from afterprompt import catalogue
+from afterprompt import catalogue, progress
 from afterprompt.util import is_under, log, read_json
 
 # Matched against a forward-slash form of the path so Windows separators classify identically.
@@ -72,6 +72,8 @@ def build(cfg, sources):
                 unreadable.append([p, type(e).__name__])
                 continue
             files[p] = st.st_size
+            if len(files) % 500 == 0:
+                progress.emit("manifest", len(files), None, "files found")
     ids = self_session_ids(sources)
     self_dirs = sources["self_exclude"]
     rows = []

@@ -13,23 +13,14 @@
 <body>
 <header class="bar">
   <h1 class="wordmark">Afterprompt</h1>
+  <nav class="tabs" id="tabs" aria-label="Screens"></nav>
   <div class="bar-status">
     <span id="state" class="state" data-state="connecting" role="status"></span>
-    <label class="field-label" for="theme" id="theme-label"></label>
-    <select id="theme">
-      <option value="auto"></option>
-      <option value="light"></option>
-      <option value="dark"></option>
-    </select>
   </div>
 </header>
 
-<main class="panes">
-  <section class="pane" aria-labelledby="list-heading">
-    <h2 class="group" id="list-heading"></h2>
-    <ol class="list" id="list" role="listbox" tabindex="0" aria-activedescendant=""></ol>
-  </section>
-  <section class="pane" data-pane="detail" id="detail" tabindex="0" aria-live="polite"></section>
-</main>
+<main id="screen" class="screen"></main>
+
+<footer class="foot" id="foot"></footer>
 </body>
 </html>

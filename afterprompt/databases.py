@@ -6,7 +6,7 @@ import shutil
 import sqlite3
 import time
 
-from afterprompt import catalogue
+from afterprompt import catalogue, progress
 from afterprompt.util import log, makedirs, write_json
 
 PART_CAP = 256 * 1024 ** 2
@@ -72,6 +72,7 @@ def extract(cfg, sources, part_cap=PART_CAP):
                     pass
         entry["s"] = round(time.monotonic() - t0, 1)
         ledger.append(entry)
+        progress.emit("databases", len(ledger), len(sources["databases"]), tool)
         log(f"  database {tag} {tool} {entry['status'][:80]} rows={entry.get('rows')}")
     write_json(cfg.w("extracted", "_ledger.json"), ledger)
     ok = sum(1 for e in ledger if e["status"] == "ok")

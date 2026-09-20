@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "about": "What to do about a leaked credential, per vendor, from that vendor's own documentation. Each entry carries its source and how well it was verified; the browser view shows the steps on a finding's card. Anything not confirmed in a vendor's docs is marked and worded as uncertain rather than asserted.",
+  "universal": [
+    "Deleting the transcript does not undo this: the value was already sent to the model vendor as chat context, and may be in their server-side logs.",
+    "Revoke first, then issue a replacement. If downtime matters, create the replacement, move your app to it, and revoke the old one immediately after."
+  ],
+  "generic": {
+    "live_credential": {
+      "headline": "This credential exists on this machine and appears in AI assistant history, so treat it as known to someone else.",
+      "minutes": "5–10",
+      "steps": [
+        "Revoke it wherever it was issued, then create a replacement.",
+        "Update every place that used it — the copy still on disk is listed on this card.",
+        "Check the service's audit or usage log for activity you do not recognise."
+      ]
+    },
+    "pattern": {
+      "headline": "This is a credential in a known vendor format found in AI assistant history.",
+      "minutes": "5–10",
+      "steps": [
+        "Confirm it is yours and still valid — the masked value here is enough to find it.",
+        "Revoke it at the vendor and issue a replacement.",
+        "Check the vendor's audit or usage log for activity you do not recognise."
+      ]
+    },
+    "configuration": {
+      "headline": "This secret sits in plain text in an AI tool's configuration file. It is not necessarily sent to a model, but anyone who can read the file can use it.",
+      "minutes": "5",
+      "steps": [
+        "Move it out of the configuration file into your environment or a secrets manager, if the tool supports that.",
+        "If the file has been shared, synced or backed up, revoke and replace the value as well."
+      ]
+    },
+    "session_cookie": {
+      "headline": "A session cookie is a live sign-in. Rotating it means ending the session, not changing a key.",
+      "minutes": "2–5",
+      "steps": [
+        "Sign out of all sessions for that account in its security settings; that invalidates the cookie.",
+        "Change the account password if you cannot end sessions individually.",
+        "Turn on two-factor authentication if it is not on already."
+      ]
+    },
+    "private_key": {
+      "headline": "A private key cannot be rotated in place: it has to be replaced everywhere it is trusted.",
+      "minutes": "15–30",
+      "steps": [
+        "Generate a new key pair.",
+        "Add the new public key everywhere the old one was trusted (servers, Git hosts, CI).",
+        "Remove the old public key from each of those places.",
+        "Delete the exposed private key file once nothing uses it."
+      ]
+    },
+    "prompt": {
+      "headline": "A password-like string was typed into an AI assistant.",
+      "minutes": "5",
+      "steps": [
+        "If it is a real password, change it on that service.",
+        "If the account supports it, sign out of other sessions and turn on two-factor authentication."
+      ]
+    },
+    "entropy": {
+      "headline": "A random-looking token near a secret-related word. Only the deep scan found it, and it may be nothing.",
+      "minutes": "2",
+      "steps": [
+        "Look at the value and decide whether it is a credential of yours.",
+        "If it is, revoke and replace it at whichever service issued it."
+      ]
+    }
+  },
+  "vendors": {
+    "Stripe": {
+      "console": {"where": "Stripe API keys", "url": "https://dashboard.stripe.com/apikeys"},
+      "audit": {"where": "Workbench request logs", "url": "https://dashboard.stripe.com/workbench/logs"},
+      "minutes": "5–10",
+      "steps": [
+        "On the API keys page, open the key's ⋯ menu and choose Rotate key.",
+        "Pick when the old key expires: now, or after a grace period of up to seven days while you migrate.",
+        "Copy the new key — it is shown only once — and update your integration.",
+        "Watch the request logs until the old key has no traffic, then expire it."
+      ],
+      "notes": [
+        "Dashboard rotation gives an overlap window, so rotating need not break production.",
+        "sk_live_ and rk_live_ are secret; pk_live_ is publishable and safe to expose.",
+        "Stripe says it monitors for exposed keys and may invalidate a leaked one itself."
+      ],
+      "source": "https://docs.stripe.com/keys",
+      "confidence": "verified"
+    },
+    "Slack": {
+      "console": {"where": "Your Slack apps", "url": "https://api.slack.com/apps"},
+      "minutes": "5–10",
+      "steps": [
+        "Invalidate the token immediately with the auth.revoke API call.",
+        "For a bot or user token, reinstall the app from OAuth & Permissions to mint a replacement.",
+        "For an app-level token, revoke and regenerate it under Basic Information → App-Level Tokens.",
+        "For an incoming webhook, delete that webhook URL in the app's settings and add a new one."
+      ],
+      "notes": [
+        "xoxb- is a bot token, xoxp- a user token, xapp- an app-level token; a webhook is a secret URL, not a token.",
+        "Revoking a bot token deactivates it but does not uninstall the app.",
+        "Not confirmed in Slack's docs: whether one webhook can be revoked without affecting the others."
+      ],
+      "source": "https://api.slack.com/methods/auth.revoke",
+      "confidence": "partly verified"
+    },
+    "SendGrid": {
+      "console": {"where": "SendGrid API keys", "url": "https://app.sendgrid.com/settings/api_keys"},
+      "audit": {"where": "Email activity feed", "url": "https://app.sendgrid.com/email_activity"},
+      "minutes": "5",
+      "steps": [
+        "Open Settings → API Keys and delete the exposed key; it starts returning 401 at once.",
+        "Create a replacement with the narrowest permission level that works, and copy it immediately.",
+        "Update your application configuration.",
+        "Check the email activity feed for sends you do not recognise."
+      ],
+      "notes": [
+        "Keys start with \"SG.\" and are shown only once.",
+        "SendGrid says it may delete an exposed key itself within moments of detecting it, which breaks the integration without warning."
+      ],
+      "source": "https://www.twilio.com/docs/sendgrid/ui/account-and-settings/api-keys",
+      "confidence": "verified"
+    },
+    "Twilio": {
+      "console": {"where": "Twilio API keys & tokens", "url": "https://console.twilio.com/us1/account/keys-credentials/api-keys"},
+      "audit": {"where": "Monitor → Events", "url": "https://console.twilio.com/us1/monitor/logs/events"},
+      "minutes": "10",
+      "steps": [
+        "For an API key: open it and choose Delete this key, then create a replacement.",
+        "For the Auth Token, do it in stages: create a secondary token, move your integrations to it, then promote it to primary.",
+        "Check Monitor → Events for calls from addresses you do not recognise."
+      ],
+      "notes": [
+        "Rotating the primary Auth Token directly breaks every integration at once; the secondary-token promotion exists to avoid that.",
+        "Each change emails the account's owners and admins.",
+        "Twilio does not document a prefix for API keys."
+      ],
+      "source": "https://www.twilio.com/docs/iam/api/secondary_authtoken",
+      "confidence": "partly verified"
+    },
+    "Notion": {
+      "console": {"where": "Notion integrations", "url": "https://www.notion.so/my-integrations"},
+      "minutes": "5",
+      "steps": [
+        "Open Settings → Connections → Develop or manage connections and find the integration.",
+        "For an internal integration choose Refresh, which issues a new secret and invalidates the old one at once; for a personal access token, revoke it.",
+        "Update the secret everywhere it is used."
+      ],
+      "notes": [
+        "New tokens start with ntn_; tokens issued before September 2024 start with secret_ and still work.",
+        "The audit log is Enterprise-only and only covers events since that plan started."
+      ],
+      "source": "https://developers.notion.com/docs/best-practices-for-handling-api-keys",
+      "confidence": "verified"
+    },
+    "Linear": {
+      "console": {"where": "Linear security & access", "url": "https://linear.app/settings/account/security"},
+      "minutes": "5",
+      "steps": [
+        "Open Settings → Account → Security & Access and revoke the key; it stops working immediately.",
+        "Create a replacement and update whatever used it.",
+        "For an OAuth app, rotate the client secret, or revoke a single user token through the OAuth revoke endpoint."
+      ],
+      "notes": [
+        "Admins can always manage keys; members only when an admin has enabled member API keys.",
+        "The audit log covers the last 90 days and is visible to workspace owners."
+      ],
+      "source": "https://linear.app/docs/api-and-webhooks",
+      "confidence": "verified"
+    },
+    "Cloudflare": {
+      "console": {"where": "Cloudflare API tokens", "url": "https://dash.cloudflare.com/profile/api-tokens"},
+      "audit": {"where": "Cloudflare audit log", "url": "https://dash.cloudflare.com/?to=/:account/audit-log"},
+      "minutes": "5",
+      "steps": [
+        "For an API token, open its ⋯ menu and choose Roll: the old token stops working and the new one keeps the same permissions.",
+        "For the Global API Key, use Change in the API Keys section — but prefer replacing it with a scoped token.",
+        "Check the audit log for changes you did not make."
+      ],
+      "notes": [
+        "Cloudflare recommends scoped tokens over the Global API Key, which has unscoped access to everything with no expiry.",
+        "The audit log records writes, not reads, and is available on every plan."
+      ],
+      "source": "https://developers.cloudflare.com/fundamentals/api/how-to/roll-token/",
+      "confidence": "verified"
+    },
+    "DigitalOcean": {
+      "console": {"where": "DigitalOcean API tokens", "url": "https://cloud.digitalocean.com/account/api/tokens"},
+      "audit": {"where": "Security history", "url": "https://cloud.digitalocean.com/account/security"},
+      "minutes": "5",
+      "steps": [
+        "On the Tokens page, use the token's menu to delete or regenerate it.",
+        "Copy the new secret immediately — it is shown only once — and update your integrations.",
+        "Check Settings → Security → Security History for token activity you do not recognise."
+      ],
+      "notes": [
+        "A token's scope cannot be changed after creation; only renamed, regenerated or deleted.",
+        "Spaces access keys are a separate credential, rotated separately.",
+        "DigitalOcean revokes tokens it finds exposed in public GitHub repositories."
+      ],
+      "source": "https://docs.digitalocean.com/reference/api/create-personal-access-token/",
+      "confidence": "verified"
+    },
+    "Vercel": {
+      "console": {"where": "Vercel account tokens", "url": "https://vercel.com/account/tokens"},
+      "minutes": "5",
+      "steps": [
+        "Open the account tokens page, find the token and revoke it; revocation is immediate.",
+        "Create a replacement with the narrowest scope that works and an expiry, and copy it immediately.",
+        "Update your CI or local configuration."
+      ],
+      "notes": [
+        "Tokens are shown only once, and project-scoped tokens cannot create new tokens.",
+        "Vercel revokes tokens it finds in public repositories, gists or npm packages.",
+        "The audit log is an Enterprise feature."
+      ],
+      "source": "https://vercel.com/docs/accounts/access-tokens",
+      "confidence": "verified"
+    },
+    "Atlassian": {
+      "console": {"where": "Atlassian API tokens", "url": "https://id.atlassian.com/manage-profile/security/api-tokens"},
+      "minutes": "5",
+      "steps": [
+        "On the API tokens page, revoke the token (or revoke all of them if you are unsure which leaked).",
+        "Create a replacement with an expiry, and scopes if you use scoped tokens; copy it immediately.",
+        "Update every integration that used it — revoking breaks all of them at once."
+      ],
+      "notes": [
+        "A classic token carries the full access of the account that created it.",
+        "Atlassian revokes tokens it finds in public repositories.",
+        "Bitbucket's documentation mentions revocation taking up to ten minutes to propagate; whether that applies to every Atlassian token is not confirmed."
+      ],
+      "source": "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/",
+      "confidence": "verified"
+    },
+    "Telegram": {
+      "console": {"where": "@BotFather in Telegram", "url": "https://t.me/BotFather"},
+      "minutes": "2",
+      "steps": [
+        "Open the chat with @BotFather and send /mybots, or send /token.",
+        "Pick the bot and revoke the current token; BotFather issues a new one and the old one stops working at once.",
+        "Update the token wherever your bot runs."
+      ],
+      "notes": [
+        "There is no web console and no request log for the Bot API: the token is the whole of the bot's security.",
+        "Only one token is active per bot at a time."
+      ],
+      "source": "https://core.telegram.org/bots/features",
+      "confidence": "verified"
+    },
+    "Discord": {
+      "console": {"where": "Discord developer portal", "url": "https://discord.com/developers/applications"},
+      "audit": {"where": "Server settings → Audit log", "url": "https://discord.com/developers/docs/resources/audit-log"},
+      "minutes": "5",
+      "steps": [
+        "Open your application → Bot and press Reset Token, confirming with two-factor authentication if you have it on.",
+        "Copy the new token immediately and restart your bot with it.",
+        "For a webhook, delete it in Server Settings → Integrations → Webhooks and create a new one."
+      ],
+      "notes": [
+        "Resetting invalidates the old token at once, with no grace period: running bots disconnect immediately.",
+        "Discord scans public GitHub content and invalidates leaked tokens itself.",
+        "The server audit log records webhook changes for 45 days; token resets are not logged there."
+      ],
+      "source": "https://docs.discord.com/developers/resources/webhook",
+      "confidence": "partly verified"
+    }
+  }
+}

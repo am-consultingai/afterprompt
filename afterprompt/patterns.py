@@ -47,6 +47,10 @@ def validate(data):
                 errors.append(f"{name}: lookaround and backreferences do not work in ripgrep")
         if not isinstance(p.get("label"), str) or not p["label"].strip():
             errors.append(f"{name}: label missing")
+        if "vendor_icon" in p and not p.get("vendor"):
+            errors.append(f"{name}: vendor_icon needs a vendor")
+        if "vendor" in p and not (isinstance(p["vendor"], str) and p["vendor"].strip()):
+            errors.append(f"{name}: vendor must be a name")
         rv = p.get("revoke")
         if rv is not None and (not isinstance(rv, dict) or not rv.get("where") or
                                not str(rv.get("url", "")).startswith("https://")):
@@ -56,7 +60,8 @@ def validate(data):
                 errors.append(f"{name}: {flag} is either true or absent")
         if p.get("rotate_structural") and p.get("tier") != "B":
             errors.append(f"{name}: rotate_structural only applies to tier B")
-        unknown = set(p) - {"name", "tier", "regex", "label", "group", "revoke", "note"} - set(FLAGS)
+        unknown = set(p) - {"name", "tier", "regex", "label", "group", "revoke", "note", "vendor",
+                            "vendor_icon"} - set(FLAGS)
         if unknown:
             errors.append(f"{name}: unknown fields {', '.join(sorted(unknown))}")
     return errors
@@ -78,6 +83,10 @@ LABELS = {p["name"]: p["label"] for p in RULES}
 REVOKE = {p["name"]: (p["revoke"]["where"], p["revoke"]["url"]) for p in RULES if p.get("revoke")}
 # Tier-B structures that are unambiguous secrets: reported under "Rotate now".
 ROTATE_B = {p["name"] for p in RULES if p.get("rotate_structural")}
+# Which service issued a credential, for grouping and for the vendor mark on a card. Structural patterns
+# (private keys, cookies, passwords) have no vendor and group by what they are instead.
+VENDORS = {p["name"]: p["vendor"] for p in RULES if p.get("vendor")}
+VENDOR_ICONS = {p["vendor"]: p["vendor_icon"] for p in RULES if p.get("vendor_icon")}
 # Patterns that match only a fixed key header or DER prefix, not key material: evidence to review, not rotate.
 HEADER_ONLY = {p["name"] for p in RULES if p.get("header_only")}
 # Session cookies expire and are rotated by signing out, so they go to "Review".
