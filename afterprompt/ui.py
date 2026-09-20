@@ -28,7 +28,7 @@ from afterprompt.util import read_json, write_json
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
 STATIC = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-          "/app.css": ("app.css", "text/css; charset=utf-8")}
+          "/app.css": ("app.css", "text/css; charset=utf-8"), "/tokens.css": ("tokens.css", "text/css; charset=utf-8")}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 MAX_BODY = 4096
@@ -191,24 +191,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if not self._check(api=True):
-            return
+        # Read the body before deciding anything. A refusal that leaves bytes unread makes Windows reset the
+        # connection, and the caller then sees a dropped socket instead of the 401 or 403 it should have got.
         try:
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             n = -1
+        body_bytes = self.rfile.read(n) if 0 < n <= MAX_BODY else b""
+        if 0 < n > MAX_BODY:
+            self.rfile.read(min(n, 1024 ** 2))
+        if not self._check(api=True):
+            return
         if n < 0 or n > MAX_BODY:
-            # Read (and drop) what was sent, up to a bound, so the refusal arrives instead of a connection reset.
-            if 0 < n <= 1024 ** 2:
-                self.rfile.read(n)
-            self.close_connection = True
             self._send(413, {"error": "body too large"})
             return
         if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
             self._send(415, {"error": "expected application/json"})
             return
         try:
-            body = json.loads(self.rfile.read(n) or b"{}")
+            body = json.loads(body_bytes or b"{}")
         except ValueError:
             self._send(400, {"error": "bad json"})
             return

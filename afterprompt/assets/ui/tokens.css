@@ -1,0 +1,126 @@
+/*
+ * Design tokens for the Afterprompt browser view. Everything visual in app.css resolves to something here;
+ * a test (U-UI-17) fails the build if a component names a raw colour instead.
+ *
+ * Three inputs — --base (canvas), --ink (the one dark colour), --accent — and everything else mixed from them,
+ * in oklab so mid-tones do not go muddy. There is no grey ramp: a grey is --ink composited onto the current
+ * surface, so one token is correct on every background. Dark mode redefines the three inputs and the lift
+ * direction; the derived values follow, which is what stops two palettes drifting apart.
+ *
+ * Default: follows the system, and the header offers an explicit choice. Afterprompt is a developer's tool (dark
+ * suits it) but the report it produces is read by whoever has to rotate the keys, so neither default is right for
+ * everyone — hence the control rather than an assumption.
+ */
+:root {
+  color-scheme: light dark;
+
+  --base: #ffffff;
+  --ink: #101317;
+  --accent: #1f5fd0;        /* a calm blue; the danger red below has to stay the loudest thing on the page */
+  --accent-ink: #ffffff;
+  --lift: var(--ink);       /* which way a surface moves to sit above the canvas: down in light, up in dark */
+
+  /* Surfaces: the canvas is white and the recessed areas are tinted, not the white-card-on-grey-page of 2016. */
+  --surface-0: var(--base);
+  --surface-1: color-mix(in oklab, var(--base), var(--lift) 2.5%);
+  --surface-2: color-mix(in oklab, var(--base), var(--lift) 5%);
+  --surface-3: color-mix(in oklab, var(--base), var(--lift) 8%);
+  --surface-raised: #ffffff;
+
+  --text-primary: color-mix(in oklab, var(--base), var(--ink) 94%);
+  --text-secondary: color-mix(in oklab, var(--base), var(--ink) 68%);
+  --text-tertiary: color-mix(in oklab, var(--base), var(--ink) 50%);   /* 4.6:1 on --base: body-text contrast */
+  --text-on-accent: var(--accent-ink);
+
+  /* Mixed, not opaque: one value is then correct on every surface it lands on. #ddd is the border of 2018. */
+  --border-subtle: color-mix(in oklab, var(--base), var(--ink) 7%);
+  --border: color-mix(in oklab, var(--base), var(--ink) 12%);
+  --border-strong: color-mix(in oklab, var(--base), var(--ink) 24%);
+
+  --accent-quiet: color-mix(in oklab, var(--base), var(--accent) 10%);
+  --accent-hover: color-mix(in oklab, var(--accent), var(--ink) 14%);
+
+  /* Status colours are hand-picked: "rotate this now" must mean exactly one thing, and a mix that drifts with
+     the canvas would undermine that. Each has a quiet variant for fills and a solid one for text and borders. */
+  --danger: #b3251e;
+  --danger-quiet: color-mix(in oklab, var(--base), var(--danger) 8%);
+  --warning: #8a5300;
+  --warning-quiet: color-mix(in oklab, var(--base), var(--warning) 10%);
+  --success: #17683f;
+  --success-quiet: color-mix(in oklab, var(--base), var(--success) 8%);
+
+  /* Elevation: offset, blur and negative spread double per step, alpha climbs and stops at 6%. The alpha ceiling
+     and the negative spread (a shadow below the element, not a halo on four sides) are most of what separates
+     this from a 2018 shadow. Never one layer: a 1px contact layer plus a wide diffuse one. */
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 3%), 0 2px 4px -2px rgb(0 0 0 / 4%);
+  --shadow-md: 0 2px 4px -2px rgb(0 0 0 / 3%), 0 8px 16px -4px rgb(0 0 0 / 5%);
+  --shadow-lg: 0 2px 4px -2px rgb(0 0 0 / 3%), 0 16px 32px -8px rgb(0 0 0 / 5%), 0 32px 64px -16px rgb(0 0 0 / 6%);
+
+  /* Type: one family for the interface, and a monospace for values, paths and keys — the things you compare
+     character by character. No display serif here: this page is chrome and data, never long-form reading. */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --weight-label: 510;      /* section and micro labels: mixed case at this weight, never uppercase */
+
+  /* Stratified by element size; one radius everywhere is itself a dated tell. */
+  --radius-control: 5px;
+  --radius-row: 6px;
+  --radius-card: 10px;
+  --radius-panel: 14px;
+
+  --height-control-sm: 24px;
+  --height-control: 32px;
+
+  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --duration-hover: 0.1s;    /* hover; selection is instant, because it happens when the user is going fastest */
+  --duration-swap: 0.18s;    /* content swap, cross-fade in only */
+
+  --measure: 70ch;           /* 45–90 characters; a pane may be wider, the prose in it may not */
+  --rail: 340px;
+}
+
+/*
+ * Dark mode. Guarded with :not([data-theme="light"]) so an explicit light choice wins on a machine set to dark;
+ * the explicit dark selector is a separate rule so that one invalid selector cannot drop both.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --base: #0d0f12;
+    --ink: #f1f3f6;
+    --accent: #6ea8fe;
+    --accent-ink: #0a1830;
+    --surface-raised: color-mix(in oklab, var(--base), var(--ink) 6%);
+    --danger: #f08b84;
+    --warning: #e0a745;
+    --success: #5bc98c;
+    /* Elevation without shadows, as Linear and Raycast both do: on a dark canvas a shadow reads as nothing, so
+       the derived borders do the separating. */
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --base: #0d0f12;
+  --ink: #f1f3f6;
+  --accent: #6ea8fe;
+  --accent-ink: #0a1830;
+  --surface-raised: color-mix(in oklab, var(--base), var(--ink) 6%);
+  --danger: #f08b84;
+  --warning: #e0a745;
+  --success: #5bc98c;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+}

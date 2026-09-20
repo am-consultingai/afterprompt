@@ -137,7 +137,10 @@ class LiveServerTests(TempDirTest):
         self.assertEqual(self.req("POST", "/api/checklist", body="x" * 5000)[0], 413)
         self.assertEqual(self.req("POST", "/api/checklist", body=ok, headers={"Content-Type": "text/plain"})[0], 415)
         self.assertEqual(self.req("POST", "/api/checklist", body=b"{nope")[0], 400)
+        # A refusal still reads the body first: otherwise the connection is reset and the caller never sees why.
         self.assertEqual(self.req("POST", "/api/checklist", body=ok, token=False)[0], 401)
+        self.assertEqual(self.req("POST", "/api/checklist", body="x" * 5000, token=False)[0], 401)
+        self.assertEqual(self.req("POST", "/api/checklist", body=ok, host="evil.example:1")[0], 403)
 
     def test_heartbeat(self):  # U-UI-11
         self.assertIsNone(self.state.last_beat)
@@ -162,20 +165,136 @@ class LiveServerTests(TempDirTest):
 
 
 class PageTests(TempDirTest):
+    """The page itself, and the design rules that decay without a test (AM Consulting frontend UI guidelines)."""
+
+    def read(self, name):
+        with open(os.path.join(ui.HERE, name), encoding="utf-8") as fh:
+            return fh.read()
+
+    def js_without_comments(self):
+        js = re.sub(r"/\*.*?\*/", "", self.read("app.js"), flags=re.S)
+        return re.sub(r"(?m)^\s*//.*$", "", js)
+
     def test_page_loads_nothing_external_and_never_injects_html(self):  # U-UI-13
-        for name in ("index.html", "app.js", "app.css"):
-            with open(os.path.join(ui.HERE, name), encoding="utf-8") as fh:
-                text = fh.read()
+        for name in ("index.html", "app.js", "app.css", "tokens.css"):
+            text = self.read(name)
             with self.subTest(file=name):
                 self.assertFalse(re.search(r"(?:src|href)\s*=\s*[\"']https?:", text))
                 self.assertNotIn("@import", text)
                 self.assertNotIn("//cdn", text)
-        with open(os.path.join(ui.HERE, "app.js"), encoding="utf-8") as fh:
-            js = fh.read()
-        for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "localStorage"):
+        js = self.read("app.js")
+        for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             self.assertNotIn(banned, js)
         self.assertIn("history.replaceState", js)          # the key leaves the address bar at once
         self.assertIn('credentials: "omit"', js)
+        # Browser storage holds the theme choice and nothing else: no finding, no key, no scan state.
+        self.assertEqual(re.findall(r"localStorage\.\w+\(([^)]*)", js),
+                         ["THEME_KEY, value", "THEME_KEY"])
+
+    def test_every_colour_comes_from_a_token(self):  # U-UI-17
+        """Three shades of grey invented per component is what unfinished looks like: app.css names no colour."""
+        css = self.read("app.css")
+        self.assertFalse(re.findall(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(", css), "raw colour in app.css")
+        self.assertIn("var(--", css)
+        tokens = self.read("tokens.css")
+        for required in ("--base:", "--ink:", "--accent:", "color-mix(in oklab"):
+            self.assertIn(required, tokens)
+        # Dark mode is a redefinition of the inputs, not a second palette.
+        self.assertIn('@media (prefers-color-scheme: dark)', tokens)
+        self.assertIn(':root:not([data-theme="light"])', tokens)
+        self.assertIn(':root[data-theme="dark"]', tokens)
+
+    def test_directions_are_logical(self):  # U-UI-18
+        """One physical property is all it takes to break every right-to-left screen."""
+        for name in ("app.css", "tokens.css"):
+            css = re.sub(r"/\*.*?\*/", "", self.read(name), flags=re.S)
+            with self.subTest(file=name):
+                self.assertFalse(re.findall(r"(?m)^\s*(?:padding|margin|border)-(?:left|right)\s*:", css))
+                self.assertFalse(re.findall(r"text-align\s*:\s*(?:left|right)", css))
+                self.assertFalse(re.findall(r"(?m)^\s*(?:left|right)\s*:", css))
+                self.assertFalse(re.findall(r"float\s*:", css))
+
+    def test_shadows_are_current(self):  # U-UI-19
+        """The 2010s shadow (12-25% black, positive spread, one layer) is the biggest dated tell."""
+        css = self.read("tokens.css")
+        found = 0
+        for line in css.splitlines():
+            if not line.strip().startswith("--shadow"):
+                continue
+            px = r"(-?\d+)(?:px)?"
+            for layer in re.findall(rf"{px}\s+{px}\s+{px}\s+{px}\s+rgb\([^/]*/\s*(\d+)%", line):
+                found += 1
+                spread, alpha = int(layer[3]), int(layer[4])
+                self.assertLess(spread, 0, line)           # negative spread: the shadow sits under the element
+                self.assertLessEqual(alpha, 7, line)
+        self.assertGreaterEqual(found, 4)
+
+    def test_type_and_shape_rules(self):  # U-UI-20
+        css = self.read("app.css") + self.read("tokens.css")
+        self.assertNotIn("text-transform: uppercase", css)   # uppercase micro-labels are extinct (and RTL-hostile)
+        self.assertIn("--weight-label", css)
+        # Radius is stratified by element size, not one value everywhere.
+        radii = {k: int(v) for k, v in re.findall(r"--radius-(\w+):\s*(\d+)px", css)}
+        self.assertEqual(sorted(radii), ["card", "control", "panel", "row"])
+        self.assertLess(radii["control"], radii["card"])
+        self.assertLess(radii["card"], radii["panel"])
+        self.assertLessEqual(radii["control"], 6)
+        # Tracking is a Latin device, so it is scoped rather than applied from body.
+        self.assertIn(":dir(ltr) body", self.read("app.css"))
+        self.assertIn("--measure", css)
+
+    def test_icons_are_16px_at_stroke_1_5(self):  # U-UI-21
+        js = self.read("app.js")
+        self.assertIn('setAttribute("viewBox", "0 0 16 16")', js)
+        self.assertIn('setAttribute("stroke-width", "1.5")', js)
+        self.assertNotIn('"0 0 24 24"', js)
+        self.assertIn("place-items: center; inline-size: 16px; block-size: 16px", self.read("app.css"))
+
+    def test_no_user_visible_string_is_inline(self):  # U-UI-22
+        """Every sentence lives in the TEXT catalogue, so there is one place to translate and to proofread."""
+        js = self.js_without_comments()
+        body = js[js.index("const TEXT = {"):]
+        after = body[body.index("\n  };") + 1:]
+        literals = re.findall(r'"((?:[^"\\\n]|\\.)*)"', after) + re.findall(r"'((?:[^'\\\n]|\\.)*)'", after)
+        inline = [t for t in literals if len(t) >= 14
+                  if " " in t and not t.startswith(("http", "/api/", "data:", "0 0 ", "M", "application/"))
+                  and t != "noreferrer noopener"      # an attribute value, not a sentence
+                  and "px" not in t and not t.startswith("afterprompt.")]
+        self.assertEqual(inline, [], "move these into TEXT")
+
+    def test_accessibility_floor(self):  # U-UI-23
+        html, js, css = self.read("index.html"), self.read("app.js"), self.read("app.css")
+        self.assertIn('role="status"', html)                       # progress is announced without the user acting
+        self.assertIn('aria-live="polite"', html)
+        self.assertIn('role="listbox"', html)
+        self.assertIn('aria-activedescendant', html)
+        self.assertIn('aria-selected', js)
+        self.assertIn("label.htmlFor", js)                         # clicking a label focuses its control
+        self.assertIn(":focus-visible", css)
+        # Selection and focus must look different: a persistent fill, and a ring only while the list has focus.
+        self.assertIn('.row[aria-selected="true"]', css)
+        self.assertIn(".list:focus-visible .row[aria-selected=\"true\"]", css)
+        self.assertIn("prefers-reduced-motion", css)
+        self.assertIn('aria-hidden", "true"', js)                  # decorative icons are not announced
+
+    def test_keyboard_contract(self):  # U-UI-24
+        js = self.js_without_comments()
+        for key in ('"ArrowDown"', '"ArrowUp"', '"j"', '"k"', '"Home"', '"End"', '"Enter"', '"Escape"'):
+            self.assertIn(key, js, key)
+        self.assertIn('$("list").focus()', js)                     # the keyboard works before any click
+        self.assertIn("scrollIntoView", js)
+
+    def test_selection_survives_live_updates(self):  # U-UI-25
+        js = self.js_without_comments()
+        self.assertIn("const before = state.selected;", js)
+        self.assertIn("if (!all.includes(before)) state.selected = all[0] || null;", js)
+
+    def test_states_are_distinguished(self):  # U-UI-26
+        """Nothing yet, nothing found and it broke are three different sentences, each saying what happens next."""
+        js = self.read("app.js")
+        for key in ("scanning:", "nothing:", "connectionLost:", "refusedText:", "tickFailed:", "needKey:"):
+            self.assertIn(key, js)
+        self.assertNotIn("JSON.stringify(err", js)                 # never a raw exception in the interface
 
 
 class LifecycleTests(TempDirTest):
