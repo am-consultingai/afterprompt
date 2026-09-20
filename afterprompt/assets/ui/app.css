@@ -404,3 +404,20 @@ input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(
   background: none; border: none; color: var(--accent); cursor: default; padding: 0;
 }
 .row.ignored { opacity: 0.55; }
+
+/* --- environments: a strip, not a screen; the mark travels with the name ---- */
+.envs { margin-block-start: 26px; max-inline-size: var(--measure); }
+.envs h3 { margin-block-start: 0; }
+.env-list { display: grid; gap: 2px; margin-block-start: 12px; }
+.env {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px;
+  border-radius: var(--radius-row);
+  background: var(--surface-1);
+}
+.env.off { opacity: 0.7; }
+.env-name { font-weight: var(--weight-label); }
+.env-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.env-inline .mark { inline-size: 18px; block-size: 18px; }
+.env-inline .mark svg { inline-size: 12px; block-size: 12px; }
+.group-head .mark, .env .mark { flex: none; }

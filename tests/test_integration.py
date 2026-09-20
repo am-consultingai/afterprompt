@@ -256,7 +256,8 @@ class MultiEnvironmentIntegrationTests(TempDirTest):
     def test_one_report_for_two_environments(self):  # I-ENV-1
         out = self.scan(expect=10)
         self.assertIn("2 environments", out)
-        self.assertIn("Scanning the other environments on this machine", out)
+        self.assertIn("Looking for environments on this machine", out)   # first, before anything is read
+        self.assertIn("Scanning the other environments", out)
         self.assertIn("        [1/9] Finding AI tool data", out)   # the worker's progress, indented under Box
         d = self.host.findings()
         rotate, _ = summary(d)
@@ -303,12 +304,13 @@ class MultiEnvironmentIntegrationTests(TempDirTest):
         self.assertFalse([dp for dp, _, _ in os.walk(run) if os.path.basename(dp) == "work"])
 
     def test_resume_does_not_rescan_a_finished_environment(self):  # I-ENV-3
-        out = self.scan(expect=130, AFTERPROMPT_STOP_AFTER="environments")
-        self.assertIn("Stopped after environments", out)
+        out = self.scan(expect=130, AFTERPROMPT_STOP_AFTER="env_scan")
+        self.assertIn("Stopped after env_scan", out)
         status = self.host.run("--status").stdout.decode()
-        self.assertIn("done  Scanning the other environments on this machine", status)
+        self.assertIn("done  Looking for environments on this machine", status)
+        self.assertIn("done  Scanning the other environments", status)
         out = self.scan(expect=10)
-        self.assertIn("Scanning the other environments on this machine … already done", out)
+        self.assertIn("Scanning the other environments … already done", out)
         run = os.path.join(self.host.base, "runs", run_dirs(self.host.base)[-1])
         worker_runs = os.path.join(run, "envs", "folder-Box", "base", "worker", "runs")
         self.assertEqual(len(os.listdir(worker_runs)), 1)

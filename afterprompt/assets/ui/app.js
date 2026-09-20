@@ -14,8 +14,7 @@
   const TEXT = {
     connecting: "connecting", live: "scanning", done: "scan finished", lost: "reconnecting", refused: "refused",
     noKey: "no key",
-    tabScan: "Scan", tabFindings: "Credentials", tabMachines: "Machines", tabSettings: "Settings",
-    tabAbout: "About",
+    tabScan: "Scan", tabFindings: "Credentials", tabSettings: "Settings", tabAbout: "About",
     needKey: "Open the link printed in your terminal: it carries the key this page needs. The key is kept out of " +
              "the address bar, so a reload needs that link again.",
     refusedText: "The scanner refused this page's key. Open the link printed in the terminal again.",
@@ -154,7 +153,7 @@
 
   const REF = { vendors: { icons: {}, patterns: {} }, rotation: { vendors: {}, generic: {}, universal: [] } };
   const state = {
-    screen: ["scan", "findings", "machines", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
+    screen: ["scan", "findings", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
     collapsed: {}, settings: null, about: null, statuses: {}, checking: {}, conn: "connecting", notice: null,
   };
@@ -178,8 +177,8 @@
   function renderTabs() {
     const tabs = $("tabs");
     tabs.replaceChildren();
-    const items = [["scan", TEXT.tabScan], ["findings", TEXT.tabFindings], ["machines", TEXT.tabMachines],
-                   ["settings", TEXT.tabSettings], ["about", TEXT.tabAbout]];
+    const items = [["scan", TEXT.tabScan], ["findings", TEXT.tabFindings], ["settings", TEXT.tabSettings],
+                   ["about", TEXT.tabAbout]];
     for (const [id, label] of items) {
       const b = el("button", label, "tab");
       b.type = "button";
@@ -208,7 +207,6 @@
     if (state.conn === "refused") return box.append(note(TEXT.refusedText, "danger"));
     $("foot").hidden = state.screen === "findings";
     if (state.screen === "settings") return renderSettings(box);
-    if (state.screen === "machines") return renderMachines(box);
     if (state.screen === "about") return renderAbout(box);
     if (state.screen === "findings") return renderFindings(box);
     renderScan(box);
@@ -228,6 +226,8 @@
     wrap.append(el("h2", running ? TEXT.scanRunning : TEXT.scanDone));
     wrap.append(el("p", running ? TEXT.scanRunningSub : TEXT.pickOne, "sub"));
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
+
+    wrap.append(envStrip());
 
     const list = el("ol", null, "phases");
     for (const s of state.stages) {
@@ -475,7 +475,11 @@
         dd.append(el("span", loc.display + (loc.decoded ? " (decoded)" : ""), "mono"));
       }
     });
-    add(TEXT.foundOn, (dd) => dd.append(el("span", machineLabel(f))));
+    add(TEXT.foundOn, (dd) => {
+      const line = el("div", null, "env-inline");
+      for (const m of machinesOf(f)) line.append(envMark(m), el("span", m.label || m.name));
+      dd.append(line);
+    });
     if ((f.still_on_disk || []).length) {
       add(TEXT.stillOnDisk, (dd) => {
         for (const x of f.still_on_disk) dd.append(el("span", `${x.store} (${x.key})`, "mono"));
@@ -724,6 +728,14 @@
 
   /* Which environment a finding was found in. Merged runs stamp every finding with its side; a scan of
      one machine leaves that empty, and then the answer is simply this machine. */
+  function machinesOf(f) {
+    const rows = machineRows();
+    const sides = f.sides || [];
+    if (!sides.length) return rows.filter((m) => m.kind === "host").slice(0, 1) || [];
+    return sides.map((side) => rows.find((m) => machineSide(m) === side) ||
+                               { name: side, kind: side.split(":")[0], label: side });
+  }
+
   function machineLabel(f) {
     const sides = f.sides || [];
     if (!sides.length) return TEXT.machineThis;
@@ -742,47 +754,90 @@
     return m.name;
   }
 
-  function renderMachines(host) {
-    const box = el("section", null, "column");
-    host.append(box);
-    box.append(el("h2", TEXT.machines), el("p", TEXT.machinesIntro, "sub"));
+  /* The environments, as a strip rather than a screen of its own: which ones were looked at, what came
+     from each. A WSL distribution or a container is a separate filesystem with its own AI tool history,
+     so it is named everywhere its findings are, with its own mark. */
+  function envStrip() {
+    const wrap = el("section", null, "envs");
     const d = state.findings;
-    if (!d) { box.append(el("p", TEXT.nothingYet, "sub")); return; }
     const rows = machineRows();
-    const cards = el("div", null, "cards");
+    if (!d || !rows.length) return wrap;
+    wrap.append(el("h3", TEXT.environments));
+    const list = el("div", null, "env-list");
     for (const m of rows) {
-      const card = el("article", null, "machine");
-      const head = el("div", null, "machine-head");
-      const name = el("div", null, "grow");
-      name.append(el("h3", m.label || m.name));
-      const sources = (d.coverage.sources || []).filter((s) => s.side === machineSide(m));
-      if (sources.length) name.append(el("div", sources.map((s) => s.tool).join(" · "), "why"));
-      const pill = el("span", m.status === "scanned" ? TEXT.machineScanned : TEXT.machineNotScanned, "pill");
-      pill.dataset.tone = m.status === "scanned" ? "ok" : "warn";
-      head.append(name, pill);
-      card.append(head);
-      if (m.status !== "scanned" && m.reason) card.append(el("p", m.reason, "why"));
-      if (m.notice) card.append(el("p", m.notice, "why"));
+      const card = el("div", null, "env" + (m.status === "scanned" ? "" : " off"));
+      card.append(envMark(m));
+      const words = el("div", null, "grow");
+      words.append(el("div", m.label || m.name, "env-name"));
+      const sources = (d.coverage.sources || []).filter((x) => x.side === machineSide(m));
+      const bits = [];
       if (m.status === "scanned") {
-        const facts = el("dl", null, "facts");
-        const add = (k, v) => { const row = el("div", null, "fact");
-                                row.append(el("dt", k), el("dd", v)); facts.append(row); };
-        add(TEXT.machineFiles, (m.files || 0).toLocaleString());
-        if (m.bytes) add(TEXT.machineBytes, bytes(m.bytes));
-        add(TEXT.machineFound, `${(m.rotate || 0).toLocaleString()} ${TEXT.rotateNow.toLowerCase()} · ` +
-                               `${(m.review || 0).toLocaleString()} ${TEXT.toReview.toLowerCase()}`);
-        card.append(facts);
+        bits.push(`${(m.files || 0).toLocaleString()} ${TEXT.inFiles}`);
+        if (m.rotate || m.review) {
+          bits.push(`${(m.rotate || 0).toLocaleString()} ${TEXT.rotateNow.toLowerCase()}`);
+        }
+        if (sources.length) bits.push(sources.map((x) => x.tool).join(", "));
+      } else if (m.reason) {
+        bits.push(m.reason);
       }
-      if ((m.other_homes || []).length) {
-        card.append(el("h4", TEXT.otherHomes));
-        card.append(el("p", m.other_homes.join(", "), "mono"));
-        card.append(el("p", TEXT.otherHomesWhy, "why"));
+      if (bits.length) words.append(el("div", bits.join(" · "), "why"));
+      card.append(words);
+      if (m.status !== "scanned") {
+        const pill = el("span", TEXT.machineNotScanned, "pill");
+        pill.dataset.tone = "warn";
+        card.append(pill);
       }
-      cards.append(card);
+      list.append(card);
     }
-    box.append(cards);
-    if (rows.length === 1) box.append(el("p", TEXT.oneMachineOnly, "quiet-note"));
-    box.append(coverage());
+    wrap.append(list);
+
+    // What else was looked for and found here but not scanned — containers, VMs, other accounts.
+    for (const row of (d.coverage || {}).environments_looked_for || []) {
+      if (row.status !== "found_not_scanned" || !row.found) continue;
+      const card = el("div", null, "env off");
+      card.append(envMark({ name: row.id, kind: row.id }));
+      const words = el("div", null, "grow");
+      words.append(el("div", `${row.label} · ${row.found}`, "env-name"));
+      const why = [row.names && row.names.length ? row.names.slice(0, 4).join(", ") : null, row.why]
+        .filter(Boolean).join(" — ");
+      if (why) words.append(el("div", why, "why"));
+      card.append(words);
+      const pill = el("span", TEXT.machineNotScanned, "pill");
+      pill.dataset.tone = "warn";
+      card.append(pill);
+      list.append(card);
+    }
+
+    const homes = rows.reduce((acc, m) => acc.concat(m.other_homes || []), []);
+    if (homes.length) {
+      wrap.append(el("p", `${TEXT.otherHomes}: ${homes.join(", ")}`, "why"));
+      wrap.append(el("p", TEXT.otherHomesWhy, "why"));
+    }
+    return wrap;
+  }
+
+  /* An environment's mark: the distribution's own where we may redistribute it, a monogram otherwise. */
+  function envMark(m) {
+    const env = REF.vendors.environments || {};
+    const name = (m && (m.name || m.label)) || "";
+    let key = null;
+    for (const [rx, icon] of env.match || []) {
+      if (new RegExp(rx).test(name)) { key = icon; break; }
+    }
+    if (!key && m && m.kind && (env.kinds || {})[m.kind]) key = env.kinds[m.kind];
+    if (!key && m && m.kind === "host") key = (env.platforms || {})[(state.findings || {}).platform] || null;
+    const cell = el("span", null, "mark");
+    const art = (REF.vendors.icons || {})[key];
+    if (!art) {
+      cell.append(el("span", (name || "?").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?",
+                     "mono-mark"));
+      return cell;
+    }
+    const svg = svgEl("svg", { viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true" });
+    svg.append(svgEl("path", { d: art.path }));
+    cell.append(svg);
+    cell.title = art.title || key;
+    return cell;
   }
 
   function bytes(n) {

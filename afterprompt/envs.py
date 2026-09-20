@@ -368,3 +368,146 @@ def _tail(data, n=3):
     text = (data or b"").decode("utf-8", "replace") if isinstance(data, bytes) else (data or "")
     lines = [l.strip() for l in text.replace("\r", "").replace("\x00", "").splitlines() if l.strip()]
     return " / ".join(lines[-n:])[:500]
+
+
+# ---- what else is on this machine that has its own home folder (M6)
+CATALOGUE = None
+
+
+def catalogue():
+    """environments.json: every kind of environment we look for, whether or not this machine has any."""
+    global CATALOGUE
+    if CATALOGUE is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        CATALOGUE = read_json(os.path.join(here, "environments.json"), {"kinds": []}) or {"kinds": []}
+    return CATALOGUE
+
+
+def _lines(cmd, run=subprocess.run, timeout=10):
+    """A CLI that lists things, or None when the CLI is not here or does not answer."""
+    try:
+        p = run(cmd, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    out = (p.stdout or b"").decode("utf-8", "replace")
+    return [ln.strip() for ln in out.splitlines() if ln.strip()]
+
+
+def _probe(cfg):
+    from afterprompt.detect import Probe
+    return Probe([cfg.home], cfg.platform)
+
+
+def containers(cfg, exe="docker", run=subprocess.run):
+    """Containers on this machine, running or not. [] when the CLI is there but has none; None when it is not."""
+    if not _probe(cfg).which(exe):
+        return None
+    rows = _lines([exe, "ps", "-a", "--format", "{{.Names}}\t{{.Image}}\t{{.State}}"], run)
+    if rows is None:
+        return None
+    out = []
+    for row in rows:
+        parts = row.split("\t")
+        if len(parts) >= 3:
+            out.append({"name": parts[0], "image": parts[1], "state": parts[2]})
+    return out
+
+
+def images(cfg, exe="docker", run=subprocess.run):
+    if not _probe(cfg).which(exe):
+        return None
+    rows = _lines([exe, "images", "--format", "{{.Repository}}:{{.Tag}}"], run)
+    return None if rows is None else [r for r in rows if r and not r.startswith("<none>")]
+
+
+def devcontainers(home):
+    """A .devcontainer/devcontainer.json says a container exists, even when it is not running now."""
+    if not home:
+        return []
+    found = []
+    for base in (home, os.path.join(home, "projects"), os.path.join(home, "src"),
+                 os.path.join(home, "code"), os.path.join(home, "work"), os.path.join(home, "repos")):
+        try:
+            names = sorted(os.listdir(base))[:400]
+        except OSError:
+            continue
+        for name in names:
+            cfg = os.path.join(base, name, ".devcontainer", "devcontainer.json")
+            if os.path.exists(cfg):
+                found.append(os.path.join(base, name))
+    return found[:40]
+
+
+def survey(cfg, envs_found=None, run=subprocess.run, env=None):
+    """One row per kind in environments.json: what was looked for, what was found, what was done about it.
+
+    The point is that the answer to "what about Docker?" is in the report whether or not this machine has
+    Docker, instead of being a silence someone has to interpret."""
+    env = os.environ if env is None else env
+    envs_found = envs_found or []
+    # An overridden home or platform means this run describes some other machine (a fixture, a mounted
+    # disk). What is installed here says nothing about it, so those kinds are not probed at all.
+    describing_elsewhere = bool(env.get("AFTERPROMPT_HOME") or env.get("AFTERPROMPT_PLATFORM"))
+    scanned = {e.kind for e in envs_found if getattr(e, "kind", None)}
+    counts = {}
+    for e in envs_found:
+        counts[e.kind] = counts.get(e.kind, 0) + 1
+    rows = []
+    for kind in catalogue().get("kinds", []):
+        row = {"id": kind["id"], "label": kind["label"], "note": kind.get("note"), "why": kind.get("why"),
+               "found": 0, "status": "absent"}
+        if cfg.platform not in kind.get("platforms", []):
+            row["status"] = "not_applicable"
+            rows.append(row)
+            continue
+        kid = kind["id"]
+        if describing_elsewhere and kid in ("docker", "podman", "docker_image", "lima", "multipass"):
+            row.update(status="not_checked", why="this scan describes another machine")
+            rows.append(row)
+            continue
+        if kid == "host":
+            row.update(found=1, status="scanned")
+        elif kid == "wsl":
+            row.update(found=counts.get("wsl", 0), status="scanned" if counts.get("wsl") else "absent")
+            if cfg.no_wsl:
+                row.update(status="skipped", why="turned off for this scan")
+        elif kid == "folder":
+            row.update(found=counts.get("folder", 0), status="scanned" if counts.get("folder") else "absent")
+        elif kid in ("docker", "podman"):
+            found = containers(cfg, "docker" if kid == "docker" else "podman", run)
+            if found is None:
+                row.update(status="not_installed")
+            else:
+                running = [c for c in found if c["state"] == "running"]
+                row.update(found=len(found), running=len(running),
+                           status="found_not_scanned" if found else "absent",
+                           why=kind.get("why") or "not scanned yet: containers are the next environment to cover",
+                           names=[c["name"] for c in found[:12]])
+        elif kid == "docker_image":
+            found = images(cfg, "docker", run)
+            row.update(found=0 if found is None else len(found),
+                       status="not_installed" if found is None else ("found_not_scanned" if found else "absent"))
+        elif kid == "devcontainer":
+            found = devcontainers(cfg.home)
+            row.update(found=len(found), status="found_not_scanned" if found else "absent",
+                       names=[os.path.basename(p) for p in found[:12]])
+        elif kid == "codespace":
+            here = bool(env.get("CODESPACES") or env.get("CODESPACE_NAME"))
+            row.update(found=1 if here else 0, status="scanned" if here else "absent")
+        elif kid in ("lima", "multipass"):
+            exe = "limactl" if kid == "lima" else "multipass"
+            rows_out = _lines([exe, "list"], run) if _probe(cfg).which(exe) else None
+            if rows_out is None:
+                row.update(status="not_installed")
+            else:
+                n = max(0, len(rows_out) - 1)              # the first line is a header
+                row.update(found=n, status="found_not_scanned" if n else "absent")
+        elif kid == "other_home":
+            others = other_homes(cfg.home)
+            row.update(found=len(others), status="found_not_scanned" if others else "absent",
+                       names=others[:12])
+        rows.append(row)
+    log("environments looked for: " + ", ".join(f"{r['label']}={r['status']}" for r in rows))
+    return rows

@@ -28,7 +28,8 @@ DESCRIPTIONS = {
     "vendor_store": "Matching patterns in decoded data",
     "entropy_raw": "Entropy sweep",
     "entropy_store": "Entropy sweep of decoded data",
-    "environments": "Scanning the other environments on this machine",
+    "environments": "Looking for environments on this machine",
+    "env_scan": "Scanning the other environments",
     "known": "Checking your live credentials against AI history",
     "prompts": "Reviewing your prompts for passwords",
     "triage": "Deciding what to rotate",
@@ -146,7 +147,8 @@ def status(base, out=print):
             out(f"Latest report: {latest}")
         return EXIT_OK
     meta = read_json(os.path.join(run_dir, "run.json"), {}) or {}
-    stages = stage_list(meta.get("mode") == "deep", bool(meta.get("environments")))
+    stages = stage_list(meta.get("mode") == "deep", bool(meta.get("environments")),
+                        worker=bool(meta.get("worker")))
     out(f"Scan {rid} ({meta.get('mode', '?')} mode), started {meta.get('started', '?')}")
     for s in stages:
         done = os.path.exists(os.path.join(run_dir, "work", "state", f"{s}.done"))
@@ -191,11 +193,20 @@ def stop_ui(view):
 PROGRESS_STAGE = {"decode": "expand"}
 
 
-def stage_list(deep, other_envs):
+def stage_list(deep, other_envs=True, worker=False):
+    """Environments first: before looking for AI tool data here, find out what "here" even is.
+
+    It runs whether or not this machine has another environment, because "we looked for WSL distributions
+    and containers and there were none" is an answer, and its absence is not. A worker skips it: it was
+    told which environment it is, and the machine's other environments are the host's business."""
     stages = list(DEEP if deep else QUICK)
+    if worker:
+        return stages
+    stages.insert(0, "environments")
     if other_envs:
-        # Right after discovery: the other environments' live values must be known before this one's search.
-        stages.insert(stages.index("discover") + 1, "environments")
+        # Scanning them has to wait for discovery: each worker is sent this machine's live values, and those
+        # come from the sources discovery finds.
+        stages.insert(stages.index("discover") + 1, "env_scan")
     return stages
 
 
@@ -246,6 +257,20 @@ def scan_environments(cfg, ctx):
     ctx["env_results"] = results
     counts = {s: sum(1 for r in results if r["status"] == s) for s in envs.FINAL}
     return dict(counts, environments=len(results))
+
+
+def look_for_environments(cfg, ctx):
+    """The first stage: every kind of environment we know of, found here or not.
+
+    Cheap, and first on purpose — what "this machine" means is the first question, and a WSL distribution
+    or a container is a separate filesystem with its own AI tool history."""
+    survey = envs.survey(cfg, ctx["envs"])
+    ctx["env_survey"] = survey
+    makedirs(os.path.join(cfg.run_dir, "envs"))
+    write_json(os.path.join(cfg.run_dir, "envs", "survey.json"), survey)
+    elsewhere = sum(r["found"] for r in survey if r["status"] == "found_not_scanned")
+    return {"environments": len(ctx["envs"]), "elsewhere": elsewhere,
+            "kinds": sum(1 for r in survey if r["status"] not in ("absent", "not_applicable"))}
 
 
 def env_values(cfg, ctx):
@@ -309,6 +334,8 @@ def run_stage(cfg, name, ctx):
                 "windows_home": s["windows_home"], "windows_home_source": s["windows_home_source"]}
     src = ctx["sources"]
     if name == "environments":
+        return look_for_environments(cfg, ctx)
+    if name == "env_scan":
         return scan_environments(cfg, ctx)
     if name == "databases":
         return databases.extract(cfg, src)
@@ -382,8 +409,13 @@ def stage_result_line(name, info):
     if name == "triage":
         return f"{info['rotate']} to rotate, {info['review']} to review"
     if name == "environments":
+        parts = [f"{info.get('environments', 1)} to scan"]
+        if info.get("elsewhere"):
+            parts.append(f"{info['elsewhere']} found elsewhere, not scanned")
+        return ", ".join(parts)
+    if name == "env_scan":
         parts = [f"{info.get(s, 0)} {t}" for s, t in (("scanned", "scanned"), ("scanned_share", "over the share"),
-                                                     ("not_scanned", "not scanned"), ("skipped", "skipped"))
+                                                      ("not_scanned", "not scanned"), ("skipped", "skipped"))
                  if info.get(s)]
         return ", ".join(parts)
     return ""
@@ -519,7 +551,7 @@ def run(argv, emit):
             cfg.max_disk_bytes = int(free - config.GIB)
             say(f"Only {human_bytes(free)} free: decoded data capped at {human_bytes(cfg.max_disk_bytes)}.")
 
-    stages = stage_list(cfg.deep, len(env_list) > 1)
+    stages = stage_list(cfg.deep, len(env_list) > 1, worker=cfg.worker)
     ctx = {"meta": meta, "envs": env_list, "worker_args": worker_args(cfg, args), "foreign": foreign}
     view = start_ui(base) if args.ui and not emit else None
     if view:

@@ -23,7 +23,10 @@ ICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0
         "stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 21 L23 31 L13 41'/%3E%3Ccircle cx='36' "
         "cy='31' r='6.5'/%3E%3Cpath d='M42.5 31 H55'/%3E%3Cpath d='M47.5 31 V36'/%3E%3Cpath d='M52.5 31 V35'/"
         "%3E%3C/g%3E%3C/svg%3E")
-SIDE_NAMES ={"wsl": "WSL", "windows": "Windows", "macos": "macOS", "linux": "Linux"}
+SIDE_NAMES = {"wsl": "WSL", "windows": "Windows", "macos": "macOS", "linux": "Linux"}
+ENV_STATUS = {"scanned": "scanned", "absent": "none on this machine", "not_installed": "not installed",
+              "found_not_scanned": "not scanned", "not_applicable": "does not apply here",
+              "not_checked": "not checked", "skipped": "skipped"}
 PLATFORM_NAMES = {"wsl": "Windows (WSL)", "macos": "macOS", "linux": "Linux", "windows": "Windows"}
 CATEGORY_TITLES = {
     "configuration": "Stored in AI tool configuration",
@@ -66,6 +69,9 @@ def coverage(cfg, sources):
         "windows_home": sources.get("windows_home"),
         "windows_home_source": sources.get("windows_home_source"),
         "other_homes": envs.other_homes(cfg.home),
+        # Every kind of environment that was looked for, found or not: the answer to "what about Docker?"
+        # belongs in the report whether or not this machine has any.
+        "environments_looked_for": read_json(os.path.join(cfg.run_dir, "envs", "survey.json"), []) or [],
         "installed": sources.get("installed", []),
         "unknown_tools": [display_path(u["folder"], cfg.home, sources.get("windows_home"))
                           for u in sources.get("unknown_tools", [])],
@@ -226,6 +232,18 @@ def coverage_rows(data):
             rows.append((f"Other users on {env['label']}", other_homes_text(env["other_homes"])))
     if not data.get("environments") and c.get("other_homes"):
         rows.append(("Other users on this machine", other_homes_text(c["other_homes"])))
+    # Everything that was looked for, so a silence about containers is never mistaken for coverage.
+    for row in c.get("environments_looked_for") or []:
+        if row["status"] in ("absent", "not_applicable", "scanned"):
+            continue
+        detail = ENV_STATUS.get(row["status"], row["status"])
+        if row.get("found"):
+            detail = f"{row['found']} found, {ENV_STATUS.get(row['status'], row['status'])}"
+        if row.get("names"):
+            detail += " (" + ", ".join(row["names"][:6]) + (", …" if row["found"] > 6 else "") + ")"
+        if row.get("why"):
+            detail += f" — {row['why']}"
+        rows.append((f"Looked for: {row['label']}", detail))
     found = [i for i in c.get("installed") or [] if i["status"] == "scanned"]
     uncovered = [i for i in c.get("installed") or [] if i["status"] != "scanned"]
     if found:

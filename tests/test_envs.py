@@ -389,3 +389,81 @@ class ValuesTravelOnStdinTests(ScanWslTests):
         self.assertEqual(res["values"], [{"v": "T1dO", "e": []}])            # kept in memory for the host
         with open(envs.result_path(self.tmp, self.E), encoding="utf-8") as fh:
             self.assertNotIn("values", json.load(fh))                        # never saved
+
+
+class SurveyTests(TempDirTest):
+    """What else is on this machine that has its own home folder — asked before anything is scanned."""
+
+    def cfg(self, platform="linux"):
+        return make_cfg(self.tmp, platform, os.path.join(self.tmp, "home"))
+
+    def fake_run(self, table):
+        def run(cmd, **kw):
+            key = " ".join(cmd[:2])
+            out = table.get(key)
+            if out is None:
+                raise FileNotFoundError(cmd[0])
+            return subprocess.CompletedProcess(cmd, 0, out.encode(), b"")
+        return run
+
+    def rows(self, cfg, envs_found=(), run=None, env=None, which=None):
+        with mock.patch.object(envs, "_probe", return_value=mock.Mock(which=which or (lambda n: "/usr/bin/" + n))):
+            return {r["id"]: r for r in envs.survey(cfg, list(envs_found), run=run or self.fake_run({}),
+                                                    env=env or {})}
+
+    def test_every_kind_is_reported_even_when_absent(self):  # U-ENV-20
+        """A silence about containers must never be mistakable for coverage."""
+        cfg = self.cfg()
+        rows = self.rows(cfg, [envs.host(cfg)], which=lambda n: None)
+        ids = {k["id"] for k in envs.catalogue()["kinds"]}
+        self.assertEqual(set(rows), ids)
+        self.assertIn("docker", rows)
+        self.assertEqual(rows["docker"]["status"], "not_installed")
+        for row in rows.values():
+            self.assertTrue(row["label"])
+            self.assertIn(row["status"], ("scanned", "absent", "not_installed", "found_not_scanned",
+                                          "not_applicable", "not_checked", "skipped"))
+
+    def test_containers_are_found_and_said_to_be_unscanned(self):  # U-ENV-21
+        cfg = self.cfg()
+        run = self.fake_run({"docker ps": "api\tmyimage\trunning\ndb\tpostgres:16\texited\n",
+                             "docker images": "myimage:latest\npostgres:16\n"})
+        rows = self.rows(cfg, [envs.host(cfg)], run=run)
+        self.assertEqual(rows["docker"]["found"], 2)
+        self.assertEqual(rows["docker"]["running"], 1)
+        self.assertEqual(rows["docker"]["status"], "found_not_scanned")
+        self.assertTrue(rows["docker"]["why"])                      # it says why, not just that
+        self.assertEqual(rows["docker"]["names"], ["api", "db"])
+        self.assertEqual(rows["docker_image"]["found"], 2)
+
+    def test_a_missing_cli_is_not_an_error(self):  # U-ENV-22
+        cfg = self.cfg()
+        rows = self.rows(cfg, [envs.host(cfg)], which=lambda n: None)
+        self.assertEqual(rows["podman"]["status"], "not_installed")
+        self.assertEqual(rows["multipass"]["status"], "not_installed")
+
+    def test_what_does_not_apply_here_says_so(self):  # U-ENV-23
+        rows = self.rows(self.cfg("macos"), [], which=lambda n: None)
+        self.assertEqual(rows["wsl"]["status"], "not_applicable")
+        self.assertEqual(rows["lima"]["status"], "not_installed")     # macOS: applicable, just not installed
+        rows = self.rows(self.cfg("linux"), [], which=lambda n: None)
+        self.assertEqual(rows["lima"]["status"], "not_applicable")
+
+    def test_a_devcontainer_config_counts_as_an_environment_to_come(self):  # U-ENV-24
+        cfg = self.cfg()
+        write(os.path.join(cfg.home, "projects", "api", ".devcontainer", "devcontainer.json"), "{}")
+        rows = self.rows(cfg, [envs.host(cfg)], which=lambda n: None)
+        self.assertEqual(rows["devcontainer"]["found"], 1)
+        self.assertEqual(rows["devcontainer"]["names"], ["api"])
+
+    def test_a_codespace_is_this_machine_not_another_one(self):  # U-ENV-25
+        rows = self.rows(self.cfg(), [], env={"CODESPACES": "true"}, which=lambda n: None)
+        self.assertEqual(rows["codespace"]["status"], "scanned")
+
+    def test_the_catalogue_explains_itself(self):  # U-ENV-26
+        for kind in envs.catalogue()["kinds"]:
+            with self.subTest(kind=kind["id"]):
+                self.assertTrue(kind["label"] and kind["platforms"] and kind["detect"])
+                self.assertIn(kind["scan"], ("in-process", "worker", "copy", "never", "via docker"))
+                if kind["scan"] == "never":
+                    self.assertTrue(kind.get("why"), "a kind we never scan has to say why")

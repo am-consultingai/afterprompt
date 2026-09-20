@@ -274,9 +274,9 @@ class PageTests(TempDirTest):
         js = self.read("app.js")
         self.assertIn('viewBox: "0 0 16 16"', js)
         self.assertIn('"stroke-width": "1.5"', js)
-        # The only 24-box art is the vendor marks, which are filled glyphs, not strokes, and are drawn in a
-        # fixed 20px cell rather than scaled from a 24px stroke icon.
-        self.assertEqual(js.count('"0 0 24 24"'), 1)
+        # The only 24-box art is the marks — a vendor's and an environment's — which are filled glyphs, not
+        # strokes, and are drawn in a fixed cell rather than scaled from a 24px stroke icon.
+        self.assertEqual(js.count('"0 0 24 24"'), 2)
         self.assertIn('fill: "currentColor"', js)
         css = self.read("app.css")
         self.assertIn("place-items: center; inline-size: 16px; block-size: 16px", css)
@@ -320,7 +320,8 @@ class PageTests(TempDirTest):
 
     def test_screens_and_deep_links(self):  # U-UI-30
         js = self.js_without_comments()
-        self.assertIn('["scan", "findings", "machines", "settings", "about"].includes(wantedScreen)', js)
+        self.assertIn('["scan", "findings", "settings", "about"].includes(wantedScreen)', js)
+        self.assertNotIn("machines", js.lower().split("const text")[0])   # no screen of its own any more
         self.assertIn('params.get("screen")', js)
         self.assertIn('show("findings")', js)                 # the result is shown when the scan finishes
 

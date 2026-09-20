@@ -124,14 +124,16 @@ class EnvironmentCliTests(TempDirTest):
         self.assertEqual(d["environments"][1]["status"], "skipped")
         self.assertIn("--no-wsl", d["environments"][1]["reason"])
 
-    def test_single_environment_has_no_extra_stage(self):  # U-CLI-10
+    def test_one_environment_is_still_looked_for_and_said_out_loud(self):  # U-CLI-10
+        """The looking happens on every scan; only the scanning of others is conditional."""
         fx, env = self.fixture(clean=True)
         env.pop("AFTERPROMPT_TEST_ENVS")
         code, out, _ = run_main([], env)
         self.assertEqual(code, cli.EXIT_OK, out)
-        self.assertNotIn("other environments", out)
-        self.assertNotIn("environments", fx.findings())
-        self.assertIn("[9/9]", out)
+        self.assertIn("[1/10] Looking for environments on this machine", out)
+        self.assertNotIn("Scanning the other environments", out)     # there are none to scan
+        self.assertNotIn("environments", fx.findings())              # and none to merge
+        self.assertIn("[10/10]", out)
 
     def test_worker_speaks_only_protocol(self):  # U-CLI-11
         fx, env = self.fixture(clean=False)
@@ -185,7 +187,8 @@ class EnvironmentCliTests(TempDirTest):
             code, _, _ = run_main([], dict(env, AFTERPROMPT_STOP_AFTER="known"))
         self.assertEqual(code, cli.EXIT_INTERRUPTED)
         _, out, _ = run_main(["--status"], env)
-        self.assertIn("Scanning the other environments on this machine", out)
+        self.assertIn("Looking for environments on this machine", out)
+        self.assertIn("Scanning the other environments", out)
 
     def test_interrupted_environment_stage_resumes_per_environment(self):  # U-CLI-15
         """Box finished before the interruption, Other did not: only Other is scanned again."""
