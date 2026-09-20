@@ -90,8 +90,6 @@ def parser():
                    help="macOS: also check Claude Code's Keychain login (shows a permission prompt)")
     p.add_argument("--windows-home", metavar="PATH",
                    help="WSL: the Windows profile to scan, or 'none' to skip the Windows side")
-    p.add_argument("--theme", choices=("neutral", "am"), default=None,
-                   help="report look: neutral (default) or am, the AM Consulting brand")
     p.add_argument("--ui", action="store_true",
                    help="also show the scan in your browser, served only to this machine (127.0.0.1)")
     p.add_argument("--sarif", action="store_true",

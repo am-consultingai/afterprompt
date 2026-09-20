@@ -28,12 +28,23 @@ from afterprompt import settings
 from afterprompt.util import read_json, write_json
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
+LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo")
 STATIC = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
           "/app.css": ("app.css", "text/css; charset=utf-8"), "/tokens.css": ("tokens.css", "text/css; charset=utf-8"),
           # Reference data the page needs and must not fetch from the internet: vendor marks (Simple Icons, CC0)
           # and the rotation guidance keyed by vendor.
           "/vendors.json": ("vendors.json", "application/json; charset=utf-8"),
           "/rotation.json": ("rotation.json", "application/json; charset=utf-8")}
+# The logo pack, from the folder next door. Named one by one: the server never joins a path it was
+# given, so there is nothing here to traverse out of.
+LOGO_STATIC = {"/logo/afterprompt-mark.svg": ("afterprompt-mark.svg", "image/svg+xml"),
+               "/logo/afterprompt-icon.svg": ("afterprompt-icon.svg", "image/svg+xml"),
+               "/logo/afterprompt-icon-192.png": ("afterprompt-icon-192.png", "image/png"),
+               "/logo/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+               "/favicon.ico": ("favicon.ico", "image/x-icon"),
+               # AM Consulting's own mark, for the About screen, bundled because the page has no network.
+               "/logo/am-logo.png": (os.path.join("am", "am-logo-600.png"), "image/png"),
+               "/logo/am-logo-white.png": (os.path.join("am", "am-logo-white-600.png"), "image/png")}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 MAX_BODY = 4096
@@ -121,6 +132,18 @@ class State:
             return data
 
 
+def about():
+    """What the About screen states, counted rather than written down twice."""
+    from afterprompt import __version__, catalogue, patterns
+    products = sorted({rule[0] for rule in catalogue.REGISTRY})
+    return {"version": __version__,
+            "licence": "FSL-1.1-ALv2",
+            "tools": len(products),
+            "patterns": len(patterns.PATTERNS),
+            "source": "https://github.com/am-consultingai/afterprompt",
+            "vendor": {"name": "AM Consulting", "url": "https://www.amconsulting.ai"}}
+
+
 def allowed_host(host, port):
     return host in (f"127.0.0.1:{port}", f"localhost:{port}")
 
@@ -189,6 +212,13 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, name), "rb") as fh:
                 self._send(200, fh.read(), ctype)
             return
+        if path in LOGO_STATIC:
+            if not self._check(api=False):
+                return
+            name, ctype = LOGO_STATIC[path]
+            with open(os.path.join(LOGO, name), "rb") as fh:
+                self._send(200, fh.read(), ctype)
+            return
         if not path.startswith("/api/"):
             self._check(api=False) and self._send(404, {"error": "not found"})
             return
@@ -205,6 +235,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"findings": data, "checklist": st.checklist()})
         elif path == "/api/settings":
             self._send(200, settings.describe(st.base_dir))
+        elif path == "/api/about":
+            self._send(200, about())
         elif path == "/api/events":
             self._events()
         else:

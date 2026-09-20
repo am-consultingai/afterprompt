@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40" role="img" aria-label="Afterprompt">
+  <title>Afterprompt</title>
+  <!-- A prompt and what was left in it: the chevron of a command line, then a key. Three shapes, so it
+       still reads at 16px. Drawn in currentColor; the icon badge sets that to white. -->
+  <g fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 8 L18 20 L6 32"/>
+    <circle cx="33" cy="20" r="7"/>
+    <path d="M40 20 H57"/>
+    <path d="M47 20 V26"/>
+    <path d="M53 20 V25"/>
+  </g>
+</svg>

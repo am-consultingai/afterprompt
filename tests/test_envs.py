@@ -127,10 +127,13 @@ class ShipTests(TempDirTest):
         os.makedirs(pyc, exist_ok=True)
         m = self.names(envs.engine_tar(REPO))
         self.assertEqual(m["afterprompt.sh"].mode, 0o755)
-        for need in ("afterprompt/__init__.py", "afterprompt/cli.py", "afterprompt/assets/brand.css"):
+        for need in ("afterprompt/__init__.py", "afterprompt/cli.py", "afterprompt/patterns.json",
+                     "afterprompt/assets/report.css"):
             self.assertIn(need, m)
         self.assertFalse(any("__pycache__" in n or n.endswith(".pyc") for n in m))
         self.assertFalse(any(n.startswith(("tests/", "site/", "docs/")) for n in m))
+        # A worker writes no report and serves no page: the browser view and the logo pack stay behind.
+        self.assertFalse(any("/assets/ui/" in n or "/assets/logo/" in n for n in m), sorted(m)[:5])
         self.assertTrue(all(x.uid == 0 and x.uname == "" for x in m.values()))
 
     @requires_posix

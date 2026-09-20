@@ -63,22 +63,33 @@ class ConfigMergeTests(TempDirTest):
 
     def test_saved_settings_become_the_defaults(self):  # U-SET-6
         settings.save(self.tmp, dict(settings.DEFAULTS, mode="deep", max_disk_gb=25, keep_work=True, sarif=True,
-                                     theme="am", no_wsl=True, workers=3))
+                                     no_wsl=True, workers=3))
         cfg = self.cfg([])
         self.assertEqual(cfg.mode, "deep")
         self.assertEqual(cfg.max_disk_bytes, 25 * config.GIB)
         self.assertTrue(cfg.keep_work and cfg.sarif and cfg.no_wsl)
-        self.assertEqual(cfg.theme, "am")
         self.assertEqual(cfg.workers, 3)
 
     def test_a_flag_still_wins(self):  # U-SET-7
-        """Including a flag whose value happens to equal the shipped default: --quick and --theme neutral are
-        choices, not silence."""
-        settings.save(self.tmp, dict(settings.DEFAULTS, mode="deep", max_disk_gb=25, theme="am"))
-        cfg = self.cfg(["--max-disk", "3", "--theme", "neutral", "--quick"])
+        """Including a flag whose value happens to equal the shipped default: --quick is a choice, not
+        silence."""
+        settings.save(self.tmp, dict(settings.DEFAULTS, mode="deep", max_disk_gb=25))
+        cfg = self.cfg(["--max-disk", "3", "--quick"])
         self.assertEqual(cfg.max_disk_bytes, 3 * config.GIB)
-        self.assertEqual(cfg.theme, "neutral")
         self.assertEqual(cfg.mode, "quick")
+
+    def test_a_settings_file_from_an_older_version_still_loads(self):  # U-SET-21
+        """It will still carry "theme", which no longer exists: an unknown key must not break the scan."""
+        settings.save(self.tmp, dict(settings.DEFAULTS, mode="deep"))
+        path = os.path.join(self.tmp, "settings.json")
+        with open(path, encoding="utf-8") as fh:
+            saved = json.load(fh)
+        saved["theme"] = "am"
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(saved, fh)
+        self.assertEqual(settings.load(self.tmp)["mode"], "deep")
+        self.assertNotIn("theme", settings.load(self.tmp))
+        self.assertEqual(self.cfg([]).mode, "deep")
 
     def test_a_worker_ignores_them(self):  # U-SET-8
         """The host passes a worker the run's options explicitly; the distro's own saved settings must not apply."""

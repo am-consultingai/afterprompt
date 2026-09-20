@@ -52,7 +52,6 @@ class RunConfig:
     mp_start: str = "spawn"
     stop_after: Optional[str] = None
     worker: bool = False
-    theme: str = "neutral"
     sarif: bool = False
     no_wsl: bool = False
     now: float = 0.0
@@ -120,7 +119,6 @@ def from_args(args, run_dir):
         stop_after=os.environ.get("AFTERPROMPT_STOP_AFTER") or None,
         worker=bool(getattr(args, "worker", False)),
         no_wsl=bool(getattr(args, "no_wsl", False)) or saved["no_wsl"],
-        theme=getattr(args, "theme", None) or saved["theme"],
         sarif=bool(getattr(args, "sarif", False)) or saved["sarif"],
     )
     return cfg

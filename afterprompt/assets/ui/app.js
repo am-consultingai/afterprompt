@@ -14,7 +14,8 @@
   const TEXT = {
     connecting: "connecting", live: "scanning", done: "scan finished", lost: "reconnecting", refused: "refused",
     noKey: "no key",
-    tabScan: "Scan", tabFindings: "Credentials", tabSettings: "Settings",
+    tabScan: "Scan", tabFindings: "Credentials", tabMachines: "Machines", tabSettings: "Settings",
+    tabAbout: "About",
     needKey: "Open the link printed in your terminal: it carries the key this page needs. The key is kept out of " +
              "the address bar, so a reload needs that link again.",
     refusedText: "The scanner refused this page's key. Open the link printed in the terminal again.",
@@ -50,6 +51,22 @@
                    "are saved on this machine only.",
     settingsFailed: "Could not save that change — the scanner may have closed.",
     auto: "Automatic", savedTo: "Saved in",
+    machines: "Machines", machinesIntro: "Afterprompt scans this machine and every environment on it that " +
+              "keeps its own AI tool history — each WSL distribution has its own home folder, and a key " +
+              "pasted in one of them is invisible from the other.",
+    machineThis: "This machine", machineScanned: "Scanned", machineNotScanned: "Not scanned",
+    machineFiles: "Files read", machineBytes: "Read", machineFound: "Found here",
+    otherHomes: "Other home folders on this machine", otherHomesWhy: "Listed, never read: Afterprompt " +
+                "does not elevate and does not look inside another account's files.",
+    foundOn: "Found on", everywhere: "every environment", oneMachineOnly: "Only this environment was " +
+             "scanned. If you use WSL, run the scan again with WSL enabled in Settings to cover those too.",
+    aboutWhat: "Afterprompt looks through the history your AI coding tools keep on this " +
+               "machine and finds credentials that were pasted into a prompt or read into context.",
+    aboutLocal: "Everything happens on this machine. Nothing is uploaded, and the page you are reading " +
+                "is served by the scan itself on a loopback address.",
+    aboutVersion: "Version", aboutLicence: "Licence", aboutScanned: "AI tools it knows about",
+    aboutPatterns: "Credential patterns", aboutSource: "Source", aboutPoweredBy: "Powered by",
+    aboutAm: "AM Consulting", aboutAmWhat: "Afterprompt is built and maintained by AM Consulting.",
     coverage: "Coverage", environments: "Environments", installedNotScanned: "Installed but not scanned",
     possibleUnknown: "Possible AI tool data, not scanned", filesScanned: "Files scanned",
     dismissed: "Dismissed automatically", toReview: "To review", trademarks: "Product names and marks belong to " +
@@ -124,9 +141,9 @@
 
   const REF = { vendors: { icons: {}, patterns: {} }, rotation: { vendors: {}, generic: {}, universal: [] } };
   const state = {
-    screen: ["scan", "findings", "settings"].includes(wantedScreen) ? wantedScreen : "scan",
+    screen: ["scan", "findings", "machines", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
-    collapsed: {}, settings: null, conn: "connecting", notice: null,
+    collapsed: {}, settings: null, about: null, conn: "connecting", notice: null,
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -148,7 +165,8 @@
   function renderTabs() {
     const tabs = $("tabs");
     tabs.replaceChildren();
-    const items = [["scan", TEXT.tabScan], ["findings", TEXT.tabFindings], ["settings", TEXT.tabSettings]];
+    const items = [["scan", TEXT.tabScan], ["findings", TEXT.tabFindings], ["machines", TEXT.tabMachines],
+                   ["settings", TEXT.tabSettings], ["about", TEXT.tabAbout]];
     for (const [id, label] of items) {
       const b = el("button", label, "tab");
       b.type = "button";
@@ -177,6 +195,8 @@
     if (state.conn === "refused") return box.append(note(TEXT.refusedText, "danger"));
     $("foot").hidden = state.screen === "findings";
     if (state.screen === "settings") return renderSettings(box);
+    if (state.screen === "machines") return renderMachines(box);
+    if (state.screen === "about") return renderAbout(box);
     if (state.screen === "findings") return renderFindings(box);
     renderScan(box);
   }
@@ -283,6 +303,8 @@
                   review: TEXT.weaker }[key];
       } else if (by === "tool") {
         label = key = (it.f.tools || [])[0] || TEXT.otherCreds;
+      } else if (by === "machine") {
+        label = key = machineLabel(it.f);
       } else {
         vendor = vendorOf(it.f);
         label = key = vendor || TEXT.otherCreds;
@@ -437,6 +459,7 @@
         dd.append(el("span", loc.display + (loc.decoded ? " (decoded)" : ""), "mono"));
       }
     });
+    add(TEXT.foundOn, (dd) => dd.append(el("span", machineLabel(f))));
     if ((f.still_on_disk || []).length) {
       add(TEXT.stillOnDisk, (dd) => {
         for (const x of f.still_on_disk) dd.append(el("span", `${x.store} (${x.key})`, "mono"));
@@ -543,6 +566,159 @@
       state.notice = TEXT.tickFailed;
       render();
     }
+  }
+
+  /* A WSL distribution is a separate machine as far as a leaked key is concerned: its own home folder,
+     its own AI tool history, invisible from the other side. One card each, scanned or not. */
+  function machineRows() {
+    const d = state.findings;
+    if (!d) return [];
+    if ((d.environments || []).length) return d.environments;
+    const cov = d.coverage || {};
+    return [{ name: cov.platform, kind: "host", side: cov.platform, label: TEXT.machineThis,
+              status: "scanned", files: cov.files, bytes: cov.bytes,
+              rotate: (d.summary || {}).rotate, review: (d.summary || {}).review,
+              other_homes: cov.other_homes || [] }];
+  }
+
+  /* Which environment a finding was found in. Merged runs stamp every finding with its side; a scan of
+     one machine leaves that empty, and then the answer is simply this machine. */
+  function machineLabel(f) {
+    const sides = f.sides || [];
+    if (!sides.length) return TEXT.machineThis;
+    const rows = machineRows();
+    const named = sides.map((side) => {
+      const row = rows.find((m) => machineSide(m) === side);
+      return row ? (row.label || row.name) : side;
+    });
+    return named.length > 2 ? TEXT.everywhere : named.join(" · ");
+  }
+
+  function machineSide(m) {
+    if (m.side) return m.side;
+    if (m.kind === "wsl") return "wsl:" + m.name;
+    if (m.kind === "folder") return "env:" + m.name;
+    return m.name;
+  }
+
+  function renderMachines(host) {
+    const box = el("section", null, "column");
+    host.append(box);
+    box.append(el("h2", TEXT.machines), el("p", TEXT.machinesIntro, "sub"));
+    const d = state.findings;
+    if (!d) { box.append(el("p", TEXT.nothingYet, "sub")); return; }
+    const rows = machineRows();
+    const cards = el("div", null, "cards");
+    for (const m of rows) {
+      const card = el("article", null, "machine");
+      const head = el("div", null, "machine-head");
+      const name = el("div", null, "grow");
+      name.append(el("h3", m.label || m.name));
+      const sources = (d.coverage.sources || []).filter((s) => s.side === machineSide(m));
+      if (sources.length) name.append(el("div", sources.map((s) => s.tool).join(" · "), "why"));
+      const pill = el("span", m.status === "scanned" ? TEXT.machineScanned : TEXT.machineNotScanned, "pill");
+      pill.dataset.tone = m.status === "scanned" ? "ok" : "warn";
+      head.append(name, pill);
+      card.append(head);
+      if (m.status !== "scanned" && m.reason) card.append(el("p", m.reason, "why"));
+      if (m.notice) card.append(el("p", m.notice, "why"));
+      if (m.status === "scanned") {
+        const facts = el("dl", null, "facts");
+        const add = (k, v) => { const row = el("div", null, "fact");
+                                row.append(el("dt", k), el("dd", v)); facts.append(row); };
+        add(TEXT.machineFiles, (m.files || 0).toLocaleString());
+        if (m.bytes) add(TEXT.machineBytes, bytes(m.bytes));
+        add(TEXT.machineFound, `${(m.rotate || 0).toLocaleString()} ${TEXT.rotateNow.toLowerCase()} · ` +
+                               `${(m.review || 0).toLocaleString()} ${TEXT.toReview.toLowerCase()}`);
+        card.append(facts);
+      }
+      if ((m.other_homes || []).length) {
+        card.append(el("h4", TEXT.otherHomes));
+        card.append(el("p", m.other_homes.join(", "), "mono"));
+        card.append(el("p", TEXT.otherHomesWhy, "why"));
+      }
+      cards.append(card);
+    }
+    box.append(cards);
+    if (rows.length === 1) box.append(el("p", TEXT.oneMachineOnly, "quiet-note"));
+    box.append(coverage());
+  }
+
+  function bytes(n) {
+    const mb = n / (1024 * 1024);
+    return mb >= 1024 ? (mb / 1024).toFixed(1) + " GB" : mb.toFixed(1) + " MB";
+  }
+
+  function renderAbout(host) {
+    const box = el("section", null, "column");
+    host.append(box);
+    const head = el("section", null, "about-head");
+    const art = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    art.setAttribute("viewBox", "0 0 64 40");
+    art.setAttribute("width", "96");
+    art.setAttribute("height", "60");
+    art.setAttribute("aria-hidden", "true");
+    art.setAttribute("fill", "none");
+    art.setAttribute("stroke", "currentColor");
+    art.setAttribute("stroke-width", "5.5");
+    art.setAttribute("stroke-linecap", "round");
+    art.setAttribute("stroke-linejoin", "round");
+    for (const d of ["M6 8 L18 20 L6 32", "M40 20 H57", "M47 20 V26", "M53 20 V25"]) {
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", d);
+      art.append(p);
+    }
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("cx", "33"); c.setAttribute("cy", "20"); c.setAttribute("r", "7");
+    art.append(c);
+    const words = el("div", null, "grow");
+    words.append(el("h2", "Afterprompt"), el("p", TEXT.aboutWhat, "sub"));
+    head.append(art, words);
+    box.append(head);
+    box.append(el("p", TEXT.aboutLocal, "sub"));
+
+    const a = state.about || {};
+    const facts = el("dl", null, "facts");
+    const add = (k, v) => { const row = el("div", null, "fact");
+                            row.append(el("dt", k), el("dd", v)); facts.append(row); };
+    if (a.version) add(TEXT.aboutVersion, a.version);
+    if (a.tools) add(TEXT.aboutScanned, String(a.tools));
+    if (a.patterns) add(TEXT.aboutPatterns, String(a.patterns));
+    if (a.licence) add(TEXT.aboutLicence, a.licence);
+    box.append(facts);
+
+    if (a.source) {
+      const links = el("div", null, "links");
+      const link = el("a", null, "button");
+      link.href = a.source;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      link.append(el("span", TEXT.aboutSource), icon("external", null));
+      links.append(link);
+      box.append(links);
+    }
+
+    const by = el("section", null, "powered");
+    by.append(el("div", TEXT.aboutPoweredBy, "field-label"));
+    const amLink = el("a");
+    amLink.href = (a.vendor && a.vendor.url) || "https://www.amconsulting.ai";
+    amLink.target = "_blank";
+    amLink.rel = "noreferrer noopener";
+    // Two files, one shown at a time by CSS: the blue wordmark has too little contrast on the dark
+    // background, and the white one disappears on the light one.
+    for (const [src, cls, alt] of [["/logo/am-logo.png", "am-light", (a.vendor && a.vendor.name) || TEXT.aboutAm],
+                                   ["/logo/am-logo-white.png", "am-dark", ""]]) {
+      const am = el("img");
+      am.src = src;
+      am.classList.add("am-logo", cls);
+      am.alt = alt;
+      am.width = 180;
+      am.height = 49;
+      if (!alt) am.setAttribute("aria-hidden", "true");
+      amLink.append(am);
+    }
+    by.append(amLink, el("p", TEXT.aboutAmWhat, "why"));
+    box.append(by);
   }
 
   function coverage() {
@@ -688,6 +864,11 @@
     }
   }
 
+  async function loadAbout() {
+    const r = await api("/api/about").catch(() => null);
+    if (r && r.ok) state.about = await r.json();
+  }
+
   async function loadSettings() {
     const r = await api("/api/settings").catch(() => null);
     if (!r || !r.ok) return;
@@ -747,6 +928,7 @@
     renderTabs();
     if (!token) { setState("noKey"); render(); return; }
     await loadReference();
+    await loadAbout();
     await loadSettings();
     render();
     setInterval(() => { post("/api/heartbeat", {}).catch(() => {}); }, 15000);

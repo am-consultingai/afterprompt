@@ -4,8 +4,13 @@ import io
 import json
 import os
 import re
+import shutil
+import struct
+import subprocess
+import sys
 import threading
 import time
+import unittest
 from unittest import mock
 
 from afterprompt import cli, ui
@@ -315,7 +320,7 @@ class PageTests(TempDirTest):
 
     def test_screens_and_deep_links(self):  # U-UI-30
         js = self.js_without_comments()
-        self.assertIn('["scan", "findings", "settings"].includes(wantedScreen)', js)
+        self.assertIn('["scan", "findings", "machines", "settings", "about"].includes(wantedScreen)', js)
         self.assertIn('params.get("screen")', js)
         self.assertIn('show("findings")', js)                 # the result is shown when the scan finishes
 
@@ -439,3 +444,98 @@ class CliTests(TempDirTest):
         run = os.path.join(fx.base, "runs", os.listdir(os.path.join(fx.base, "runs"))[0])
         with open(os.path.join(run, "run.log"), encoding="utf-8") as fh:
             self.assertNotIn(seen["token"], fh.read())                      # the key is never written down
+
+
+class LogoAndAboutTests(TempDirTest):
+    """The application's own mark, the icons generated from it, and who the page says built it."""
+
+    def setUp(self):
+        super().setUp()
+        self.state = ui.State(self.tmp)
+        self.server = ui.Server(self.state).start()
+        self.addCleanup(self.server.stop)
+
+    def get(self, path, token=True):
+        c = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        headers = {"Authorization": f"Bearer {self.server.token}"} if token else {}
+        c.request("GET", path, None, headers)
+        r = c.getresponse()
+        out = (r.status, dict(r.getheaders()), r.read())
+        c.close()
+        return out
+
+    def test_the_logo_pack_is_complete(self):  # U-UI-34
+        logo = os.path.join(os.path.dirname(os.path.abspath(ui.__file__)), "assets", "logo")
+        for name in ("afterprompt-mark.svg", "afterprompt-icon.svg", "afterprompt-icon-mono.svg",
+                     "afterprompt-icon-maskable.svg", "favicon.ico", "apple-touch-icon.png", "README.md"):
+            with self.subTest(name=name):
+                self.assertTrue(os.path.exists(os.path.join(logo, name)), name)
+        for size in (16, 32, 48, 64, 96, 128, 180, 192, 256, 512, 1024):
+            with self.subTest(size=size):
+                self.assertTrue(os.path.exists(os.path.join(logo, f"afterprompt-icon-{size}.png")))
+        # The SVGs are the masters: the mark inherits the text colour, the badge carries the accent.
+        with open(os.path.join(logo, "afterprompt-mark.svg"), encoding="utf-8") as fh:
+            self.assertIn("currentColor", fh.read())
+        with open(os.path.join(logo, "afterprompt-icon.svg"), encoding="utf-8") as fh:
+            self.assertIn("#1f5fd0", fh.read())
+
+    def test_the_favicon_holds_three_sizes(self):  # U-UI-35
+        """Read straight out of the ICO directory: the suite depends on the standard library only."""
+        logo = os.path.join(os.path.dirname(os.path.abspath(ui.__file__)), "assets", "logo")
+        with open(os.path.join(logo, "favicon.ico"), "rb") as fh:
+            blob = fh.read()
+        reserved, kind, count = struct.unpack_from("<HHH", blob, 0)
+        self.assertEqual((reserved, kind), (0, 1))
+        sizes = sorted((blob[6 + i * 16] or 256, blob[7 + i * 16] or 256) for i in range(count))
+        self.assertEqual(sizes, [(16, 16), (32, 32), (48, 48)])
+
+    @unittest.skipUnless(shutil.which("google-chrome") or shutil.which("chromium"), "needs a browser to rasterise")
+    def test_the_generated_icons_match_the_masters(self):  # U-UI-39
+        """A mark edited in the SVG but not re-rendered would ship two different logos."""
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("needs Pillow to compare the renders")
+        tool = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(ui.__file__))), "tools",
+                            "make_logo_pack.py")
+        r = subprocess.run([sys.executable, tool, "--check"], capture_output=True, text=True, timeout=900)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_the_page_serves_its_icons_and_nothing_else_from_that_folder(self):  # U-UI-36
+        for path, ctype in (("/favicon.ico", "image/x-icon"), ("/logo/afterprompt-mark.svg", "image/svg+xml"),
+                            ("/logo/afterprompt-icon.svg", "image/svg+xml"),
+                            ("/logo/am-logo.png", "image/png"), ("/logo/am-logo-white.png", "image/png")):
+            with self.subTest(path=path):
+                status, headers, body = self.get(path, token=False)
+                self.assertEqual(status, 200)
+                self.assertEqual(headers["Content-Type"], ctype)
+                self.assertTrue(body)
+        for path in ("/logo/README.md", "/logo/../ui.py", "/logo/am/am-logo-600.png", "/logo/"):
+            with self.subTest(path=path):
+                self.assertEqual(self.get(path)[0], 404)
+
+    def test_about_states_what_it_can_count(self):  # U-UI-37
+        from afterprompt import __version__, patterns
+        status, _, body = self.get("/api/about")
+        self.assertEqual(status, 200)
+        about = json.loads(body)
+        self.assertEqual(about["version"], __version__)
+        self.assertEqual(about["patterns"], len(patterns.PATTERNS))
+        self.assertGreaterEqual(about["tools"], 20)
+        self.assertEqual(about["licence"], "FSL-1.1-ALv2")
+        self.assertEqual(about["vendor"]["name"], "AM Consulting")
+        self.assertTrue(about["vendor"]["url"].startswith("https://"))
+        self.assertEqual(self.get("/api/about", token=False)[0], 401)
+
+    def test_the_page_carries_the_mark_and_credits_am(self):  # U-UI-38
+        here = os.path.join(os.path.dirname(os.path.abspath(ui.__file__)), "assets", "ui")
+        with open(os.path.join(here, "index.html"), encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn('rel="icon" href="/favicon.ico"', html)
+        self.assertIn('rel="apple-touch-icon"', html)
+        self.assertIn('viewBox="0 0 64 40"', html)       # the mark is inline, so it follows the theme
+        with open(os.path.join(here, "app.js"), encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn("aboutPoweredBy", js)
+        self.assertIn("/logo/am-logo.png", js)
+        self.assertIn("/logo/am-logo-white.png", js)     # the white mark for the dark background

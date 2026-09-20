@@ -67,18 +67,16 @@ FIELDS = [
     Field("keep_work", "bool", False, "Keep intermediate files",
           "For debugging a scan. These include decoded plaintext copies of your history, so they are removed by "
           "default."),
-    Field("theme", "choice", "neutral", "Report styling",
-          "The HTML report's look. Neutral is unbranded; AM Consulting applies the brand.",
-          choices=[("neutral", "Neutral"), ("am", "AM Consulting")]),
     Field("sarif", "bool", False, "Also write SARIF",
           "Writes report.sarif next to the report, for code-scanning and SIEM pipelines."),
     Field("ui_theme", "choice", "auto", "Appearance",
           "This page's light or dark theme.", choices=[("auto", "Match system"), ("light", "Light"), ("dark", "Dark")],
           scope="view"),
     Field("group_by", "choice", "vendor", "Group credentials by",
-          "How the list is grouped: the service that issued the credential, how urgent it is, or the AI tool it "
-          "leaked into.",
-          choices=[("vendor", "Vendor"), ("severity", "Urgency"), ("tool", "AI tool")], scope="view"),
+          "How the list is grouped: the service that issued the credential, how urgent it is, the AI tool it "
+          "leaked into, or the machine it was found on.",
+          choices=[("vendor", "Vendor"), ("severity", "Urgency"), ("tool", "AI tool"),
+                   ("machine", "Machine")], scope="view"),
     Field("collapse_groups", "bool", False, "Start with groups collapsed",
           "Useful when a scan finds a lot: open one group at a time.", scope="view"),
     Field("show_review", "bool", True, "Show items to review",

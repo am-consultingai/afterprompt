@@ -1,7 +1,7 @@
 """findings.json, report.md and report.html (self-contained, no remote resources).
 
-The HTML report is unbranded by default (assets/report.css, part of Afterprompt). --theme am applies the AM
-Consulting brand, whose assets are not covered by the project's license (assets/NOTICE.md)."""
+One look, not a choice of looks: assets/report.css, the Afterprompt mark, and a line crediting AM
+Consulting. The report carries no remote reference, so it still renders from a USB stick in a year."""
 import datetime
 import html
 import os
@@ -11,15 +11,19 @@ from afterprompt import __version__, envs, merge
 from afterprompt.triage import CAPS
 from afterprompt.util import display_path, human_bytes, read_json, write_json
 
-THEMES = {
-    "neutral": {"assets": ("report.css",), "css": "report.css", "icon": None, "scheme": "light dark",
-                "credit": ""},
-    "am": {"assets": ("brand.css", "am-logo-white-600.png", "am-favicon.png"), "css": "brand.css",
-           "icon": "am-favicon.png", "scheme": "dark", "credit": " · Built by AM Consulting"},
-}
-DEFAULT_THEME = "neutral"
-ASSETS = THEMES[DEFAULT_THEME]["assets"]
-SIDE_NAMES = {"wsl": "WSL", "windows": "Windows", "macos": "macOS", "linux": "Linux"}
+ASSETS = ("report.css",)
+CREDIT = " · Built by AM Consulting"
+# The mark, inline, so the report needs no image file beside it.
+MARK = ('<svg class="mark" width="26" height="16" viewBox="0 0 64 40" aria-hidden="true" fill="none" '
+        'stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M6 8 L18 20 L6 32"/><circle cx="33" cy="20" r="7"/><path d="M40 20 H57"/>'
+        '<path d="M47 20 V26"/><path d="M53 20 V25"/></svg>')
+ICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' "
+        "height='64' rx='14' fill='%231f5fd0'/%3E%3Cg fill='none' stroke='white' stroke-width='5' "
+        "stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 21 L23 31 L13 41'/%3E%3Ccircle cx='36' "
+        "cy='31' r='6.5'/%3E%3Cpath d='M42.5 31 H55'/%3E%3Cpath d='M47.5 31 V36'/%3E%3Cpath d='M52.5 31 V35'/"
+        "%3E%3C/g%3E%3C/svg%3E")
+SIDE_NAMES ={"wsl": "WSL", "windows": "Windows", "macos": "macOS", "linux": "Linux"}
 PLATFORM_NAMES = {"wsl": "Windows (WSL)", "macos": "macOS", "linux": "Linux", "windows": "Windows"}
 CATEGORY_TITLES = {
     "configuration": "Stored in AI tool configuration",
@@ -131,7 +135,7 @@ def where(rec):
 
 
 # ------------------------------------------------------------------ markdown
-def render_md(data, theme=DEFAULT_THEME):
+def render_md(data):
     L = []
     P = L.append
     s = data["summary"]
@@ -181,7 +185,7 @@ def render_md(data, theme=DEFAULT_THEME):
     P("\n## What this scan cannot see\n")
     for x in data["coverage"]["limits"]:
         P(f"- {x}")
-    P(f"\n---\nAfterprompt {data['version']} · FSL-1.1-ALv2{THEMES[theme]['credit']}\n")
+    P(f"\n---\nAfterprompt {data['version']} · FSL-1.1-ALv2{CREDIT}\n")
     return "\n".join(L)
 
 
@@ -308,25 +312,19 @@ def e(s):
     return html.escape("" if s is None else str(s), quote=True)
 
 
-def render_html(data, theme=DEFAULT_THEME):
-    th = THEMES[theme]
+def render_html(data):
     s = data["summary"]
     out = []
     P = out.append
     title = f"{s['rotate']} credential{'s' if s['rotate'] != 1 else ''} to rotate" if s["rotate"] else "Nothing to rotate"
     P("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
     P("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
-    P(f"<meta name=\"color-scheme\" content=\"{th['scheme']}\">")
+    P("<meta name=\"color-scheme\" content=\"light dark\">")
     P(f"<title>Afterprompt report</title>")
-    if th["icon"]:
-        P(f"<link rel=\"icon\" href=\"report-assets/{th['icon']}\">")
-    P(f"<link rel=\"stylesheet\" href=\"report-assets/{th['css']}\">")
+    P(f"<link rel=\"icon\" href=\"{ICON}\">")
+    P("<link rel=\"stylesheet\" href=\"report-assets/report.css\">")
     P(f"<style>{CSS}</style></head><body>")
-    if theme == "am":
-        P("<nav class=\"nav\"><div class=\"nav-in\"><img class=\"nav-logo\" src=\"report-assets/am-logo-white-600.png\" "
-          "alt=\"AM Consulting\"><span class=\"brandname\">Afterprompt</span></div></nav>")
-    else:
-        P("<nav class=\"nav\"><div class=\"nav-in\"><span class=\"wordmark\">Afterprompt</span></div></nav>")
+    P("<nav class=\"nav\"><div class=\"nav-in\"><span class=\"wordmark\">" + MARK + "Afterprompt</span></div></nav>")
     P("<main>")
     P("<section class=\"sec hero\"><div class=\"eyebrow\">Credential exposure report</div>")
     P(f"<h2>{e(title)}</h2><p class=\"sub\">{e(context_line(data))}</p>")
@@ -410,7 +408,7 @@ def render_html(data, theme=DEFAULT_THEME):
     for x in data["coverage"]["limits"]:
         P(f"<li>{e(x)}</li>")
     P("</ul></section></main>")
-    P(f"<footer>Afterprompt {e(data['version'])} · FSL-1.1-ALv2{e(th['credit'])}</footer>")
+    P(f"<footer>Afterprompt {e(data['version'])} · FSL-1.1-ALv2{e(CREDIT)}</footer>")
     P("</body></html>")
     return "\n".join(out)
 
@@ -419,25 +417,24 @@ def write(cfg, sources, run_meta, host_env=None, env_results=None):
     data = build_findings(cfg, sources, run_meta)
     if env_results:
         data = merge.merge(data, host_env, env_results)
-    theme = getattr(cfg, "theme", None) or DEFAULT_THEME
     os.makedirs(cfg.report_dir, mode=0o700, exist_ok=True)
     write_json(os.path.join(cfg.report_dir, "findings.json"), data)
     with open(os.path.join(cfg.report_dir, "report.md"), "w", encoding="utf-8") as fh:
-        fh.write(render_md(data, theme))
+        fh.write(render_md(data))
     with open(os.path.join(cfg.report_dir, "report.html"), "w", encoding="utf-8") as fh:
-        fh.write(render_html(data, theme))
+        fh.write(render_html(data))
     if getattr(cfg, "sarif", False):
         from afterprompt import sarif
         write_json(os.path.join(cfg.report_dir, "report.sarif"), sarif.build(data))
     assets_out = os.path.join(cfg.report_dir, "report-assets")
     os.makedirs(assets_out, mode=0o700, exist_ok=True)
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
-    # A report folder reused with another theme must not keep the other theme's files.
-    for other in {a for t in THEMES.values() for a in t["assets"]} - set(THEMES[theme]["assets"]):
+    # A report folder written by an older version may still hold the brand theme's files.
+    for other in ("brand.css", "am-logo-white-600.png", "am-favicon.png"):
         try:
             os.remove(os.path.join(assets_out, other))
         except OSError:
             pass
-    for a in THEMES[theme]["assets"]:
+    for a in ASSETS:
         shutil.copyfile(os.path.join(here, a), os.path.join(assets_out, a))
     return data

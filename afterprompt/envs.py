@@ -236,6 +236,11 @@ def engine_tar(install_dir):
         add(os.path.join(install_dir, "afterprompt.sh"), "afterprompt.sh", 0o755)
         pkg = os.path.join(install_dir, "afterprompt")
         for dp, dns, fns in os.walk(pkg):
+            # A worker returns values over a pipe: it writes no report and serves no page, so the browser
+            # view's assets and the logo pack are several hundred kilobytes it would never open.
+            if os.path.basename(dp) in ("ui", "logo") and os.path.basename(os.path.dirname(dp)) == "assets":
+                dns[:] = []
+                continue
             dns[:] = sorted(d for d in dns if d != "__pycache__")
             for fn in sorted(fns):
                 if fn.endswith((".pyc", ".pyo")):

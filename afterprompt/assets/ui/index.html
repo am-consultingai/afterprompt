@@ -6,13 +6,23 @@
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
 <title>Afterprompt</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/logo/afterprompt-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/logo/apple-touch-icon.png">
 <link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/app.css">
 <script src="/app.js" defer></script>
 </head>
 <body>
 <header class="bar">
-  <h1 class="wordmark">Afterprompt</h1>
+  <h1 class="wordmark">
+    <!-- Inline, not <img>: the mark is drawn in currentColor so it follows the theme, and an external
+         image cannot inherit that. -->
+    <svg class="logo" width="32" height="20" viewBox="0 0 64 40" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 8 L18 20 L6 32"/><circle cx="33" cy="20" r="7"/><path d="M40 20 H57"/>
+      <path d="M47 20 V26"/><path d="M53 20 V25"/>
+    </svg>Afterprompt</h1>
   <nav class="tabs" id="tabs" aria-label="Screens"></nav>
   <div class="bar-status">
     <span id="state" class="state" data-state="connecting" role="status"></span>

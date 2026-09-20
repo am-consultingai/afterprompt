@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Afterprompt">
+  <title>Afterprompt</title>
+  <rect width="64" height="64" rx="14" fill="none" stroke="currentColor" stroke-width="4"/>
+  <g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 21 L23 31 L13 41"/>
+    <circle cx="36" cy="31" r="6.5"/>
+    <path d="M42.5 31 H55"/>
+    <path d="M47.5 31 V36"/>
+    <path d="M52.5 31 V35"/>
+  </g>
+</svg>

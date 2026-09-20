@@ -39,7 +39,8 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-sm); }
   background: var(--surface-0);
   border-block-end: 1px solid var(--border-subtle);
 }
-.wordmark { font-weight: 640; letter-spacing: -0.014em; }
+.wordmark { font-weight: 640; letter-spacing: -0.014em; display: inline-flex; align-items: center; gap: 8px; }
+.wordmark .logo { display: block; color: var(--accent); }
 .bar-status { margin-inline-start: auto; display: flex; align-items: center; gap: 10px; }
 /* On a phone the name, three tabs and the connection state do not fit on one 48px line, and the page
    scrolls sideways. Give the tabs their own row rather than hiding anything. */
@@ -314,3 +315,42 @@ input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
                            transition-duration: 0.001ms !important; }
 }
+
+/* --- machines: one card per environment, scanned or not --------------------- */
+.machine {
+  padding: 14px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+.machine-head { display: flex; align-items: flex-start; gap: 12px; }
+.machine h3 { margin: 0; font-size: var(--text-base); }
+.machine h4 { margin: 14px 0 4px; font-size: var(--text-sm); color: var(--text-secondary); }
+.machine .facts { margin-block-start: 10px; }
+.machine .fact { grid-template-columns: 120px minmax(0, 1fr); padding: 5px 0; }
+.pill {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}
+.pill[data-tone="ok"] { background: color-mix(in oklab, var(--surface-1), var(--success) 16%); }
+.pill[data-tone="warn"] { background: color-mix(in oklab, var(--surface-1), var(--warning) 20%); }
+
+/* --- about ----------------------------------------------------------------- */
+.about-head { display: flex; align-items: center; gap: 18px; margin-block-end: 18px; }
+.about-head svg { color: var(--accent); flex: none; }
+.about-head h2 { margin: 0; }
+.about-head .sub, .screen > .sub { max-inline-size: var(--measure); }
+.powered { margin-block-start: 28px; padding-block-start: 18px; border-block-start: 1px solid var(--border-subtle); }
+.powered .field-label { margin-block-end: 10px; }
+.am-logo { display: block; block-size: auto; inline-size: 180px; }
+.am-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .am-light { display: none; }
+  :root:not([data-theme="light"]) .am-dark { display: block; }
+}
+:root[data-theme="dark"] .am-light { display: none; }
+:root[data-theme="dark"] .am-dark { display: block; }
