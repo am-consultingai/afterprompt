@@ -41,6 +41,12 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-sm); }
 }
 .wordmark { font-weight: 640; letter-spacing: -0.014em; }
 .bar-status { margin-inline-start: auto; display: flex; align-items: center; gap: 10px; }
+/* On a phone the name, three tabs and the connection state do not fit on one 48px line, and the page
+   scrolls sideways. Give the tabs their own row rather than hiding anything. */
+@media (max-width: 560px) {
+  .bar { block-size: auto; flex-wrap: wrap; gap: 6px 12px; padding-block: 8px; }
+  .tabs { order: 3; flex-basis: 100%; }
+}
 .field-label { font-size: var(--text-xs); color: var(--text-tertiary); }
 
 .tabs { display: flex; gap: 2px; }

@@ -326,6 +326,16 @@ class PageTests(TempDirTest):
         self.assertNotIn("brand", js.lower())
         self.assertIn("trademarks:", js)                      # and the page says whose marks these are
 
+    def test_it_fits_a_phone(self):  # U-UI-33
+        """Measured at 390px: the bar's name, tabs and state overflowed, and the page scrolled sideways."""
+        css = self.read("app.css")
+        narrow = css[css.index("@media (max-width: 560px)"):]
+        narrow = narrow[:narrow.index("}\n}") + 3]
+        self.assertIn(".bar { block-size: auto; flex-wrap: wrap;", narrow)
+        self.assertIn(".tabs { order: 3; flex-basis: 100%; }", narrow)   # the tabs take their own row
+        # Panes stack before that, so the list and the card are never side by side on a phone.
+        self.assertIn("@media (max-width: 900px) { .panes { grid-template-columns: minmax(0, 1fr);", css)
+
     def test_the_card_answers_for_this_credential_not_just_this_vendor(self):  # U-UI-32
         js = self.js_without_comments()
         # A vendor can issue several kinds of credential, and the page must not give a cookie key-rotation steps.
