@@ -11,7 +11,7 @@ from afterprompt import __version__, envs, merge
 from afterprompt.triage import CAPS
 from afterprompt.util import display_path, human_bytes, read_json, write_json
 
-ASSETS = ("report.css",)
+CSS_FILE = "report.css"
 CREDIT = " · Built by AM Consulting"
 # The mark, inline, so the report needs no image file beside it.
 MARK = ('<svg class="mark" width="26" height="16" viewBox="0 0 64 40" aria-hidden="true" fill="none" '
@@ -60,6 +60,13 @@ def side_label(s):
     if s.startswith("env:"):
         return s[4:]
     return SIDE_NAMES.get(s, s)
+
+
+def own_css():
+    """report.css, inlined: the report is one file that still renders from a USB stick in a year."""
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", CSS_FILE)
+    with open(here, encoding="utf-8") as fh:
+        return fh.read()
 
 
 def coverage(cfg, sources):
@@ -341,7 +348,7 @@ def render_html(data):
     P("<meta name=\"color-scheme\" content=\"light dark\">")
     P(f"<title>Afterprompt report</title>")
     P(f"<link rel=\"icon\" href=\"{ICON}\">")
-    P("<link rel=\"stylesheet\" href=\"report-assets/report.css\">")
+    P(f"<style>{own_css()}</style>")
     P(f"<style>{CSS}</style></head><body>")
     P("<nav class=\"nav\"><div class=\"nav-in\"><span class=\"wordmark\">" + MARK + "Afterprompt</span></div></nav>")
     P("<main>")
@@ -445,15 +452,8 @@ def write(cfg, sources, run_meta, host_env=None, env_results=None):
     if getattr(cfg, "sarif", False):
         from afterprompt import sarif
         write_json(os.path.join(cfg.report_dir, "report.sarif"), sarif.build(data))
-    assets_out = os.path.join(cfg.report_dir, "report-assets")
-    os.makedirs(assets_out, mode=0o700, exist_ok=True)
-    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
-    # A report folder written by an older version may still hold the brand theme's files.
-    for other in ("brand.css", "am-logo-white-600.png", "am-favicon.png"):
-        try:
-            os.remove(os.path.join(assets_out, other))
-        except OSError:
-            pass
-    for a in ASSETS:
-        shutil.copyfile(os.path.join(here, a), os.path.join(assets_out, a))
+    # Older versions wrote a stylesheet beside the report; nothing needs it now.
+    stale = os.path.join(cfg.report_dir, "report-assets")
+    if os.path.isdir(stale):
+        shutil.rmtree(stale, ignore_errors=True)
     return data

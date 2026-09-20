@@ -59,9 +59,9 @@ class ReportTests(ReportCase):
         remote_hrefs = re.findall(r'<a href="(https?://[^"]+)"[^>]*>', html)
         self.assertEqual(remote_hrefs, ["https://console.anthropic.com/settings/keys"])
         self.assertIn('rel="noreferrer noopener"', html)
-        self.assertNotIn('<link rel="stylesheet" href="http', html)
-        for a in report.ASSETS:
-            self.assertTrue(os.path.exists(os.path.join(cfg.report_dir, "report-assets", a)))
+        self.assertNotIn("<link rel=\"stylesheet\"", html)        # the stylesheet is inline, not a file
+        written = {f for f in os.listdir(cfg.report_dir) if not os.path.isdir(os.path.join(cfg.report_dir, f))}
+        self.assertEqual(sorted(written), ["findings.json", "report.html", "report.md"])
         here = os.path.join(os.path.dirname(report.__file__), "assets", "NOTICE.md")
         self.assertTrue(os.path.exists(here))
 
@@ -151,14 +151,13 @@ class WslDistroCoverageTests(unittest.TestCase):
 class LookTests(ReportCase):
     """One report style, self-contained, carrying the Afterprompt mark and the AM Consulting credit."""
 
-    def assets(self, cfg):
-        return sorted(os.listdir(os.path.join(cfg.report_dir, "report-assets")))
+    def files(self, cfg):
+        return sorted(os.listdir(cfg.report_dir))
 
     def test_one_look_no_choice(self):  # U-REP-T1
         cfg, _ = self.write_report([FINDING])
-        self.assertEqual(self.assets(cfg), ["report.css"])
         html = self.read(cfg, "report.html")
-        self.assertIn('href="report-assets/report.css"', html)
+        self.assertNotIn("report-assets", html)
         self.assertIn('content="light dark"', html)
         self.assertIn('<span class="wordmark">', html)
         self.assertIn("Built by AM Consulting", html)
@@ -168,27 +167,30 @@ class LookTests(ReportCase):
         self.assertNotIn("--theme", open(os.path.join(os.path.dirname(report.__file__), "cli.py"),
                                          encoding="utf-8").read())
 
-    def test_the_mark_is_on_it_and_needs_no_file(self):  # U-REP-T2
+    def test_the_report_is_one_file(self):  # U-REP-T2
+        """It gets emailed and opened somewhere else; a sibling folder it depends on is a footgun."""
         cfg, _ = self.write_report([FINDING])
         html = self.read(cfg, "report.html")
         self.assertIn('viewBox="0 0 64 40"', html)                  # the mark, inline
-        self.assertIn('rel="icon" href="data:image/svg+xml', html)  # and the icon, with no second file
-        self.assertEqual(self.assets(cfg), ["report.css"])
+        self.assertIn('rel="icon" href="data:image/svg+xml', html)  # the icon, inline
+        self.assertIn("<style>", html)                              # and the stylesheet, inline
+        self.assertIn("--ink", html)
+        self.assertNotIn("report-assets", self.files(cfg))
+        self.assertEqual([f for f in self.files(cfg) if f.endswith((".css", ".png"))], [])
 
-    def test_a_report_folder_from_the_branded_version_is_cleaned(self):  # U-REP-T3
+    def test_a_folder_from_an_older_version_is_cleaned(self):  # U-REP-T3
         cfg, _ = self.write_report([FINDING])
-        stale = os.path.join(cfg.report_dir, "report-assets", "brand.css")
-        with open(stale, "w", encoding="utf-8") as fh:
+        stale = os.path.join(cfg.report_dir, "report-assets")
+        os.makedirs(stale, exist_ok=True)
+        with open(os.path.join(stale, "brand.css"), "w", encoding="utf-8") as fh:
             fh.write("/* left by an older version */")
         cfg, _ = self.write_report([FINDING])
-        self.assertEqual(self.assets(cfg), ["report.css"])
+        self.assertFalse(os.path.exists(stale))
 
     def test_it_is_self_contained(self):  # U-REP-T4
         cfg, _ = self.write_report([FINDING])
         html = self.read(cfg, "report.html")
-        self.assertFalse(re.search(r'(?:src|href)="(?!report-assets/|data:|#|https://console)[^"]+"', html))
-        for a in report.ASSETS:
-            self.assertTrue(os.path.exists(os.path.join(os.path.dirname(report.__file__), "assets", a)))
+        self.assertFalse(re.search(r'(?:src|href)="(?!data:|#|https://console)[^"]+"', html))
         with open(os.path.join(os.path.dirname(report.__file__), "assets", "report.css"), encoding="utf-8") as fh:
             self.assertNotIn("@import", fh.read())
 
