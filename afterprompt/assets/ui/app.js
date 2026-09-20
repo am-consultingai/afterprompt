@@ -822,10 +822,14 @@
     const name = (m && (m.name || m.label)) || "";
     let key = null;
     for (const [rx, icon] of env.match || []) {
-      if (new RegExp(rx).test(name)) { key = icon; break; }
+      if (new RegExp(rx, "i").test(name)) { key = icon; break; }
     }
     if (!key && m && m.kind && (env.kinds || {})[m.kind]) key = env.kinds[m.kind];
-    if (!key && m && m.kind === "host") key = (env.platforms || {})[(state.findings || {}).platform] || null;
+    // The host's own mark comes from the platform, which coverage names as a plain string.
+    if (!key && m && m.kind === "host") {
+      const plat = ((state.findings || {}).coverage || {}).platform;
+      key = (env.platforms || {})[plat] || null;
+    }
     const cell = el("span", null, "mark");
     const art = (REF.vendors.icons || {})[key];
     if (!art) {

@@ -156,6 +156,21 @@ class ReferenceDataTests(unittest.TestCase):
             self.assertTrue(art["path"].startswith(("M", "m")), vendor)
         self.assertIn("Simple Icons", v["about"] + v["source"])
 
+    def test_environment_marks_are_javascript_safe(self):  # U-SET-22
+        """The page compiles these with RegExp, which has no (?i): an inline flag threw and blanked a screen."""
+        v = self.load("vendors.json")
+        env = v["environments"]
+        for rx, name in env["match"]:
+            with self.subTest(pattern=rx):
+                self.assertNotIn("(?", rx, "no inline flags: JavaScript cannot parse them")
+                re.compile(rx, re.I)
+                self.assertIn(name, v["icons"], "a mark that is matched has to exist")
+        for group in ("kinds", "platforms"):
+            for key, name in env[group].items():
+                with self.subTest(group=group, key=key):
+                    # Windows has no redistributable mark, so it is named but drawn as a monogram.
+                    self.assertTrue(name in v["icons"] or name == "Windows", name)
+
     def test_rotation_guidance_is_sourced(self):  # U-SET-12
         r = self.load("rotation.json")
         vendors = set(patterns.VENDORS.values())

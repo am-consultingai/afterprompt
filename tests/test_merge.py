@@ -200,3 +200,21 @@ class DroppedMergeTests(unittest.TestCase):
         b = data(); b["review_dropped"] = {"entropy": {"shape: slug": 3, "shape: path": 1}}
         out = merge.merge(a, HOST, [result("Ubuntu", b)])
         self.assertEqual(out["review_dropped"], {"entropy": {"shape: slug": 5, "shape: path": 1}})
+
+
+class EnvironmentRowTests(unittest.TestCase):
+    """The row each environment gets in the report, which the page matches findings against."""
+
+    def test_a_row_carries_the_side_its_findings_are_stamped_with(self):  # U-MRG-9
+        env = {"name": "Ubuntu", "kind": "wsl", "label": "WSL: Ubuntu", "side": "wsl:Ubuntu",
+               "status": "scanned"}
+        row = merge.environment_row(env, {"coverage": {"files": 3, "bytes": 99}, "rotate": [],
+                                          "review_totals": {}})
+        self.assertEqual(row["side"], "wsl:Ubuntu")
+        self.assertEqual((row["files"], row["bytes"]), (3, 99))
+
+    def test_an_environment_that_was_not_scanned_still_says_which_side_it_is(self):  # U-MRG-10
+        env = {"name": "Box", "kind": "folder", "label": "Box", "side": "env:Box", "status": "not_scanned",
+               "reason": "no python"}
+        row = merge.environment_row(env, None)
+        self.assertEqual((row["side"], row["status"], row["reason"]), ("env:Box", "not_scanned", "no python"))

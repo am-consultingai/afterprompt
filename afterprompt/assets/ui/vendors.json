@@ -403,54 +403,54 @@
   "Twilio"
  ],
  "environments": {
-  "about": "Which mark to draw for an environment. The name comes from WSL, Docker or the platform; a name that matches nothing is drawn as a monogram, and Windows always is, because its mark is not ours to redistribute.",
+  "about": "Which mark to draw for an environment. The name comes from WSL, Docker or the platform; a name that matches nothing is drawn as a monogram, and Windows always is, because its mark is not ours to redistribute. The patterns are matched case-insensitively and carry no inline flags: JavaScript has no (?i).",
   "match": [
    [
-    "(?i)^ubuntu",
+    "^ubuntu",
     "Ubuntu"
    ],
    [
-    "(?i)^debian",
+    "^debian",
     "Debian"
    ],
    [
-    "(?i)^alpine",
+    "^alpine",
     "Alpine Linux"
    ],
    [
-    "(?i)^arch",
+    "^arch",
     "Arch Linux"
    ],
    [
-    "(?i)^fedora",
+    "^fedora",
     "Fedora"
    ],
    [
-    "(?i)^(opensuse|suse|sles)",
+    "^(opensuse|suse|sles)",
     "openSUSE"
    ],
    [
-    "(?i)^kali",
+    "^kali",
     "Kali Linux"
    ],
    [
-    "(?i)^(linuxmint|mint)",
+    "^(linuxmint|mint)",
     "Linux Mint"
    ],
    [
-    "(?i)^rocky",
+    "^rocky",
     "Rocky Linux"
    ],
    [
-    "(?i)^alma",
+    "^alma",
     "AlmaLinux"
    ],
    [
-    "(?i)^nixos",
+    "^nixos",
     "NixOS"
    ],
    [
-    "(?i)^(docker|devcontainer|podman)",
+    "^(docker|devcontainer|podman)",
     "Docker"
    ]
   ],

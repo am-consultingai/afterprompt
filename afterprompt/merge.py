@@ -157,6 +157,9 @@ def merge_coverage(host_cov, others):
 def environment_row(env, data):
     """One line per environment for the report: what it contributed, or why it did not."""
     row = {"name": env["name"], "kind": env["kind"], "label": env["label"], "status": env["status"],
+           # The side is how this environment's findings are stamped once merged; without it, a card cannot
+           # tell which environment a finding came from and falls back to showing the raw side string.
+           "side": env.get("side"),
            "reason": env.get("reason"), "notice": env.get("notice"), "other_homes": env.get("other_homes") or []}
     if data:
         cov = data.get("coverage") or {}
