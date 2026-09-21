@@ -77,9 +77,11 @@ FIELDS = [
           "This page's light or dark theme.", choices=[("auto", "Match system"), ("light", "Light"), ("dark", "Dark")],
           scope="view"),
     Field("group_by", "choice", "vendor", "Group credentials by",
-          "How the list is grouped: the service that issued the credential, how urgent it is, the AI tool it "
-          "leaked into, or the machine it was found on.",
-          choices=[("vendor", "Vendor"), ("severity", "Urgency"), ("tool", "AI tool"),
+          "How the list is grouped: the service that issued the credential, how far it reaches if someone has "
+          "it, the AI tool it leaked into, or the machine it was found on.",
+          # "severity" is kept as the stored value: it used to mean how sure the scan was and now means how far
+          # the credential reaches, so a settings file written by an older version still selects the right thing.
+          choices=[("vendor", "Vendor"), ("severity", "What it opens"), ("tool", "AI tool"),
                    ("machine", "Machine")], scope="view"),
     Field("collapse_groups", "bool", False, "Start with groups collapsed",
           "Useful when a scan finds a lot: open one group at a time.", scope="view"),

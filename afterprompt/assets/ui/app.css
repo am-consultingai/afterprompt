@@ -217,6 +217,37 @@ input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(
 .row .value { flex: none; font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-tertiary); }
 .row.ticked .title { text-decoration: line-through; color: var(--text-tertiary); }
 
+/* --- how far it reaches ---------------------------------------------------
+   Four bands, worst first, carrying the report's colours: money and data are
+   the loud ones, acting as you is the accent, one service is quiet. A square
+   rather than a word, because a row has no room for a sentence; the word is on
+   the card, and in the group heading when the list is grouped this way. */
+.band { flex: none; inline-size: 8px; block-size: 8px; border-radius: 2px; }
+.band.money { background: var(--danger); }
+.band.data { background: var(--warning); }
+.band.access { background: var(--accent); }
+.band.service { background: var(--text-tertiary); }
+.badge.band.money { background: var(--danger-quiet); color: var(--danger); }
+.badge.band.data { background: var(--warning-quiet); color: var(--warning); }
+.badge.band.access { background: var(--accent-quiet); color: var(--accent); }
+.badge.band.service { background: var(--surface-2); color: var(--text-secondary); }
+
+/* A folded row: one line standing for many of the same kind in one place, which opens. */
+.row.fold { inline-size: 100%; text-align: start; background: none; border: 0; font: inherit; cursor: pointer; }
+.row.fold .title { font-weight: var(--weight-label); }
+.row.sub { padding-inline-start: 34px; }
+
+/* The three to do first, named above the list. */
+.start { margin-block: 10px 4px; padding: 10px 12px; border-radius: var(--radius-card);
+  background: var(--surface-1); border: 1px solid var(--border-subtle); }
+.start b { font-size: var(--text-sm); }
+.start .sub { color: var(--text-tertiary); font-size: var(--text-xs); margin-inline-start: 6px; }
+.start ol { margin: 6px 0 0; padding-inline-start: 20px; display: grid; gap: 4px; }
+.start li { font-size: var(--text-sm); }
+.start button { background: none; border: 0; padding: 0; font: inherit; color: var(--accent);
+  cursor: pointer; text-align: start; }
+.start button:hover { text-decoration: underline; }
+
 /* --- the credential card -------------------------------------------------- */
 .detail-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .detail-head code { background: var(--surface-2); padding: 2px 6px; border-radius: var(--radius-control); }

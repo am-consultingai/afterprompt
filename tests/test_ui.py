@@ -352,6 +352,52 @@ class PageTests(TempDirTest):
         links = js[js.index("const links = el("):js.index("if (links.children.length)")]
         self.assertLess(links.index("f.revoke.url"), links.index("guide.console.url"))
 
+    def test_the_list_is_ordered_by_what_it_opens(self):  # U-UI-41
+        """The browser view and the report must not disagree about what to do first."""
+        from afterprompt import impact
+        js = self.js_without_comments()
+        # The bands, in the scanner's order, with the scanner's words. A rename in impact.py fails here.
+        self.assertIn('const IMPACT = ["money", "data", "access", "service"];', js)
+        self.assertEqual(list(impact.RANKS), ["money", "data", "access", "service"])
+        for band in impact.RANKS:
+            self.assertIn(impact.LABELS[band], js, f"{band}: label is not the one impact.py uses")
+            self.assertIn(impact.NOTES[band], js, f"{band}: note is not the one impact.py uses")
+        # Grouping by band orders by the band, not by how much there is in it.
+        self.assertIn("rank = key === \"review\" ? IMPACT.length : IMPACT.indexOf(key);", js)
+        self.assertIn("a.rank !== null ? a.rank - b.rank : 0", js)
+        # A finding from an older scan has no band; it sorts last rather than loudest.
+        self.assertIn("IMPACT.includes(f.impact) ? f.impact : null", js)
+
+    def test_repeats_fold_but_never_the_ones_to_rotate(self):  # U-UI-42
+        """One file holding thirty of a kind used to fill the list and push everything else off it."""
+        js = self.js_without_comments()
+        self.assertIn("const FOLD_FROM = 3;", js)
+        # The key is what the row shows: its kind and the one place it names.
+        self.assertIn('section === "review" && place', js)
+        self.assertIn("f.label", js[js.index("function foldKey"):js.index("function fold(")])
+        # Below the threshold nothing is hidden, and a folded row opens.
+        self.assertIn("row.members.length >= FOLD_FROM", js)
+        self.assertIn("state.unfolded[row.key]", js)
+        # Keyboard navigation only ever visits rows that are on screen.
+        rows = js[js.index("function visibleRows()"):js.index("function renderFindings")]
+        self.assertIn("state.unfolded[row.key]", rows)
+
+    def test_the_first_three_are_named(self):  # U-UI-43
+        js = self.js_without_comments()
+        self.assertIn("const lead = (state.findings ? state.findings.rotate : []).slice(0, 3);", js)
+        self.assertIn("state.findings.rotate.length > 3", js)      # a short list needs no lead
+        for key in ("startHere:", "startHereWhy:"):
+            self.assertIn(key, self.read("app.js"))
+
+    def test_the_bands_are_drawn_from_tokens(self):  # U-UI-44
+        css = self.read("app.css")
+        band = css[css.index(".band {"):css.index(".row.fold")]
+        for rule in (".band.money { background: var(--danger); }",
+                     ".band.data { background: var(--warning); }",
+                     ".band.access { background: var(--accent); }",
+                     ".band.service { background: var(--text-tertiary); }"):
+            self.assertIn(rule, band)
+
     def test_keyboard_contract(self):  # U-UI-24
         js = self.js_without_comments()
         for key in ('"ArrowDown"', '"ArrowUp"', '"j"', '"k"', '"Home"', '"End"', '"Enter"', '"Escape"'):

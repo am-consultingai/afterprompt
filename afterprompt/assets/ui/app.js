@@ -53,7 +53,17 @@
                        "is a separate step.",
     sameSteps: "These need the same steps", sameStepsWhy: "Same vendor, same answer: do it once for all of them.",
     markAll: "Mark all rotated", openItem: "Open",
-    groupBy: "Grouped by", groupVendor: "vendor", groupSeverity: "urgency", groupTool: "AI tool",
+    groupBy: "Grouped by", groupVendor: "vendor", groupSeverity: "what it opens", groupTool: "AI tool",
+    // What someone holding the value can do. The same four bands, and the same words, as the report:
+    // afterprompt/impact.py is where they are defined, and a test keeps these in step with it.
+    impactMoney: "Can spend money", impactData: "Can reach stored data", impactAccess: "Can act as you",
+    impactService: "One service",
+    impactMoneyWhy: "Whoever has this can run up charges on the account that issued it.",
+    impactDataWhy: "Whoever has this can read, and usually change, what is stored there.",
+    impactAccessWhy: "Whoever has this can act as you on that account or machine.",
+    impactServiceWhy: "Limited to the one service that issued it.",
+    startHere: "Start here", startHereWhy: "These reach furthest. The rest follow, worst first.",
+    folded: "values of this kind, in the same place", unfold: "Show each one", refold: "Fold them back",
     otherCreds: "Other credentials", privateKeys: "Private keys", sessionCookies: "Session cookies",
     passwords: "Passwords in text", connectionStrings: "Connection strings",
     unverified: "Not confirmed in the vendor's documentation",
@@ -155,7 +165,8 @@
   const state = {
     screen: ["scan", "findings", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
-    collapsed: {}, settings: null, about: null, statuses: {}, checking: {}, conn: "connecting", notice: null,
+    collapsed: {}, unfolded: {}, settings: null, about: null, statuses: {}, checking: {},
+    conn: "connecting", notice: null,
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -283,6 +294,40 @@
     return f.category === "live_credential" ? "live" : (f.tier === "A" ? "vendor" : "structural");
   }
 
+  // How far a credential reaches, worst first. The scanner decides this (afterprompt/impact.py) and writes it
+  // on every finding; a report from an older version has none, and those sort last rather than loudest.
+  const IMPACT = ["money", "data", "access", "service"];
+  const impactOf = (f) => (IMPACT.includes(f.impact) ? f.impact : null);
+  const impactText = (band) => ({ money: [TEXT.impactMoney, TEXT.impactMoneyWhy],
+                                  data: [TEXT.impactData, TEXT.impactDataWhy],
+                                  access: [TEXT.impactAccess, TEXT.impactAccessWhy],
+                                  service: [TEXT.impactService, TEXT.impactServiceWhy] }[band]);
+
+  // Repeats, folded. One transcript that lists thirty generated values used to fill the list with thirty
+  // near-identical rows and push everything else off the screen. Same label in the same place is one row with
+  // a count, which opens. Only ever review rows: something to rotate is a thing to do, and is never hidden.
+  const FOLD_FROM = 3;
+  function foldKey(f, section) {
+    const place = (f.locations || [])[0];
+    return section === "review" && place ? section + "\u0000" + f.label + "\u0000" + place.display : null;
+  }
+  function fold(list) {
+    const out = [], seen = new Map();
+    for (const it of list) {
+      const key = foldKey(it.f, it.section);
+      if (!key) { out.push({ one: it }); continue; }
+      if (!seen.has(key)) {
+        const row = { key, label: it.f.label, members: [] };
+        seen.set(key, row);
+        out.push(row);
+      }
+      seen.get(key).members.push(it);
+    }
+    // A pair is not a pile: below the threshold they stay the rows they were.
+    return out.flatMap((row) => (row.one || row.members.length >= FOLD_FROM ? [row]
+                                                                           : row.members.map((it) => ({ one: it }))));
+  }
+
   function vendorOf(f) {
     for (const p of f.patterns || []) {
       const v = REF.vendors.patterns[p];
@@ -309,11 +354,13 @@
     const by = setting("group_by") || "vendor";
     const out = new Map();
     for (const it of items()) {
-      let key, label, vendor = null;
-      if (by === "severity") {
-        key = severityOf(it.f, it.section);
-        label = { live: TEXT.liveCredential, vendor: TEXT.vendorFormat, structural: TEXT.structural,
-                  review: TEXT.weaker }[key];
+      let key, label, vendor = null, rank = null;
+      // "severity" is what this grouping was called when it meant how sure we were. It now means how far the
+      // credential reaches, which is the question that decides what to do first; saved settings still work.
+      if (by === "severity" || by === "impact") {
+        key = it.section === "review" ? "review" : (impactOf(it.f) || "service");
+        label = key === "review" ? TEXT.weaker : impactText(key)[0];
+        rank = key === "review" ? IMPACT.length : IMPACT.indexOf(key);
       } else if (by === "tool") {
         label = key = (it.f.tools || [])[0] || TEXT.otherCreds;
       } else if (by === "machine") {
@@ -322,14 +369,16 @@
         vendor = vendorOf(it.f);
         label = key = vendor || TEXT.otherCreds;
       }
-      if (!out.has(key)) out.set(key, { key, label, vendor, items: [], rotate: 0, review: 0, done: 0 });
+      if (!out.has(key)) out.set(key, { key, label, vendor, rank, items: [], rotate: 0, review: 0, done: 0 });
       const g = out.get(key);
       g.items.push(it);
       g[it.section] += 1;
       if (["rotated", "ignored"].includes(statusOf(it.f))) g.done += 1;
     }
-    // Groups with something to rotate come first, then by how much there is to do.
-    return [...out.values()].sort((a, b) => (b.rotate > 0) - (a.rotate > 0) || b.rotate - a.rotate ||
+    // Bands are already in their own order, worst first; every other grouping puts what must be rotated first,
+    // then by how much there is to do.
+    return [...out.values()].sort((a, b) => (a.rank !== null ? a.rank - b.rank : 0) ||
+                                            (b.rotate > 0) - (a.rotate > 0) || b.rotate - a.rotate ||
                                             b.items.length - a.items.length || a.label.localeCompare(b.label));
   }
 
@@ -337,7 +386,10 @@
     const rows = [];
     for (const g of groups()) {
       if (state.collapsed[g.key]) continue;
-      for (const it of g.items) rows.push(it.f.hash);
+      for (const row of fold(g.items)) {
+        if (row.one) rows.push(row.one.f.hash);
+        else if (state.unfolded[row.key]) for (const it of row.members) rows.push(it.f.hash);
+      }
     }
     return rows;
   }
@@ -350,6 +402,25 @@
                                                    tool: TEXT.groupTool }[setting("group_by") || "vendor"]}`,
                       "field-label"));
     listPane.append(heading);
+    // A list of twenty with no order reads as an afternoon and gets abandoned after three, so name the three.
+    const lead = (state.findings ? state.findings.rotate : []).slice(0, 3);
+    if (lead.length === 3 && state.findings.rotate.length > 3) {
+      const start = el("div", null, "start");
+      start.append(el("b", TEXT.startHere), el("span", TEXT.startHereWhy, "sub"));
+      const ol = el("ol");
+      for (const f of lead) {
+        const li = el("li");
+        const b = el("button", f.label);
+        b.type = "button";
+        b.addEventListener("click", () => select(f.hash, true));
+        li.append(b);
+        const band = impactOf(f);
+        if (band) li.append(el("span", impactText(band)[0], "sub"));
+        ol.append(li);
+      }
+      start.append(ol);
+      listPane.append(start);
+    }
     const list = el("div", null, "list");
     list.id = "list";
     list.tabIndex = 0;
@@ -379,10 +450,10 @@
       });
       list.append(head);
       if (collapsed) continue;
-      for (const { f, section } of g.items) {
+      const credential = ({ f, section }, sub) => {
         const st = statusOf(f);
         const row = el("div", null, "row" + (st === "rotated" ? " ticked" : "") +
-                                    (st === "ignored" ? " ignored" : ""));
+                                    (st === "ignored" ? " ignored" : "") + (sub ? " sub" : ""));
         row.id = "row-" + f.hash;
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", String(f.hash === state.selected));
@@ -390,10 +461,33 @@
         row.append(st === "rotated" ? icon("check", "success")
                    : st === "ignored" ? icon("dot", "quiet")
                    : icon(sev === "review" ? "key" : "alert", sev === "review" ? "warning" : "danger"));
+        const band = section === "rotate" && impactOf(f);
+        if (band) {
+          const dot = el("span", null, "band " + band);
+          dot.title = impactText(band)[0];
+          row.append(dot);
+        }
         row.append(el("span", f.label, "title"), el("span", f.masked, "value"));
         if (f.files > 1) row.append(el("span", `${f.files}`, "pip"));
         row.addEventListener("click", () => select(f.hash));
         list.append(row);
+      };
+      for (const row of fold(g.items)) {
+        if (row.one) { credential(row.one, false); continue; }
+        const open = !!state.unfolded[row.key];
+        const head2 = el("button", null, "row fold");
+        head2.type = "button";
+        head2.setAttribute("aria-expanded", String(open));
+        const chev2 = icon("chevron", "quiet");
+        chev2.classList.add("chev");
+        if (open) chev2.classList.add("open");
+        head2.append(chev2, el("span", row.label, "title"),
+                     el("span", `${row.members.length} ${TEXT.folded}`, "value"),
+                     el("span", `${row.members.length}`, "pip"));
+        head2.title = open ? TEXT.refold : TEXT.unfold;
+        head2.addEventListener("click", () => { state.unfolded[row.key] = !open; render(); });
+        list.append(head2);
+        if (open) for (const it of row.members) credential(it, true);
       }
     }
     listPane.append(list);
@@ -460,6 +554,15 @@
     b.dataset.tone = kind[2];
     badge.append(b, el("span", kind[1], "sub"));
     box.append(badge);
+
+    // How sure we are is one question; what it opens is the other, and it is the one that sets the order.
+    const band = section === "rotate" && impactOf(f);
+    if (band) {
+      const line = el("div", null, "badges");
+      const chip = el("span", impactText(band)[0], "badge band " + band);
+      line.append(chip, el("span", impactText(band)[1], "sub"));
+      box.append(line);
+    }
 
     const facts = el("dl", null, "facts");
     const add = (term, build) => {
