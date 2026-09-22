@@ -653,7 +653,14 @@ def run(argv, emit):
                     ctx["sources"] = read_json(cfg.w("sources.json"))
                 say(f"[{k}/{len(stages)}] {DESCRIPTIONS[name]} … already done")
                 if view:
-                    view.state.stage(name, done=True)
+                    # A resumed step is still a step that found something: read what it wrote last time, so
+                    # the screen does not show a row of ticks with nothing behind them.
+                    done_info = read_json(marker, {}) or {}
+                    try:
+                        view.state.detail(name, stage_detail(cfg, name, done_info, ctx))
+                    except Exception as err:  # noqa: BLE001 - never worth failing a resumed scan for
+                        log(f"detail for {name} failed: {type(err).__name__}: {err}")
+                    view.state.stage(name, done=True, summary=stage_result_line(name, done_info))
                 continue
             if view:
                 view.state.stage(name)

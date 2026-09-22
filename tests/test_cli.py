@@ -58,6 +58,14 @@ class StageDetailTests(TempDirTest):
         self.assertEqual(cli.stage_detail(self.cfg(), "cleanup", {}, {}), [])
         self.assertEqual(cli.stage_detail(self.cfg(), "vendor_raw", {"hits": 3}, {}), [])
 
+    def test_a_resumed_step_still_says_what_it_found(self):  # U-CLI-D5
+        """Resuming used to leave a row of ticks with nothing behind them; the marker holds what it found."""
+        src = open(os.path.join(os.path.dirname(os.path.abspath(cli.__file__)), "cli.py"), encoding="utf-8").read()
+        resume = src[src.index("already done"):src.index("if view:\n                view.state.stage(name)")]
+        self.assertIn("done_info = read_json(marker, {}) or {}", resume)
+        self.assertIn("view.state.detail(name, stage_detail(cfg, name, done_info, ctx))", resume)
+        self.assertIn("summary=stage_result_line(name, done_info)", resume)
+
     def test_detail_never_fails_a_scan(self):  # U-CLI-D4
         """Nothing here is worth losing a scan over, so a missing key is an empty list, not an exception."""
         for name in cli.DESCRIPTIONS:
