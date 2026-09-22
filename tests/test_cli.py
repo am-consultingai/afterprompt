@@ -31,20 +31,41 @@ class StageDetailTests(TempDirTest):
         c = make_cfg(self.tmp, "linux", os.path.join(self.tmp, "home"))
         return c
 
-    def test_environments_names_what_it_found(self):  # U-CLI-D1
+    def survey(self, rows):
         cfg = self.cfg()
         os.makedirs(os.path.join(cfg.run_dir, "envs"), exist_ok=True)
-        write_json(os.path.join(cfg.run_dir, "envs", "survey.json"),
-                   [{"label": "This machine", "found": 1, "status": "scanned"},
-                    {"label": "Docker containers", "found": 2, "status": "scanned",
-                     "names": ["api-1", "worker-1"]},
-                    {"label": "Podman containers", "found": 0, "status": "not_installed"}])
+        write_json(os.path.join(cfg.run_dir, "envs", "survey.json"), rows)
+        return cfg
+
+    def test_environments_names_what_is_here(self):  # U-CLI-D1
+        """What this machine has, not the catalogue of what Afterprompt can look for."""
+        cfg = self.survey([{"label": "This machine", "found": 1, "status": "scanned"},
+                           {"label": "Docker containers", "found": 2, "status": "scanned",
+                            "names": ["api-1", "worker-1"]},
+                           {"label": "WSL distributions", "found": 0, "status": "absent"},
+                           {"label": "Podman containers", "found": 0, "status": "not_installed"},
+                           {"label": "GitHub Codespace", "found": 0, "status": "not_applicable"}])
         rows = cli.stage_detail(cfg, "environments", {}, {})
-        self.assertEqual([r["label"] for r in rows],
-                         ["This machine", "Docker containers", "Podman containers"])
+        self.assertEqual([r["label"] for r in rows[:2]], ["This machine", "Docker containers"])
         self.assertEqual(rows[1]["note"], "api-1, worker-1")       # the names, not just the count
-        self.assertEqual(rows[2]["note"], "not installed")         # and a plain word for a status
-        self.assertEqual([r["tone"] for r in rows], ["ok", "ok", "quiet"])
+        # The three that are not here are one quiet line between them, so a clean result still says so.
+        self.assertEqual(rows[-1]["label"], "Not on this machine")
+        self.assertEqual(rows[-1]["note"], "WSL distributions, Podman containers, GitHub Codespace")
+        self.assertEqual(len(rows), 3)
+
+    def test_images_are_named_as_never_opened(self):  # U-CLI-D6
+        """They are on the machine, and a key in a layer is a different tool's problem."""
+        cfg = self.survey([{"label": "This machine", "found": 1, "status": "scanned"},
+                           {"label": "Docker images", "found": 53, "status": "out_of_scope",
+                            "why": "An image is a filesystem nobody has typed into."}])
+        rows = cli.stage_detail(cfg, "environments", {}, {})
+        images = [r for r in rows if r["label"] == "Docker images"][0]
+        self.assertIn("53 here, never opened", images["note"])
+        self.assertIn("nobody has typed into", images["note"])
+        self.assertEqual(images["tone"], "quiet")
+        # No images on the machine, nothing to say about them.
+        cfg = self.survey([{"label": "Docker images", "found": 0, "status": "out_of_scope"}])
+        self.assertNotIn("Docker images", [r["label"] for r in cli.stage_detail(cfg, "environments", {}, {})])
 
     def test_listing_files_breaks_down_by_tool(self):  # U-CLI-D2
         info = {"per_source": [{"tool": "Claude Code", "side": "wsl", "files": 7388, "bytes": 1_200_000_000}],

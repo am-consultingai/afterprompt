@@ -439,11 +439,28 @@ def stage_detail(cfg, name, info, ctx):
     add = lambda label, note=None, tone=None: rows.append(  # noqa: E731
         {"label": str(label), "note": None if note is None else str(note), "tone": tone})
     if name == "environments":
+        # What is on this machine, not the catalogue of what Afterprompt knows how to look for. The kinds
+        # that are not here are worth one line between them: enough that a clean result never looks like a
+        # gap, not so much that eleven rows of "none" bury the two that matter. The report's coverage
+        # section is where the full list belongs.
+        elsewhere, images = [], None
         for row in read_json(os.path.join(cfg.run_dir, "envs", "survey.json"), []) or []:
-            names = ", ".join(row.get("names") or [])
-            note = names or row.get("why") or ENV_STATUS_NOTE.get(row.get("status"), row.get("status"))
-            add(row.get("label"), note, "ok" if row.get("status") == "scanned"
-                else ("quiet" if not row.get("found") else "warn"))
+            status, found = row.get("status"), row.get("found") or 0
+            if status in ("scanned", "scanned_share", "not_scanned", "found_not_scanned", "skipped"):
+                names = ", ".join(row.get("names") or [])
+                note = names or row.get("why") or ENV_STATUS_NOTE.get(status, status)
+                add(row.get("label"), note, "ok" if status.startswith("scanned") else "warn")
+            elif status == "out_of_scope" and found:
+                images = row
+            else:
+                elsewhere.append(row.get("label"))
+        if images:
+            # Images are on the machine and are never opened. Saying so is the point: a key baked into a
+            # layer is a real problem, and not one this tool is looking for.
+            add(images.get("label"), f"{images['found']} here, never opened — "
+                                     f"{images.get('why') or 'nothing was ever typed into one'}", "quiet")
+        if elsewhere:
+            add("Not on this machine", ", ".join(elsewhere), "quiet")
     elif name == "discover":
         for i in (ctx.get("sources") or {}).get("installed", []):
             label = f"{i['product']} [{i['env']}]" if i.get("env") else i.get("product")
