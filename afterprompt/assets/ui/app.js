@@ -385,8 +385,9 @@
 
   function renderScan(box) {
     const wrap = el("section", null, "column");
-    // Before the scan: the page is a control, not a view. Nothing on this machine has been read yet.
-    if (!state.started && !state.findings) return box.append(renderReady(wrap));
+    // Before the scan: the page is a control, not a view. Findings from the last run may already be loaded
+    // — that is what the Credentials screen is for — but this scan has still read nothing.
+    if (!state.started) return box.append(renderReady(wrap));
     const running = !state.findings;
     wrap.append(el("h2", running ? TEXT.scanRunning : TEXT.scanDone));
     wrap.append(el("p", running ? TEXT.scanRunningSub : TEXT.pickOne, "sub"));

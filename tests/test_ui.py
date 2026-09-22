@@ -418,7 +418,9 @@ class PageTests(TempDirTest):
     def test_the_page_offers_the_button_and_the_cli_waits(self):  # U-UI-47
         js = self.js_without_comments()
         # The scan screen is a control before it is a view.
-        self.assertIn("if (!state.started && !state.findings) return box.append(renderReady(wrap));", js)
+        self.assertIn("if (!state.started) return box.append(renderReady(wrap));", js)
+        # Findings from the last scan do not hide the button: this scan has still read nothing.
+        self.assertNotIn("!state.started && !state.findings", js)
         self.assertIn('post("/api/start", {})', js)
         for key in ("scanReady:", "scanReadySub:", "scanStart:", "scanStarting:", "scanStartFailed:"):
             self.assertIn(key, self.read("app.js"))
