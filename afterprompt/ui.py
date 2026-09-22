@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 from afterprompt import exposures, settings, watch
-from afterprompt.util import read_json, write_json
+from afterprompt.util import log, read_json, write_json
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
 LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo")
@@ -129,12 +129,16 @@ class State:
             del self.lines[:-2000]
         self._publish({"type": "line", "text": line})
 
-    def request_start(self):
-        """The page asked for the scan. Idempotent: a second press changes nothing."""
+    def request_start(self, who=None):
+        """The page asked for the scan. Idempotent: a second press changes nothing.
+
+        Logged with the caller: a scan reads every transcript and every credential store on the machine, so
+        what set it going is worth being able to answer later."""
         with self.lock:
             first = not self.scan_started
             self.scan_started = True
         if first:
+            log(f"start requested by {who or 'unknown'}")
             self._publish({"type": "started"})
         self._begin.set()
         return first
@@ -385,7 +389,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/start":
             # The only endpoint that makes the machine do something. It takes no arguments: what the scan
             # will do was decided in Settings before this was pressed.
-            self._send(200, {"started": True, "first": st.request_start()})
+            self._send(200, {"started": True, "first": st.request_start(self.client_address[0])})
         elif path == "/api/checklist":
             h = body.get("hash") if isinstance(body, dict) else None
             if not (isinstance(h, str) and 8 <= len(h) <= 64 and all(c in "0123456789abcdef" for c in h)):

@@ -45,6 +45,12 @@
     structural: "Structural match", structuralWhy: "It looks like a secret by shape rather than by format.",
     weaker: "Weaker evidence", weakerWhy: "Worth a look; decide whether it is a credential of yours.",
     exposedIn: "Exposed in", stillOnDisk: "Still on disk", occurrences: "Occurrences", inFiles: "files",
+    doThis: "What to do about this one", revokeHere: "Revoke it here", replaceIt: "Then replace it in",
+    searchFor: "Find it in a file by searching for",
+    searchWhy: "The first characters only — enough to land on the line, and no more of the value than this " +
+               "page already shows.",
+    copyCmd: "Copy command", copyPath: "Copy path", copied: "Copied", copyFailed: "Press ⌘/Ctrl-C to copy",
+    withCli: "From the vendor's own command line", openWith: "Open it",
     whatToDo: "What to do", about: "about", minutes: "min", openConsole: "Open", checkAudit: "Check the audit log",
     overlap: "can be rotated without downtime", breaksAtOnce: "revoking breaks callers at once",
     endsSession: "signing out ends the session at once",
@@ -715,6 +721,8 @@
       box.append(line);
     }
 
+    box.append(doThis(f, section, vendor));
+
     const facts = el("dl", null, "facts");
     const add = (term, build) => {
       const row = el("div", null, "fact");
@@ -725,8 +733,19 @@
     };
     add(TEXT.exposedIn, (dd) => {
       dd.append(el("span", (f.tools || []).join(", ")));
+      const prefix = prefixOf(f);
       for (const loc of f.locations || []) {
-        dd.append(el("span", loc.display + (loc.decoded ? " (decoded)" : ""), "mono"));
+        const line = el("div", null, "loc");
+        line.append(el("span", loc.display + (loc.decoded ? " (decoded)" : ""), "mono"));
+        const rule = openRule(loc.display);
+        if (rule && !loc.decoded) {
+          const cmd = command(rule, loc.display, prefix);
+          const tools = el("div", null, "loc-tools");
+          tools.append(copyButton(cmd, TEXT.openWith), copyButton(loc.display, TEXT.copyPath),
+                       el("span", rule.what, "sub"));
+          line.append(tools);
+        }
+        dd.append(line);
       }
     });
     add(TEXT.foundOn, (dd) => {
@@ -744,6 +763,86 @@
     box.append(statusBlock(f));
     box.append(actions(f, section, vendor));
     box.append(sameSteps(f, section));
+  }
+
+  function prefixOf(f) {
+    // The masked value already shows its first characters; using them as a search term reveals nothing new,
+    // and it is what turns "somewhere in a 40 MB transcript" into a line number.
+    const head = String(f.masked || "").split("\u2026")[0].trim();
+    return head.length >= 4 ? head : null;
+  }
+
+  function copyButton(text, label) {
+    const b = el("button", label || TEXT.copyCmd, "copy");
+    b.type = "button";
+    b.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        b.textContent = TEXT.copied;
+      } catch (e) {
+        b.textContent = TEXT.copyFailed;
+      }
+      setTimeout(() => { b.textContent = label || TEXT.copyCmd; }, 1600);
+    });
+    return b;
+  }
+
+  function openRule(path) {
+    for (const rule of REF.rotation.open_with || []) {
+      try {
+        if (new RegExp(rule.match).test(path)) return rule;
+      } catch (e) { /* a rule that will not compile is skipped, not fatal */ }
+    }
+    return null;
+  }
+
+  function command(rule, path, prefix) {
+    return String(rule.run).replace("{path}", path).replace("{prefix}", prefix || "");
+  }
+
+  /* The frame at the top of a card. Everything below it is evidence; this is the instruction. */
+  function doThis(f, section, vendor) {
+    const wrap = el("section", null, "do-this");
+    wrap.append(el("h3", TEXT.doThis));
+    const kind = genericKey(f, section);
+    const generic = (REF.rotation.generic || {})[kind] || {};
+    const guide = vendorGuide(vendor, kind);
+    if (generic.headline) wrap.append(el("p", generic.headline, "do-headline"));
+
+    const row = el("div", null, "do-actions");
+    const link = (f.revoke && f.revoke.url) || (guide && guide.console && guide.console.url);
+    const where = (f.revoke && f.revoke.where) || (guide && guide.console && guide.console.where);
+    if (link) {
+      const a = el("a", `${TEXT.revokeHere}: ${where}`, "do-link");
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noreferrer noopener";
+      row.append(a, icon("external", "quiet"));
+    } else if (where) {
+      row.append(el("span", where, "sub"));
+    }
+    wrap.append(row);
+
+    if ((f.still_on_disk || []).length) {
+      wrap.append(el("p", `${TEXT.replaceIt} ${f.still_on_disk[0].store} (${f.still_on_disk[0].key})`, "sub"));
+    }
+
+    // The vendor's own command, where it has one. Handed over, never run.
+    const cli = guide && guide.cli;
+    if (cli) {
+      const line = command(cli, "", prefixOf(f) || "");
+      const cmd = el("div", null, "cmd");
+      cmd.append(el("code", line), copyButton(line));
+      wrap.append(el("p", TEXT.withCli, "field-label"), cmd, el("p", cli.what, "sub"));
+    }
+
+    const prefix = prefixOf(f);
+    if (prefix) {
+      const hint = el("div", null, "cmd");
+      hint.append(el("code", prefix), copyButton(prefix, TEXT.copyPath));
+      wrap.append(el("p", `${TEXT.searchFor}:`, "field-label"), hint, el("p", TEXT.searchWhy, "sub"));
+    }
+    return wrap;
   }
 
   /* What to do, from rotation.json: the vendor's own steps when we have them, the generic ones for the category

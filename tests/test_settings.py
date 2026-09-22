@@ -209,6 +209,37 @@ class ReferenceDataTests(unittest.TestCase):
                     self.assertTrue(special["steps"] and all(s.strip().endswith(".") for s in special["steps"]))
                     self.assertIn(special.get("downtime", g["downtime"]), ("overlap", "immediate"))
 
+    def test_a_vendor_command_is_data_and_carries_its_own_caveat(self):  # U-SET-21
+        """Where a vendor has a CLI, the command belongs in the data beside its steps, not in the page."""
+        r = self.load("rotation.json")
+        with_cli = [v for v, g in r["vendors"].items() if "cli" in g]
+        self.assertTrue(with_cli, "no vendor carries a command")
+        for vendor in with_cli:
+            with self.subTest(vendor=vendor):
+                cli = r["vendors"][vendor]["cli"]
+                self.assertTrue(cli["run"].strip())
+                self.assertTrue(cli["what"].strip().endswith("."))
+                # Anything the caller must fill in is marked, so a command is never run blind.
+                for token in re.findall(r"\{(\w+)\}", cli["run"]):
+                    self.assertIn(token, ("path", "prefix"), f"{vendor}: unknown placeholder")
+
+    def test_opening_a_file_is_a_command_we_hand_over(self):  # U-SET-22
+        """The page never opens anything: it says which tool, and gives the line to paste."""
+        r = self.load("rotation.json")
+        rules = r["open_with"]
+        self.assertTrue(rules and isinstance(rules, list))
+        for rule in rules:
+            with self.subTest(rule=rule["id"]):
+                re.compile(rule["match"])                  # a rule that cannot compile would be skipped silently
+                self.assertTrue(rule["what"].strip().endswith("."))
+                self.assertIn("{path}", rule["run"])
+        # The last rule matches anything, so every file has an answer.
+        self.assertTrue(re.compile(rules[-1]["match"]).search("/home/me/.claude/history.jsonl"))
+        # A chat database is named as one rather than offered to a text editor.
+        sqlite = [x for x in rules if x["id"] == "sqlite"][0]
+        self.assertTrue(re.compile(sqlite["match"]).search("state.vscdb"))
+        self.assertIn("{prefix}", sqlite["run"])
+
     def test_every_finding_kind_has_generic_steps(self):  # U-SET-13
         r = self.load("rotation.json")
         for kind in ("live_credential", "pattern", "configuration", "session_cookie", "private_key",

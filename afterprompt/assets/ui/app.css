@@ -490,3 +490,38 @@ button.phase-head .phase-note { margin-inline-end: 6px; }
 .env-inline .mark { inline-size: 18px; block-size: 18px; }
 .env-inline .mark svg { inline-size: 12px; block-size: 12px; }
 .group-head .mark, .env .mark { flex: none; }
+
+/* --- the instruction, above the evidence ---------------------------------
+   A card used to open with badges and facts, and the thing to actually do
+   was below the fold. This frame is what to do; everything under it is why. */
+.do-this {
+  margin-block: 16px 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+}
+.do-this h3 { margin: 0 0 6px; font-size: var(--text-sm); color: var(--text-tertiary); }
+.do-headline { color: var(--text-primary); font-weight: var(--weight-label); }
+.do-actions { display: flex; align-items: center; gap: 6px; margin-block-start: 10px; flex-wrap: wrap; }
+.do-link { font-weight: var(--weight-label); }
+.do-this .field-label { margin-block-start: 12px; display: block; }
+.cmd { display: flex; align-items: center; gap: 8px; margin-block-start: 4px; flex-wrap: wrap; }
+.cmd code {
+  flex: 1 1 auto; min-inline-size: 0;
+  padding: 6px 8px;
+  background: var(--surface-2); border-radius: var(--radius-control);
+  overflow-wrap: anywhere;
+}
+button.copy {
+  font: inherit; font-size: var(--text-xs);
+  padding: 5px 10px;
+  color: var(--text-secondary);
+  background: var(--surface-0);
+  border: 1px solid var(--border); border-radius: var(--radius-control);
+  cursor: pointer; flex: none;
+}
+button.copy:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.loc { margin-block-end: 10px; }
+.loc-tools { display: flex; align-items: center; gap: 8px; margin-block-start: 4px; flex-wrap: wrap; }
+.loc-tools .sub { margin: 0; font-size: var(--text-xs); }

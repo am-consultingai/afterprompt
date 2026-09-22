@@ -1,5 +1,6 @@
 """Command line: options, run lifecycle (new, resume, discard), stage orchestration, status, exit codes."""
 import argparse
+import collections
 import datetime
 import json
 import os
@@ -445,6 +446,8 @@ def stage_result_line(name, info):
 TOOL_VENDOR = {"Claude Code": "Anthropic", "Claude Desktop": "Anthropic", "Cursor": "Cursor",
                "GitHub Copilot": "GitHub", "Gemini CLI": "Google", "Codex CLI": "OpenAI",
                "Google Antigravity": "Google", "Ollama": "Ollama", "OpenCode": "OpenCode"}
+KIND_GROUP = {"docker": "Docker containers", "podman": "Podman containers",
+              "wsl": "WSL distributions", "folder": "Extra home folders"}
 KIND_NOTE = {"host": "the filesystem this scan runs on",
              "wsl": "its own home folder, scanned from inside itself",
              "docker": "a container's own home folder",
@@ -480,11 +483,29 @@ def stage_detail(cfg, name, info, ctx):
         rows.append({"label": str(label), "note": None if note is None else str(note), "tone": tone,
                      "icon": kind, "vendor": vendor})
     if name == "environments":
-        # The environments this machine actually has, one row each, so the list and the count of them are
-        # the same number. What is absent is coverage, and coverage belongs in the report.
-        for e in ctx.get("envs") or []:
-            add(e.label, KIND_NOTE.get(e.kind, e.kind), "ok",
-                "machine" if e.kind in ("host", "wsl") else "container")
+        # The environments this machine actually has. What is absent is coverage, and coverage belongs in
+        # the report. Six containers are one line with six names, not six lines: they are the same kind of
+        # thing and the list is meant to be read at a glance.
+        from afterprompt import sources as src_mod
+        found = list(ctx.get("envs") or [])
+        for e in found:
+            if e.kind == "host":
+                add(e.label, KIND_NOTE["host"], "ok", "machine")
+        # The Windows profile is not an environment of its own: it is a second filesystem the host scan
+        # reads. It is named here because "which machines does this cover" is the question being answered,
+        # and detection is cached, so asking now costs nothing later.
+        if cfg is not None and getattr(cfg, "platform", None) == "wsl":
+            win, how = src_mod.windows_home(cfg)
+            if win:
+                add("Windows profile", f"{win} — read with this machine ({how})", "ok", "machine")
+        rest = collections.OrderedDict()
+        for e in found:
+            if e.kind != "host":
+                rest.setdefault(e.kind, []).append(e.label.split(": ", 1)[-1])
+        for kind, names in rest.items():
+            shown = ", ".join(names[:6]) + (f" +{len(names) - 6} more" if len(names) > 6 else "")
+            add(f"{KIND_GROUP.get(kind, kind)} · {len(names)}", shown, "ok",
+                "machine" if kind == "wsl" else "container")
     elif name == "discover":
         # The Windows profile is a second filesystem read as part of this machine, and it is found here.
         win = (ctx.get("sources") or {}).get("windows_home")
@@ -684,6 +705,7 @@ def run(argv, emit):
             # for. It waits in slices and only leaves when someone has actually pressed.
             while not view.state.scan_started:
                 view.state.wait_for_start(0.5)
+            log("the gate opened: scan_started is set")
         except KeyboardInterrupt:
             say("")
             say("Nothing was scanned.")

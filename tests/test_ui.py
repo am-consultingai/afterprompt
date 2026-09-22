@@ -433,6 +433,32 @@ class PageTests(TempDirTest):
         self.assertIn("Waiting for Start scan in the browser view.", cli_src)
         self.assertLess(cli_src.index("view.state.wait_for_start("), cli_src.index("for k, name in enumerate"))
 
+    def test_the_card_opens_with_the_instruction(self):  # U-UI-52
+        """The thing to do used to be below the badges, the facts and the fold."""
+        js = self.js_without_comments()
+        self.assertIn("box.append(doThis(f, section, vendor));", js)
+        card = js[js.index("function renderDetail"):js.index("function doThis")]
+        self.assertLess(card.index("doThis(f, section, vendor)"), card.index("const facts = el("))
+        for key in ("doThis:", "revokeHere:", "replaceIt:", "searchFor:", "withCli:", "openWith:"):
+            self.assertIn(key, self.read("app.js"))
+
+    def test_the_search_hint_reveals_nothing_new(self):  # U-UI-53
+        """A prefix to find the value in a large file, taken from the part already on screen."""
+        js = self.js_without_comments()
+        fn = js[js.index("function prefixOf"):js.index("function copyButton")]
+        self.assertIn('String(f.masked || "").split("\\u2026")[0]', fn)   # the masked head, nothing else
+        self.assertIn("head.length >= 4 ? head : null", fn)                 # too short to be useful is no hint
+
+    def test_the_page_hands_over_commands_and_never_runs_them(self):  # U-UI-54
+        js = self.js_without_comments()
+        # Commands and file-type rules are data the scanner serves, not sentences in the page.
+        self.assertIn("REF.rotation.open_with", js)
+        self.assertIn("guide && guide.cli", js)
+        self.assertIn("navigator.clipboard.writeText", js)
+        # Nothing that could make the machine do something.
+        for forbidden in ("child_process", "shell", "exec(", "/api/open", "/api/run"):
+            self.assertNotIn(forbidden, js, forbidden)
+
     def test_the_list_is_ordered_by_what_it_opens(self):  # U-UI-41
         """The browser view and the report must not disagree about what to do first."""
         from afterprompt import impact

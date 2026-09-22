@@ -40,11 +40,12 @@ class StageDetailTests(TempDirTest):
         found = self.envs(("WSL: Ubuntu-E (this machine)", "host"),
                           ("Docker: api-1", "docker"), ("Docker: worker-1", "docker"))
         rows = cli.stage_detail(self.cfg(), "environments", {}, {"envs": found})
-        self.assertEqual([r["label"] for r in rows],
-                         ["WSL: Ubuntu-E (this machine)", "Docker: api-1", "Docker: worker-1"])
-        self.assertEqual(len(rows), len(found))                    # the list is the count
-        self.assertEqual(rows[0]["icon"], "machine")               # and each row says what kind of thing it is
-        self.assertEqual(rows[1]["icon"], "container")
+        # The machine it runs on by name, then its containers as one line rather than one line each.
+        self.assertEqual(rows[0]["label"], "WSL: Ubuntu-E (this machine)")
+        self.assertEqual(rows[0]["icon"], "machine")
+        self.assertEqual(rows[-1]["label"], "Docker containers · 2")
+        self.assertEqual(rows[-1]["note"], "api-1, worker-1")
+        self.assertEqual(rows[-1]["icon"], "container")
         # Nothing about what is absent: that is coverage, and it belongs in the report.
         self.assertNotIn("Not on this machine", [r["label"] for r in rows])
 
