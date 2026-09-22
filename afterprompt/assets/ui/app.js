@@ -246,7 +246,9 @@
     go.type = "button";
     go.disabled = !!state.starting;
     go.addEventListener("click", startScan);
-    wrap.append(el("div", null, "ready-go")).lastChild.append(go);
+    const row = el("div", null, "ready-go");
+    row.append(go);
+    wrap.append(row);
 
     // What it will do, in the words the Settings screen uses, so the button is never a surprise.
     const field = ((state.settings && state.settings.fields) || []).find((f) => f.key === "mode");
