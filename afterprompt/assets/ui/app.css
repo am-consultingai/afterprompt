@@ -99,6 +99,22 @@ input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(
 
 .screen { display: block; }
 .column { max-inline-size: 1040px; margin: 0 auto; padding: 24px 20px 40px; }
+
+/* --- before the scan ------------------------------------------------------
+   The one button that makes this machine do something. It is the only filled
+   control on the page, and nothing above it has read a file yet. */
+.ready-go { margin-block: 20px 6px; }
+button.primary {
+  min-block-size: var(--height-control);
+  padding-inline: 20px;
+  border: 0; border-radius: var(--radius-control);
+  background: var(--accent); color: var(--accent-ink);
+  font: inherit; font-weight: var(--weight-label);
+  cursor: pointer;
+  transition: background-color var(--duration-hover) var(--ease-out);
+}
+button.primary:hover { background: var(--accent-hover); }
+button.primary:disabled { background: var(--surface-2); color: var(--text-tertiary); cursor: default; }
 .foot {
   max-inline-size: 1040px; margin: 0 auto; padding: 0 20px 24px;
   font-size: var(--text-2xs); color: var(--text-tertiary);

@@ -74,6 +74,10 @@ class State:
         self.watchdog = None
         self.watch_every = WATCH_EVERY
         self.watch_first = True
+        # Nothing is read until the page says so. The scan is the part that opens every file this machine
+        # has, so it waits for a person to ask for it rather than beginning because a link was printed.
+        self.scan_started = False
+        self._begin = threading.Event()
         self._stop = threading.Event()
         self.subscribers = []
         self.last_beat = None
@@ -114,6 +118,20 @@ class State:
             del self.lines[:-2000]
         self._publish({"type": "line", "text": line})
 
+    def request_start(self):
+        """The page asked for the scan. Idempotent: a second press changes nothing."""
+        with self.lock:
+            first = not self.scan_started
+            self.scan_started = True
+        if first:
+            self._publish({"type": "started"})
+        self._begin.set()
+        return first
+
+    def wait_for_start(self, timeout=None):
+        """Block until the page asks. False means the wait timed out and nothing was asked for."""
+        return self._begin.wait(timeout)
+
     def finish(self, findings_path):
         with self.lock:
             self.finished = True
@@ -126,6 +144,7 @@ class State:
                                     summary=self.summaries.get(s["name"]))
                                for s in self.stages],
                     "progress": dict(self.progress),
+                    "started": self.scan_started,
                     "finished": self.finished, "lines": self.lines[-400:]}
 
     def checklist(self):
@@ -340,6 +359,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "unknown setting or value out of range"})
             else:
                 self._send(200, {"values": values})
+        elif path == "/api/start":
+            # The only endpoint that makes the machine do something. It takes no arguments: what the scan
+            # will do was decided in Settings before this was pressed.
+            self._send(200, {"started": True, "first": st.request_start()})
         elif path == "/api/checklist":
             h = body.get("hash") if isinstance(body, dict) else None
             if not (isinstance(h, str) and 8 <= len(h) <= 64 and all(c in "0123456789abcdef" for c in h)):

@@ -147,6 +147,19 @@ class LiveServerTests(TempDirTest):
         self.assertEqual(self.req("POST", "/api/checklist", body="x" * 5000, token=False)[0], 401)
         self.assertEqual(self.req("POST", "/api/checklist", body=ok, host="evil.example:1")[0], 403)
 
+    def test_start_is_the_only_endpoint_that_makes_work_happen(self):  # U-UI-46
+        """It is behind the same key as everything else, and pressing it twice starts one scan."""
+        self.assertFalse(self.state.scan_started)
+        self.assertEqual(self.req("POST", "/api/start", body={}, token=False)[0], 401)
+        self.assertFalse(self.state.scan_started)           # a refused press reads nothing
+        code, _, body = self.req("POST", "/api/start", body={})
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body), {"started": True, "first": True})
+        self.assertTrue(self.state.scan_started)
+        self.assertTrue(self.state.wait_for_start(0.01))
+        self.assertEqual(json.loads(self.req("POST", "/api/start", body={})[2])["first"], False)
+        self.assertTrue(json.loads(self.req("GET", "/api/status")[2])["started"])
+
     def test_heartbeat(self):  # U-UI-11
         self.assertIsNone(self.state.last_beat)
         self.assertEqual(self.req("POST", "/api/heartbeat", body={})[0], 200)
@@ -195,6 +208,10 @@ class PageTests(TempDirTest):
 
     def read(self, name):
         with open(os.path.join(ui.HERE, name), encoding="utf-8") as fh:
+            return fh.read()
+
+    def read_module(self, name):
+        with open(os.path.join(os.path.dirname(os.path.abspath(ui.__file__)), name), encoding="utf-8") as fh:
             return fh.read()
 
     def js_without_comments(self):
@@ -352,6 +369,33 @@ class PageTests(TempDirTest):
         links = js[js.index("const links = el("):js.index("if (links.children.length)")]
         self.assertLess(links.index("f.revoke.url"), links.index("guide.console.url"))
 
+    def test_nothing_is_read_until_the_page_asks(self):  # U-UI-45
+        """The link opening a browser must not be what makes a machine-wide read of every credential begin."""
+        st = ui.State(self.tmp)
+        self.assertFalse(st.scan_started)
+        self.assertFalse(st.snapshot()["started"])
+        self.assertFalse(st.wait_for_start(0.01))          # nobody asked: the wait does not pass
+        self.assertTrue(st.request_start())                # the press
+        self.assertTrue(st.wait_for_start(0.01))
+        self.assertTrue(st.snapshot()["started"])
+        self.assertFalse(st.request_start())               # pressing twice starts one scan
+
+    def test_the_page_offers_the_button_and_the_cli_waits(self):  # U-UI-47
+        js = self.js_without_comments()
+        # The scan screen is a control before it is a view.
+        self.assertIn("if (!state.started && !state.findings) return box.append(renderReady(wrap));", js)
+        self.assertIn('post("/api/start", {})', js)
+        for key in ("scanReady:", "scanReadySub:", "scanStart:", "scanStarting:", "scanStartFailed:"):
+            self.assertIn(key, self.read("app.js"))
+        # A page that reconnects mid-scan, or opens a finished one, does not offer to start it again.
+        self.assertIn("state.started = !!s.started || !!s.finished;", js)
+        self.assertIn("state.started = !!ev.started || !!ev.finished;", js)
+        # The scanner waits for the press, and says so rather than looking hung.
+        cli_src = self.read_module("cli.py")
+        self.assertIn("view.state.wait_for_start()", cli_src)
+        self.assertIn("Waiting for Start scan in the browser view.", cli_src)
+        self.assertLess(cli_src.index("view.state.wait_for_start()"), cli_src.index("for k, name in enumerate"))
+
     def test_the_list_is_ordered_by_what_it_opens(self):  # U-UI-41
         """The browser view and the report must not disagree about what to do first."""
         from afterprompt import impact
@@ -458,6 +502,16 @@ class CliTests(TempDirTest):
                 time.sleep(0.05)
             port, token = int(m.group(2)), m.group(3)
             h = {"Authorization": f"Bearer {token}"}
+            # Nothing happens until the page asks: the scanner is sitting on the Start screen.
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request("GET", "/api/status", headers=h)
+            self.assertFalse(json.loads(c.getresponse().read())["started"])
+            c.close()
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request("POST", "/api/start", body="{}",
+                      headers=dict(h, **{"Content-Type": "application/json"}))
+            self.assertEqual(c.getresponse().status, 200)
+            c.close()
             for _ in range(600):                     # poll status until the scan finishes, like the page does
                 c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
                 c.request("GET", "/api/status", headers=h)

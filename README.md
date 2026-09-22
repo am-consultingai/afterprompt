@@ -174,15 +174,22 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
 
 ## The browser view (`--ui`)
 
-`--ui` prints a link and serves a live view of the scan to your browser. It has three screens:
+`--ui` prints a link and hands the scan over to your browser. **It does not start scanning.** The page opens on
+a Start screen that has read nothing: it names the steps it would take and what the scan is set to do, and the
+scan begins when you press **Start scan**. Until then the run sits waiting, and Ctrl-C ends it having read
+nothing. It has four screens:
 
-- **Scan** — one line per step, each staying on screen with what it found, a progress bar where the total is
-  knowable and an honest counter where it is not, and the console output.
-- **Credentials** — everything found, grouped by vendor (or by urgency, or by the AI tool it leaked into), with
-  only non-empty groups shown and each group collapsible. Choosing one shows where it leaked, whether a copy is
-  still on disk, and **what to do about it**: numbered steps from that vendor's own documentation, a link
-  straight to the page where you revoke it, its audit log where one exists, and a tick that is remembered by
-  value hash so the next scan still knows you have done it.
+- **Scan** — before the press, the Start screen. After it, one line per step, each staying on screen with what
+  it found, a progress bar where the total is knowable and an honest counter where it is not, and the console
+  output.
+- **Credentials** — everything found, ordered worst first by what the credential opens (spend money, reach
+  stored data, act as you, one service), with the first three named at the top. Grouped by vendor, or by what
+  it opens, or by the AI tool it leaked into; only non-empty groups are shown and each is collapsible. Many
+  values of one kind from one place fold into a single row that opens, so one noisy transcript cannot fill the
+  list. Choosing one shows where it leaked, whether a copy is still on disk, and **what to do about it**:
+  numbered steps from that vendor's own documentation, a link straight to the page where you revoke it, its
+  audit log where one exists, and a tick that is remembered by value hash so the next scan still knows you have
+  done it.
 - **Settings** — the defaults for the next scan (depth, disk cap, workers, report styling, SARIF) and this
   page's own preferences. Changes apply immediately and are saved in `~/.afterprompt/settings.json`, which the
   CLI reads as its defaults; a command-line flag still wins.

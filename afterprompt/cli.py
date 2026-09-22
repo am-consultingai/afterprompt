@@ -560,6 +560,16 @@ def run(argv, emit):
         view.state.set_stages(stages, DESCRIPTIONS)
         progress.set_sink(lambda stage, done, total, note:
                           view.state.progress_update(PROGRESS_STAGE.get(stage, stage), done, total, note))
+        # The link opens a page that reads nothing yet. A scan opens every file this machine keeps, so it
+        # begins when someone presses Start scan, not because a browser was pointed at it.
+        say("Waiting for Start scan in the browser view. Ctrl-C stops without scanning anything.")
+        try:
+            view.state.wait_for_start()
+        except KeyboardInterrupt:
+            say("")
+            say("Nothing was scanned.")
+            stop_ui(view)
+            return EXIT_INTERRUPTED
     t0 = time.monotonic()
     current = None
     try:

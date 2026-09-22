@@ -20,6 +20,12 @@
     refusedText: "The scanner refused this page's key. Open the link printed in the terminal again.",
     connectionLost: "Lost the connection to the scanner. It will keep trying; the scan itself is unaffected and " +
                     "its report is written to disk either way.",
+    scanReady: "Ready to scan", scanStart: "Start scan", scanStarting: "Starting…",
+    scanReadySub: "Nothing has been read yet. The scan opens the history your AI tools keep on this machine, " +
+                  "reads the credentials already set up here, and looks for one inside the other. It stays on " +
+                  "this machine: nothing is uploaded, and it starts when you press the button.",
+    scanWillDo: "This scan will", scanSteps: "Steps",
+    scanStartFailed: "Could not start the scan — the scanner may have closed. Run it again from the terminal.",
     scanRunning: "Scanning", scanDone: "Scan finished",
     scanRunningSub: "Each step stays on screen with what it found. You can move to Settings and back; the scan " +
                     "keeps running.",
@@ -166,7 +172,7 @@
     screen: ["scan", "findings", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
     collapsed: {}, unfolded: {}, settings: null, about: null, statuses: {}, checking: {},
-    conn: "connecting", notice: null,
+    conn: "connecting", notice: null, started: false, starting: false,
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -231,8 +237,55 @@
   }
 
   // ---- scan screen
+  function renderReady(wrap) {
+    wrap.append(el("h2", TEXT.scanReady), el("p", TEXT.scanReadySub, "sub"));
+    if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
+    if (state.notice) wrap.append(note(state.notice, "warning"));
+
+    const go = el("button", state.starting ? TEXT.scanStarting : TEXT.scanStart, "primary");
+    go.type = "button";
+    go.disabled = !!state.starting;
+    go.addEventListener("click", startScan);
+    wrap.append(el("div", null, "ready-go")).lastChild.append(go);
+
+    // What it will do, in the words the Settings screen uses, so the button is never a surprise.
+    const field = ((state.settings && state.settings.fields) || []).find((f) => f.key === "mode");
+    const chosen = field && (field.choices || []).find((c) => c.value === setting("mode"));
+    if (chosen) wrap.append(el("p", `${TEXT.scanWillDo}: ${chosen.label}`, "sub"));
+
+    // The steps it will take, greyed: the same list that fills in while it runs.
+    const list = el("ol", null, "phases");
+    for (const s of state.stages) {
+      const li = el("li", null, "phase");
+      const head = el("div", null, "phase-head");
+      head.append(icon("dot", "quiet"), el("span", s.label, "phase-name"));
+      li.append(head);
+      list.append(li);
+    }
+    if (state.stages.length) wrap.append(el("p", TEXT.scanSteps, "field-label"), list);
+    return wrap;
+  }
+
+  async function startScan() {
+    state.starting = true;
+    render();
+    const r = await post("/api/start", {}).catch(() => null);
+    if (!r || !r.ok) {
+      state.starting = false;
+      state.notice = TEXT.scanStartFailed;
+      render();
+      return;
+    }
+    state.started = true;
+    state.starting = false;
+    state.notice = null;
+    render();
+  }
+
   function renderScan(box) {
     const wrap = el("section", null, "column");
+    // Before the scan: the page is a control, not a view. Nothing on this machine has been read yet.
+    if (!state.started && !state.findings) return box.append(renderReady(wrap));
     const running = !state.findings;
     wrap.append(el("h2", running ? TEXT.scanRunning : TEXT.scanDone));
     wrap.append(el("p", running ? TEXT.scanRunningSub : TEXT.pickOne, "sub"));
@@ -1157,6 +1210,7 @@
     const s = await r.json();
     state.stages = s.stages;
     state.progress = s.progress || {};
+    state.started = !!s.started || !!s.finished;
     if (s.finished && !state.findings) await loadFindings();
     else if (state.screen === "scan") render();
   }
@@ -1212,6 +1266,7 @@
       state.stages = ev.stages;
       state.progress = ev.progress || {};
       state.lines = ev.lines || [];
+      state.started = !!ev.started || !!ev.finished;
       setState(ev.finished ? "done" : "live");
       if (ev.finished) loadFindings(); else render();
     } else if (ev.type === "line") {
@@ -1232,6 +1287,9 @@
       if (state.screen === "findings") render();
     } else if (ev.type === "finished") {
       loadFindings();
+    } else if (ev.type === "started") {
+      state.started = true;
+      refresh();
     } else if (ev.type === "stage" || ev.type === "stages") {
       refresh();
     }
