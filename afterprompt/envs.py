@@ -475,13 +475,6 @@ def containers(cfg, exe="docker", run=subprocess.run):
     return out
 
 
-def images(cfg, exe="docker", run=subprocess.run):
-    if not _probe(cfg).which(exe):
-        return None
-    rows = _lines([exe, "images", "--format", "{{.Repository}}:{{.Tag}}"], run)
-    return None if rows is None else [r for r in rows if r and not r.startswith("<none>")]
-
-
 def devcontainers(home):
     """A .devcontainer/devcontainer.json says a container exists, even when it is not running now."""
     if not home:
@@ -524,7 +517,7 @@ def survey(cfg, envs_found=None, run=subprocess.run, env=None):
             continue
         kid = kind["id"]
         if describing_elsewhere and not env.get("AFTERPROMPT_TEST_CONTAINERS") \
-                and kid in ("docker", "podman", "docker_image", "lima", "multipass"):
+                and kid in ("docker", "podman", "lima", "multipass"):
             row.update(status="not_checked", why="this scan describes another machine")
             rows.append(row)
             continue
@@ -554,11 +547,6 @@ def survey(cfg, envs_found=None, run=subprocess.run, env=None):
                 else:
                     row.update(status="absent" if not found else "found_not_scanned",
                                why="none of them are running" if found else None)
-        elif kid == "docker_image":
-            # Listed, never opened: an image holds no conversation, which is the only thing we look for.
-            found = images(cfg, "docker", run)
-            row.update(found=0 if found is None else len(found),
-                       status="not_installed" if found is None else ("out_of_scope" if found else "absent"))
         elif kid == "devcontainer":
             found = devcontainers(cfg.home)
             row.update(found=len(found), status="found_not_scanned" if found else "absent",

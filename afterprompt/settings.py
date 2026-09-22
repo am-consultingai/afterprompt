@@ -83,8 +83,9 @@ FIELDS = [
           # the credential reaches, so a settings file written by an older version still selects the right thing.
           choices=[("vendor", "Vendor"), ("severity", "What it opens"), ("tool", "AI tool"),
                    ("machine", "Machine")], scope="view"),
-    Field("collapse_groups", "bool", False, "Start with groups collapsed",
-          "Useful when a scan finds a lot: open one group at a time.", scope="view"),
+    Field("collapse_groups", "bool", True, "Start with groups collapsed",
+          "A scan that finds a lot opens as a wall of rows otherwise. Turn this off to see every credential "
+          "at once.", scope="view"),
     Field("show_review", "bool", True, "Show items to review",
           "Weaker evidence, shown under the credentials to rotate. Turning this off hides them from this page "
           "only; the report still lists them.", scope="view"),

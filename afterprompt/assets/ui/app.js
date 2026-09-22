@@ -76,6 +76,8 @@
     folded: "values of this kind, in the same place", unfold: "Show each one", refold: "Fold them back",
     otherCreds: "Other credentials", privateKeys: "Private keys", sessionCookies: "Session cookies",
     passwords: "Passwords in text", connectionStrings: "Connection strings",
+    apiKeys: "API keys and tokens", randomTokens: "Random-looking tokens",
+    fromEnvFiles: "Secrets from your .env files",
     unverified: "Not confirmed in the vendor's documentation",
     partlyVerified: "Parts of this are not confirmed in the vendor's documentation",
     settingsScan: "The next scan", settingsView: "This page",
@@ -115,7 +117,26 @@
     chevron: "M6 4l4 4-4 4",
     spinner: "M8 1.8v2.6M8 11.6v2.6M14.2 8h-2.6M4.4 8H1.8M12.4 3.6l-1.8 1.8M5.4 10.6l-1.8 1.8M12.4 12.4l-1.8-1.8M5.4 5.4 3.6 3.6",
     external: "M6.5 3.5h-3v9h9v-3M9.5 3.5h3v3M12.5 3.5 7 9",
+    machine: "M2.5 3.5h11v7h-11zM5.5 13h5M8 10.5V13",
+    box: "M8 1.8 13.5 4.6v6.8L8 14.2 2.5 11.4V4.6zM2.5 4.6 8 7.4l5.5-2.8M8 7.4V14",
+    search: "M7.2 2.6a4.6 4.6 0 1 0 0 9.2 4.6 4.6 0 0 0 0-9.2ZM10.6 10.6 14 14",
+    file: "M9 1.8H4.5v12.4h7V4.3ZM9 1.8V4.3h2.5",
+    database: "M8 1.9c2.8 0 5 .8 5 1.8S10.8 5.5 8 5.5 3 4.7 3 3.7s2.2-1.8 5-1.8ZM3 3.7v8.6c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V3.7M3 8c0 1 2.2 1.8 5 1.8S13 9 13 8",
+    chat: "M2.6 3.4h10.8v7.2H7.4L4.3 13.2v-2.6H2.6z",
+    doc: "M3.6 2.4h8.8v11.2H3.6zM5.8 5.6h4.4M5.8 8h4.4M5.8 10.4h2.8",
+    broom: "M8 1.8v6.4M4.4 8.2h7.2l1 5.9H3.4zM6.4 8.2 5.8 14M9.6 8.2l.6 5.8",
   };
+
+  // What each step does, as a picture. A list of eleven sentences reads as a wall; the same list with a mark
+  // in front of each reads as a shape first.
+  const STEP_ICON = {
+    environments: "box", discover: "search", env_scan: "box", databases: "database", manifest: "file",
+    vendor_raw: "key", vendor_store: "key", expand: "box", entropy_raw: "key", entropy_store: "key",
+    known: "key", prompts: "chat", triage: "check", report: "doc", cleanup: "broom",
+  };
+  // A detail row is about a machine, a tool, a file or a value; the scanner says which.
+  const ROW_ICON = { machine: "machine", container: "box", tool: "chat", file: "file", database: "database",
+                     key: "key", doc: "doc", note: "dot" };
 
   const $ = (id) => document.getElementById(id);
   const el = (tag, text, cls) => {
@@ -270,6 +291,8 @@
     const ul = el("ul", null, "step-detail");
     for (const r of rows) {
       const li = el("li", null, r.tone ? "tone-" + r.tone : null);
+      if (r.vendor && REF.vendors.icons[r.vendor]) li.append(vendorMark(r.vendor));
+      else li.append(icon(ROW_ICON[r.icon] || "dot", r.tone === "warn" ? "warning" : "quiet"));
       li.append(el("span", r.label, "step-label"));
       if (r.note) li.append(el("span", r.note, "step-note"));
       ul.append(li);
@@ -299,7 +322,8 @@
           head2.addEventListener("click", () => { state.openStep[s.name] = !open; render(); });
         }
         head2.append(live && s.done ? icon("check", "success")
-                     : live && s.current ? icon("spinner", "accent", true) : icon("dot", "quiet"),
+                     : live && s.current ? icon("spinner", "accent", true)
+                     : icon(STEP_ICON[s.name] || "dot", "quiet"),
                      el("span", s.label, "phase-name"));
         const p = live ? state.progress[s.name] : null;
         if (live && s.done && s.summary) head2.append(el("span", s.summary, "phase-note"));
@@ -446,16 +470,25 @@
   }
 
   function vendorOf(f) {
+    // The scanner names the service where it can, from the pattern that matched or from the variable the
+    // value was stored under — an AZURE_STORAGE_CONNECTION_STRING in a .env belongs to Azure, not to
+    // "other credentials".
+    if (f.vendor) return f.vendor;
     for (const p of f.patterns || []) {
       const v = REF.vendors.patterns[p];
       if (v) return v;
     }
-    if (f.category === "live_credential") return null;          // grouped by its store instead
     const p = (f.patterns || [])[0] || "";
     if (/private_key|openssh|pkcs|pgp|putty|age_secret/.test(p)) return TEXT.privateKeys;
     if (/cookie|session/.test(p)) return TEXT.sessionCookies;
-    if (/password|htpasswd|basic_auth|user_password/.test(p)) return TEXT.passwords;
-    if (/conn_string|url_with_credentials/.test(p)) return TEXT.connectionStrings;
+    if (/password|htpasswd|basic_auth|user_password|prose/.test(p)) return TEXT.passwords;
+    if (/conn_string|url_with_credentials|_url|dsn/.test(p)) return TEXT.connectionStrings;
+    if (f.category === "prompt") return TEXT.passwords;
+    // What is left has no vendor and no shape worth its own name: group it by what it is instead of
+    // dropping every one of them into a single "other" bucket.
+    if (/jwt|bearer|http_header|auth_header|api_key|prefixed_key|token/.test(p)) return TEXT.apiKeys;
+    if (/hex|generic|entropy/.test(p) || f.category === "entropy") return TEXT.randomTokens;
+    if (f.still_on_disk && f.still_on_disk.length) return TEXT.fromEnvFiles;
     return null;
   }
 
@@ -1248,7 +1281,7 @@
   }
 
   // ---- data
-  async function loadFindings() {
+  async function loadFindings(done) {
     const r = await api("/api/findings");
     if (!r.ok) return;
     const { findings, checklist, statuses } = await r.json();
@@ -1260,8 +1293,10 @@
     const all = items().map((i) => i.f.hash);
     // Selection survives by id, never by index; if it is gone, take its nearest surviving neighbour.
     if (!all.includes(before)) state.selected = all[0] || null;
-    setState("done");
-    if (state.screen === "scan" && !wantedScreen) show("findings");   // the result is what was asked for
+    if (done) setState("done");
+    // The end of the scan moves the screen, because the result is what was asked for. Findings that arrive
+    // mid-scan, or from the last scan, fill the tab and wait to be opened.
+    if (done && state.screen === "scan" && !wantedScreen) show("findings");
     else render();
     renderTabs();
   }
@@ -1276,7 +1311,8 @@
     state.progress = s.progress || {};
     state.started = !!s.started || !!s.finished;
     state.details = s.details || {};
-    if (s.finished && !state.findings) await loadFindings();
+    if (s.finished && !state.findings) await loadFindings(true);
+    else if (s.findings_ready && !state.findings) await loadFindings(false);
     else if (state.screen === "scan") render();
   }
 
@@ -1334,7 +1370,8 @@
       state.started = !!ev.started || !!ev.finished;
       state.details = ev.details || {};
       setState(ev.finished ? "done" : "live");
-      if (ev.finished) loadFindings(); else render();
+      if (ev.finished) loadFindings(true);
+      else { if (ev.findings_ready) loadFindings(false); render(); }
     } else if (ev.type === "line") {
       state.lines.push(ev.text);
       if (state.screen === "scan") render();
@@ -1351,8 +1388,10 @@
         state.statuses[h] = Object.assign({}, state.statuses[h], { seen });
       }
       if (state.screen === "findings") render();
+    } else if (ev.type === "findings") {
+      loadFindings(false);
     } else if (ev.type === "finished") {
-      loadFindings();
+      loadFindings(true);
     } else if (ev.type === "detail") {
       state.details[ev.stage] = ev.rows || [];
       if (state.screen === "scan") render();

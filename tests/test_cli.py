@@ -31,41 +31,30 @@ class StageDetailTests(TempDirTest):
         c = make_cfg(self.tmp, "linux", os.path.join(self.tmp, "home"))
         return c
 
-    def survey(self, rows):
-        cfg = self.cfg()
-        os.makedirs(os.path.join(cfg.run_dir, "envs"), exist_ok=True)
-        write_json(os.path.join(cfg.run_dir, "envs", "survey.json"), rows)
-        return cfg
+    def envs(self, *pairs):
+        return [namedtuple("E", "label kind")(label, kind) for label, kind in pairs]
 
-    def test_environments_names_what_is_here(self):  # U-CLI-D1
-        """What this machine has, not the catalogue of what Afterprompt can look for."""
-        cfg = self.survey([{"label": "This machine", "found": 1, "status": "scanned"},
-                           {"label": "Docker containers", "found": 2, "status": "scanned",
-                            "names": ["api-1", "worker-1"]},
-                           {"label": "WSL distributions", "found": 0, "status": "absent"},
-                           {"label": "Podman containers", "found": 0, "status": "not_installed"},
-                           {"label": "GitHub Codespace", "found": 0, "status": "not_applicable"}])
-        rows = cli.stage_detail(cfg, "environments", {}, {})
-        self.assertEqual([r["label"] for r in rows[:2]], ["This machine", "Docker containers"])
-        self.assertEqual(rows[1]["note"], "api-1, worker-1")       # the names, not just the count
-        # The three that are not here are one quiet line between them, so a clean result still says so.
-        self.assertEqual(rows[-1]["label"], "Not on this machine")
-        self.assertEqual(rows[-1]["note"], "WSL distributions, Podman containers, GitHub Codespace")
-        self.assertEqual(len(rows), 3)
+    def test_environments_are_the_ones_this_machine_has(self):  # U-CLI-D1
+        """The step listed every kind Afterprompt knows how to look for, so two real rows sat under nine
+        saying "none". It lists what is here, and the count of rows is the count of environments."""
+        found = self.envs(("WSL: Ubuntu-E (this machine)", "host"),
+                          ("Docker: api-1", "docker"), ("Docker: worker-1", "docker"))
+        rows = cli.stage_detail(self.cfg(), "environments", {}, {"envs": found})
+        self.assertEqual([r["label"] for r in rows],
+                         ["WSL: Ubuntu-E (this machine)", "Docker: api-1", "Docker: worker-1"])
+        self.assertEqual(len(rows), len(found))                    # the list is the count
+        self.assertEqual(rows[0]["icon"], "machine")               # and each row says what kind of thing it is
+        self.assertEqual(rows[1]["icon"], "container")
+        # Nothing about what is absent: that is coverage, and it belongs in the report.
+        self.assertNotIn("Not on this machine", [r["label"] for r in rows])
 
-    def test_images_are_named_as_never_opened(self):  # U-CLI-D6
-        """They are on the machine, and a key in a layer is a different tool's problem."""
-        cfg = self.survey([{"label": "This machine", "found": 1, "status": "scanned"},
-                           {"label": "Docker images", "found": 53, "status": "out_of_scope",
-                            "why": "An image is a filesystem nobody has typed into."}])
-        rows = cli.stage_detail(cfg, "environments", {}, {})
-        images = [r for r in rows if r["label"] == "Docker images"][0]
-        self.assertIn("53 here, never opened", images["note"])
-        self.assertIn("nobody has typed into", images["note"])
-        self.assertEqual(images["tone"], "quiet")
-        # No images on the machine, nothing to say about them.
-        cfg = self.survey([{"label": "Docker images", "found": 0, "status": "out_of_scope"}])
-        self.assertNotIn("Docker images", [r["label"] for r in cli.stage_detail(cfg, "environments", {}, {})])
+    def test_the_windows_profile_is_named_where_it_is_found(self):  # U-CLI-D6
+        """On WSL a second filesystem is read as part of this machine, and the step that finds it says so."""
+        sources = {"windows_home": "/mnt/c/Users/sam", "installed": [{"product": "Cursor", "status": "scanned"}]}
+        rows = cli.stage_detail(self.cfg(), "discover", {}, {"sources": sources})
+        self.assertEqual(rows[0]["label"], "Windows profile")
+        self.assertIn("/mnt/c/Users/sam", rows[0]["note"])
+        self.assertEqual(rows[1]["vendor"], "Cursor")              # a tool row carries its mark
 
     def test_listing_files_breaks_down_by_tool(self):  # U-CLI-D2
         info = {"per_source": [{"tool": "Claude Code", "side": "wsl", "files": 7388, "bytes": 1_200_000_000}],
@@ -81,7 +70,8 @@ class StageDetailTests(TempDirTest):
 
     def test_a_resumed_step_still_says_what_it_found(self):  # U-CLI-D5
         """Resuming used to leave a row of ticks with nothing behind them; the marker holds what it found."""
-        src = open(os.path.join(os.path.dirname(os.path.abspath(cli.__file__)), "cli.py"), encoding="utf-8").read()
+        with open(os.path.join(os.path.dirname(os.path.abspath(cli.__file__)), "cli.py"), encoding="utf-8") as fh:
+            src = fh.read()
         resume = src[src.index("already done"):src.index("if view:\n                view.state.stage(name)")]
         self.assertIn("done_info = read_json(marker, {}) or {}", resume)
         self.assertIn("view.state.detail(name, stage_detail(cfg, name, done_info, ctx))", resume)

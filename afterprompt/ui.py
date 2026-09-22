@@ -143,6 +143,16 @@ class State:
         """Block until the page asks. False means the wait timed out and nothing was asked for."""
         return self._begin.wait(timeout)
 
+    def offer_findings(self, path):
+        """Findings the page may show before this scan ends: a partial pass taken mid-scan, or the ones the
+        last scan left behind. The scan is not finished; there is simply something to look at already."""
+        if not path or not os.path.exists(path):
+            return False
+        with self.lock:
+            self.findings_path = path
+        self._publish({"type": "findings"})
+        return True
+
     def finish(self, findings_path):
         with self.lock:
             self.finished = True
@@ -156,6 +166,7 @@ class State:
                                for s in self.stages],
                     "progress": dict(self.progress),
                     "details": {k: list(v) for k, v in self.details.items()},
+                    "findings_ready": bool(self.findings_path),
                     "started": self.scan_started,
                     "finished": self.finished, "lines": self.lines[-400:]}
 

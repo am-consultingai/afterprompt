@@ -436,16 +436,12 @@ class SurveyTests(TempDirTest):
         self.assertIn("--containers all", rows["docker"]["why"])
         self.assertEqual(rows["docker"]["names"], ["api", "db"])
 
-    def test_images_are_listed_and_deliberately_not_opened(self):  # U-ENV-27
-        """An image holds no conversation history, so it is out of scope rather than a gap."""
-        cfg = self.cfg()
-        run = self.fake_run({"docker ps": "", "docker images": "myimage:latest\npostgres:16\n"})
-        rows = self.rows(cfg, [envs.host(cfg)], run=run)
-        self.assertEqual(rows["docker_image"]["found"], 2)
-        self.assertEqual(rows["docker_image"]["status"], "out_of_scope")
-        kind = [k for k in envs.catalogue()["kinds"] if k["id"] == "docker_image"][0]
-        self.assertEqual(kind["scan"], "never")
-        self.assertIn("no conversation history", kind["why"])
+    def test_images_are_not_a_kind_at_all(self):  # U-ENV-27
+        """They were listed as out of scope, which still put them in front of people and invited the
+        question. An image is a filesystem nobody has typed into, so it holds no conversation history and
+        there is nothing here to opt out of."""
+        self.assertNotIn("docker_image", [k["id"] for k in envs.catalogue()["kinds"]])
+        self.assertFalse(hasattr(envs, "images"))
 
     def test_a_missing_cli_is_not_an_error(self):  # U-ENV-22
         cfg = self.cfg()

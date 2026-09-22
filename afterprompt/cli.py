@@ -167,10 +167,28 @@ def status(base, out=print):
     return EXIT_OK
 
 
+def last_findings(base):
+    """The findings the most recent finished scan left behind, if any are still on disk."""
+    runs = os.path.join(base, "runs")
+    if not os.path.isdir(runs):
+        return None
+    for rid in sorted(os.listdir(runs), reverse=True):
+        meta = read_json(os.path.join(runs, rid, "run.json"), {}) or {}
+        if not meta.get("finished"):
+            continue
+        path = os.path.join(meta.get("report_dir") or os.path.join(runs, rid), "findings.json")
+        if os.path.exists(path):
+            return path
+    return None
+
+
 def start_ui(base):
     """Start the loopback UI and print its one-time link. Console lines go to the page as well."""
     from afterprompt import ui
     state = ui.State(base)
+    # Opening the view with nothing in it wastes the last scan. Its findings are already on disk, masked, so
+    # the Credentials screen has something to show while the Start screen waits to be pressed.
+    state.offer_findings(last_findings(base))
     view = ui.Server(state).start()
     # Printed, not logged: the key must not end up in run.log.
     print(f"Browser view: {view.url}", flush=True)
@@ -423,10 +441,32 @@ def stage_result_line(name, info):
     return ""
 
 
+# The AI tools whose mark the page already has, so a row about one carries it.
+TOOL_VENDOR = {"Claude Code": "Anthropic", "Claude Desktop": "Anthropic", "Cursor": "Cursor",
+               "GitHub Copilot": "GitHub", "Gemini CLI": "Google", "Codex CLI": "OpenAI",
+               "Google Antigravity": "Google", "Ollama": "Ollama", "OpenCode": "OpenCode"}
+KIND_NOTE = {"host": "the filesystem this scan runs on",
+             "wsl": "its own home folder, scanned from inside itself",
+             "docker": "a container's own home folder",
+             "podman": "a container's own home folder",
+             "folder": "an extra home folder"}
 ENV_STATUS_NOTE = {"absent": "none on this machine", "not_installed": "not installed",
                    "not_applicable": "does not apply here", "not_checked": "not checked",
                    "skipped": "skipped", "out_of_scope": "listed, not opened",
                    "found_not_scanned": "found, not scanned", "scanned": "scanned"}
+
+
+def partial_findings(cfg, ctx, meta):
+    """A findings file built mid-scan, from what has been found so far.
+
+    Nothing here is provisional in the sense of being wrong: it is the same triage over fewer inputs, so a
+    credential it shows was found, and the ones still to come are added when the scan reaches them."""
+    from afterprompt import report, triage
+    triage.build(cfg, ctx["sources"])
+    data = report.build_findings(cfg, ctx["sources"], meta)
+    path = cfg.w("partial-findings.json")
+    write_json(path, data)
+    return path
 
 
 def stage_detail(cfg, name, info, ctx):
@@ -436,50 +476,40 @@ def stage_detail(cfg, name, info, ctx):
     something a person can check. Everything here comes from what the step already wrote down, so producing it
     costs nothing and cannot disagree with the report."""
     rows = []
-    add = lambda label, note=None, tone=None: rows.append(  # noqa: E731
-        {"label": str(label), "note": None if note is None else str(note), "tone": tone})
+    def add(label, note=None, tone=None, kind="note", vendor=None):
+        rows.append({"label": str(label), "note": None if note is None else str(note), "tone": tone,
+                     "icon": kind, "vendor": vendor})
     if name == "environments":
-        # What is on this machine, not the catalogue of what Afterprompt knows how to look for. The kinds
-        # that are not here are worth one line between them: enough that a clean result never looks like a
-        # gap, not so much that eleven rows of "none" bury the two that matter. The report's coverage
-        # section is where the full list belongs.
-        elsewhere, images = [], None
-        for row in read_json(os.path.join(cfg.run_dir, "envs", "survey.json"), []) or []:
-            status, found = row.get("status"), row.get("found") or 0
-            if status in ("scanned", "scanned_share", "not_scanned", "found_not_scanned", "skipped"):
-                names = ", ".join(row.get("names") or [])
-                note = names or row.get("why") or ENV_STATUS_NOTE.get(status, status)
-                add(row.get("label"), note, "ok" if status.startswith("scanned") else "warn")
-            elif status == "out_of_scope" and found:
-                images = row
-            else:
-                elsewhere.append(row.get("label"))
-        if images:
-            # Images are on the machine and are never opened. Saying so is the point: a key baked into a
-            # layer is a real problem, and not one this tool is looking for.
-            add(images.get("label"), f"{images['found']} here, never opened — "
-                                     f"{images.get('why') or 'nothing was ever typed into one'}", "quiet")
-        if elsewhere:
-            add("Not on this machine", ", ".join(elsewhere), "quiet")
+        # The environments this machine actually has, one row each, so the list and the count of them are
+        # the same number. What is absent is coverage, and coverage belongs in the report.
+        for e in ctx.get("envs") or []:
+            add(e.label, KIND_NOTE.get(e.kind, e.kind), "ok",
+                "machine" if e.kind in ("host", "wsl") else "container")
     elif name == "discover":
+        # The Windows profile is a second filesystem read as part of this machine, and it is found here.
+        win = (ctx.get("sources") or {}).get("windows_home")
+        if win:
+            add("Windows profile", f"{win} — read as part of this machine", "ok", "machine")
         for i in (ctx.get("sources") or {}).get("installed", []):
             label = f"{i['product']} [{i['env']}]" if i.get("env") else i.get("product")
             add(label, i.get("note") or ENV_STATUS_NOTE.get(i.get("status"), i.get("status")),
-                "ok" if i.get("status") == "scanned" else "warn")
+                "ok" if i.get("status") == "scanned" else "warn", "tool", TOOL_VENDOR.get(i.get("product")))
         for folder in (ctx.get("sources") or {}).get("unknown_tools", [])[:10]:
             add(folder.get("folder") if isinstance(folder, dict) else folder,
-                "looks like AI tool history, but no tool Afterprompt knows keeps it there", "warn")
+                "looks like AI tool history, but no tool Afterprompt knows keeps it there", "warn", "file")
     elif name == "env_scan":
         for env in ctx.get("env_results") or []:
             add(env.get("label"), env.get("reason") or ENV_STATUS_NOTE.get(env.get("status"), env.get("status")),
-                "ok" if str(env.get("status", "")).startswith("scanned") else "warn")
+                "ok" if str(env.get("status", "")).startswith("scanned") else "warn", "container")
     elif name == "databases":
-        add(f"{info.get('ok', 0)} of {info.get('databases', 0)} chat databases read", None, "ok")
+        add(f"{info.get('ok', 0)} of {info.get('databases', 0)} chat databases read", None, "ok", "database")
         for f in info.get("failed", [])[:20]:
-            add(f.get("path"), f"{f.get('error')} — quit the app that owns it and run the scan again", "warn")
+            add(f.get("path"), f"{f.get('error')} — quit the app that owns it and run the scan again",
+                "warn", "database")
     elif name == "manifest":
         for src in info.get("per_source", []):
-            add(f"{src['tool']} ({src['side']})", f"{src['files']:,} files, {human_bytes(src['bytes'])}")
+            add(f"{src['tool']} ({src['side']})", f"{src['files']:,} files, {human_bytes(src['bytes'])}",
+                None, "tool", TOOL_VENDOR.get(src["tool"]))
         for label, n in (("Shipped app and plugin code, skipped", info.get("vendored")),
                          ("This scan's own session, skipped", info.get("self")),
                          ("Could not be read", info.get("unreadable"))):
@@ -504,7 +534,7 @@ def stage_detail(cfg, name, info, ctx):
             add(f"Dismissed: {reason}", f"{n:,}", "quiet")
     elif name == "report":
         for f in ("report.html", "report.md", "findings.json"):
-            add(f, os.path.join(cfg.report_dir, f), "ok")
+            add(f, os.path.join(cfg.report_dir, f), "ok", "doc")
     return rows
 
 
@@ -700,6 +730,13 @@ def run(argv, emit):
             if line:
                 say(f"      {line}")
             log(f"=== stage {name} end ({info['elapsed_s']}s)")
+            if view and name in ("known", "prompts"):
+                # The live-credential check is the certain half of the answer, and it is done here. Triage it
+                # now and hand the page something real to read while the rest of the scan runs.
+                try:
+                    view.state.offer_findings(partial_findings(cfg, ctx, meta))
+                except Exception as err:  # noqa: BLE001 - a preview is never worth failing a scan for
+                    log(f"partial findings after {name} failed: {type(err).__name__}: {err}")
             if cfg.stop_after == name:
                 say(f"Stopped after {name} (AFTERPROMPT_STOP_AFTER).")
                 return EXIT_INTERRUPTED

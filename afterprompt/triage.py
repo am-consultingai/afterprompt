@@ -7,7 +7,7 @@ import time
 
 from afterprompt import catalogue, impact, manifest
 from afterprompt.entropy import KEEP as ENTROPY_KEEP
-from afterprompt.patterns import HEADER_ONLY, LABELS, REVOKE, ROTATE_B, SESSION_COOKIE, TIERS
+from afterprompt.patterns import HEADER_ONLY, LABELS, REVOKE, ROTATE_B, SESSION_COOKIE, TIERS, VENDORS
 from afterprompt.util import display_path, is_under, read_json, write_json
 
 # How many of each review category the report shows; findings.json keeps every one and the totals are exact.
@@ -85,6 +85,30 @@ SHAPE_HINTS = [
     (re.compile(r"JWT|SIGNING|SESSION", re.I),
      "Change the signing secret and sign every session out"),
 ]
+
+
+def key_vendor(key):
+    """Who issued a credential known only by the name it was stored under.
+
+    A key found in a .env matches no pattern, so nothing said who issued it and AZURE_STORAGE_CONNECTION_STRING
+    was filed under "other credentials" next to a password from a prompt. The same names that say where to
+    revoke it say whose it is."""
+    for rx, name in _KEY_REVOKE:
+        if rx.search(key or ""):
+            return VENDORS.get(name)
+    return None
+
+
+def finding_vendor(patterns, keys):
+    """The service a finding belongs to: what matched it, or failing that what it was stored under."""
+    for p in patterns or ():
+        if p in VENDORS:
+            return VENDORS[p]
+    for key in keys or ():
+        vendor = key_vendor(key)
+        if vendor:
+            return vendor
+    return None
 
 
 def key_revoke(key):
@@ -384,7 +408,8 @@ def build(cfg, sources, now=None):
                "locations": locs[:5], "decoded_only": all(h["decoded"] for h in f["hits"]),
                "still_on_disk": [{"store": res.disp(s["store"]), "key": s["key"]} for s in stores],
                "revoke": revoke, "reason": REASONS[reason_key], "context": f["ctx"], "entropy": f["entropy"],
-               "impact": impact.rank(f["patterns"], [s["key"] for s in stores])}
+               "impact": impact.rank(f["patterns"], [s["key"] for s in stores]),
+               "vendor": finding_vendor(f["patterns"], [s["key"] for s in stores])}
         if f["section"] == "rotate":
             rotate.append(rec)
         else:
@@ -434,7 +459,7 @@ def build(cfg, sources, now=None):
                 "tier": None, "tools": sorted({l["tool"] for l in locs}), "sides": sorted({l["side"] for l in locs}),
                 "files": len(locs), "occurrences": len(locs), "locations": summarize_locations(locs)[:5],
                 "decoded_only": False, "still_on_disk": [], "revoke": None, "reason": REASONS["entropy"],
-                "context": None, "entropy": g["e"], "impact": impact.DEFAULT})
+                "context": None, "entropy": g["e"], "impact": impact.DEFAULT, "vendor": None})
 
     # ---- prompts
     taken = set(findings)
@@ -448,7 +473,7 @@ def build(cfg, sources, now=None):
             "files": 1, "occurrences": 1, "locations": [{"display": f"{p['src']}, {p['when']}", "tool": "", "side": "",
                                                          "count": 1, "decoded": False}],
             "decoded_only": False, "still_on_disk": [], "revoke": None, "reason": REASONS["prompt"],
-            "context": p["ctx"], "entropy": p.get("e", 0.0), "impact": impact.DEFAULT})
+            "context": p["ctx"], "entropy": p.get("e", 0.0), "impact": impact.DEFAULT, "vendor": None})
 
     review_out, truncated = [], {}
     for cat in REVIEW_ORDER:

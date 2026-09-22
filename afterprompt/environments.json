@@ -52,20 +52,6 @@
       "note": "Same as Docker, through the podman CLI."
     },
     {
-      "id": "docker_image",
-      "label": "Docker images",
-      "platforms": [
-        "windows",
-        "macos",
-        "linux",
-        "wsl"
-      ],
-      "detect": "docker images",
-      "scan": "never",
-      "why": "An image is a filesystem nobody has typed into: it holds no conversation history, which is the only thing this tool looks for.",
-      "note": "A key baked into an image layer is a real problem and a different tool's job: this one reports credentials that reached an assistant."
-    },
-    {
       "id": "devcontainer",
       "label": "Dev container configuration",
       "platforms": [
