@@ -151,7 +151,14 @@ button.primary:disabled { background: var(--surface-2); color: var(--text-tertia
 .mono-mark { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0; color: var(--text-tertiary); }
 
 /* --- scan screen --------------------------------------------------------- */
-.phases { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 2px; }
+/* --- the scan, in four pieces of work ------------------------------------
+   Eleven steps in one column reads as a wall and says nothing about shape.
+   Grouped, it reads as: find what is here, read it, look, decide. */
+.phase-groups { margin-block-start: 22px; display: grid; gap: 18px; }
+.phase-group-head { display: flex; align-items: center; gap: 8px; padding-inline: 10px; }
+.phase-group-name { font-size: var(--text-xs); color: var(--text-tertiary);
+  font-weight: var(--weight-label); }
+.phases { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
 .phase { padding: 7px 10px; border-radius: var(--radius-row); }
 .phase.current { background: var(--surface-1); }
 .phase-head { display: flex; align-items: center; gap: 10px; }
@@ -160,6 +167,21 @@ button.primary:disabled { background: var(--surface-2); color: var(--text-tertia
 .phase.current .phase-name { color: var(--text-primary); font-weight: var(--weight-label); }
 /* The churning detail sits at the end, dim: it can change ten times a second without pulling the eye. */
 .phase-note { margin-inline-start: auto; font-size: var(--text-sm); color: var(--text-tertiary); text-align: end; }
+/* A step that found something is a control; one that did not is a line. */
+button.phase-head { inline-size: 100%; text-align: start; background: none; border: 0; font: inherit;
+  cursor: pointer; padding: 0; }
+button.phase-head:hover .phase-name { color: var(--text-primary); }
+button.phase-head .phase-note { margin-inline-end: 6px; }
+.phase-head .chev { flex: none; transition: transform var(--duration-hover) var(--ease-out); }
+.phase-head .chev.open { transform: rotate(90deg); }
+.step-detail { list-style: none; margin: 6px 0 4px; padding: 6px 0 2px 34px; display: grid; gap: 5px;
+  border-inline-start: 1px solid var(--border-subtle); margin-inline-start: 12px; }
+.step-detail li { display: flex; gap: 12px; align-items: baseline; font-size: var(--text-sm); }
+.step-detail .step-label { color: var(--text-secondary); flex: none; max-inline-size: 45%; overflow-wrap: anywhere; }
+.step-detail .step-note { color: var(--text-tertiary); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.step-detail .tone-ok .step-label { color: var(--success); }
+.step-detail .tone-warn .step-label { color: var(--warning); }
+.step-detail .tone-quiet .step-label { color: var(--text-tertiary); }
 .progress { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; padding-inline-start: 26px; }
 .track { position: relative; block-size: 6px; flex: 1; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .track i { display: block; block-size: 100%; background: var(--accent); transition: inline-size var(--duration-swap) var(--ease-out); }

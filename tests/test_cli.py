@@ -6,7 +6,8 @@ from collections import namedtuple
 from unittest import mock
 
 from afterprompt import __version__, cli, config, envs, worker
-from tests.helpers import Fixture, TempDirTest, requires_rg, write
+from afterprompt.util import write_json
+from tests.helpers import Fixture, TempDirTest, make_cfg, requires_rg, write
 
 
 def run_main(args, env):
@@ -21,6 +22,46 @@ def ns(**kw):
              include_keychain=False, windows_home=None)
     d.update(kw)
     return argparse.Namespace(**d)
+
+
+class StageDetailTests(TempDirTest):
+    """What a step shows when it is opened. Built from what the step already wrote down."""
+
+    def cfg(self):
+        c = make_cfg(self.tmp, "linux", os.path.join(self.tmp, "home"))
+        return c
+
+    def test_environments_names_what_it_found(self):  # U-CLI-D1
+        cfg = self.cfg()
+        os.makedirs(os.path.join(cfg.run_dir, "envs"), exist_ok=True)
+        write_json(os.path.join(cfg.run_dir, "envs", "survey.json"),
+                   [{"label": "This machine", "found": 1, "status": "scanned"},
+                    {"label": "Docker containers", "found": 2, "status": "scanned",
+                     "names": ["api-1", "worker-1"]},
+                    {"label": "Podman containers", "found": 0, "status": "not_installed"}])
+        rows = cli.stage_detail(cfg, "environments", {}, {})
+        self.assertEqual([r["label"] for r in rows],
+                         ["This machine", "Docker containers", "Podman containers"])
+        self.assertEqual(rows[1]["note"], "api-1, worker-1")       # the names, not just the count
+        self.assertEqual(rows[2]["note"], "not installed")         # and a plain word for a status
+        self.assertEqual([r["tone"] for r in rows], ["ok", "ok", "quiet"])
+
+    def test_listing_files_breaks_down_by_tool(self):  # U-CLI-D2
+        info = {"per_source": [{"tool": "Claude Code", "side": "wsl", "files": 7388, "bytes": 1_200_000_000}],
+                "vendored": 1201, "self": 167}
+        rows = cli.stage_detail(self.cfg(), "manifest", info, {})
+        self.assertEqual(rows[0]["label"], "Claude Code (wsl)")
+        self.assertIn("7,388 files", rows[0]["note"])
+        self.assertIn("Shipped app and plugin code", rows[1]["label"])
+
+    def test_a_step_with_nothing_to_show_says_nothing(self):  # U-CLI-D3
+        self.assertEqual(cli.stage_detail(self.cfg(), "cleanup", {}, {}), [])
+        self.assertEqual(cli.stage_detail(self.cfg(), "vendor_raw", {"hits": 3}, {}), [])
+
+    def test_detail_never_fails_a_scan(self):  # U-CLI-D4
+        """Nothing here is worth losing a scan over, so a missing key is an empty list, not an exception."""
+        for name in cli.DESCRIPTIONS:
+            self.assertIsInstance(cli.stage_detail(self.cfg(), name, {}, {}), list)
 
 
 class CliTests(TempDirTest):

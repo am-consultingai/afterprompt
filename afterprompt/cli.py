@@ -423,6 +423,74 @@ def stage_result_line(name, info):
     return ""
 
 
+ENV_STATUS_NOTE = {"absent": "none on this machine", "not_installed": "not installed",
+                   "not_applicable": "does not apply here", "not_checked": "not checked",
+                   "skipped": "skipped", "out_of_scope": "listed, not opened",
+                   "found_not_scanned": "found, not scanned", "scanned": "scanned"}
+
+
+def stage_detail(cfg, name, info, ctx):
+    """The rows a step shows when it is opened: what it found, not how much of it.
+
+    "7 to scan" is a number to trust or not; the seven named, each with what it is and whether it was read, is
+    something a person can check. Everything here comes from what the step already wrote down, so producing it
+    costs nothing and cannot disagree with the report."""
+    rows = []
+    add = lambda label, note=None, tone=None: rows.append(  # noqa: E731
+        {"label": str(label), "note": None if note is None else str(note), "tone": tone})
+    if name == "environments":
+        for row in read_json(os.path.join(cfg.run_dir, "envs", "survey.json"), []) or []:
+            names = ", ".join(row.get("names") or [])
+            note = names or row.get("why") or ENV_STATUS_NOTE.get(row.get("status"), row.get("status"))
+            add(row.get("label"), note, "ok" if row.get("status") == "scanned"
+                else ("quiet" if not row.get("found") else "warn"))
+    elif name == "discover":
+        for i in (ctx.get("sources") or {}).get("installed", []):
+            label = f"{i['product']} [{i['env']}]" if i.get("env") else i.get("product")
+            add(label, i.get("note") or ENV_STATUS_NOTE.get(i.get("status"), i.get("status")),
+                "ok" if i.get("status") == "scanned" else "warn")
+        for folder in (ctx.get("sources") or {}).get("unknown_tools", [])[:10]:
+            add(folder.get("folder") if isinstance(folder, dict) else folder,
+                "looks like AI tool history, but no tool Afterprompt knows keeps it there", "warn")
+    elif name == "env_scan":
+        for env in ctx.get("env_results") or []:
+            add(env.get("label"), env.get("reason") or ENV_STATUS_NOTE.get(env.get("status"), env.get("status")),
+                "ok" if str(env.get("status", "")).startswith("scanned") else "warn")
+    elif name == "databases":
+        add(f"{info.get('ok', 0)} of {info.get('databases', 0)} chat databases read", None, "ok")
+        for f in info.get("failed", [])[:20]:
+            add(f.get("path"), f"{f.get('error')} — quit the app that owns it and run the scan again", "warn")
+    elif name == "manifest":
+        for src in info.get("per_source", []):
+            add(f"{src['tool']} ({src['side']})", f"{src['files']:,} files, {human_bytes(src['bytes'])}")
+        for label, n in (("Shipped app and plugin code, skipped", info.get("vendored")),
+                         ("This scan's own session, skipped", info.get("self")),
+                         ("Could not be read", info.get("unreadable"))):
+            if n:
+                add(label, f"{n:,} files", "quiet")
+    elif name == "known":
+        add("Credentials set up on this machine", f"{info.get('values', 0):,} values from "
+                                                  f"{info.get('stores', 0)} stores")
+        add(".env files read", f"{info.get('env_files', 0):,}")
+        add("Credential-named files read", f"{info.get('credential_named_files', 0):,}")
+        add("Found in AI history", f"{info.get('occurrences', 0):,} occurrences",
+            "warn" if info.get("occurrences") else "ok")
+    elif name == "prompts":
+        add("Prompts read", f"{info.get('unique_prompts', 0):,}")
+        add("Password-like strings in them", f"{info.get('near_keyword', 0):,}",
+            "warn" if info.get("near_keyword") else "ok")
+    elif name == "triage":
+        add("To rotate", f"{info.get('rotate', 0)}", "warn" if info.get("rotate") else "ok")
+        add("Weaker signals to review", f"{info.get('review', 0):,}", "quiet")
+        dismissed = (read_json(cfg.w("triage.json"), {}) or {}).get("dismissed") or {}
+        for reason, n in sorted(dismissed.items(), key=lambda kv: -kv[1])[:10]:
+            add(f"Dismissed: {reason}", f"{n:,}", "quiet")
+    elif name == "report":
+        for f in ("report.html", "report.md", "findings.json"):
+            add(f, os.path.join(cfg.report_dir, f), "ok")
+    return rows
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if "--worker" not in argv:
@@ -564,7 +632,11 @@ def run(argv, emit):
         # begins when someone presses Start scan, not because a browser was pointed at it.
         say("Waiting for Start scan in the browser view. Ctrl-C stops without scanning anything.")
         try:
-            view.state.wait_for_start()
+            # The flag is the gate, not the wait. Event.wait() can return early — a signal delivered to the
+            # process is enough — and a scan that begins because of that is a machine-wide read nobody asked
+            # for. It waits in slices and only leaves when someone has actually pressed.
+            while not view.state.scan_started:
+                view.state.wait_for_start(0.5)
         except KeyboardInterrupt:
             say("")
             say("Nothing was scanned.")
@@ -596,6 +668,10 @@ def run(argv, emit):
                 write_json(marker, info)
             line = stage_result_line(name, info)
             if view:
+                try:
+                    view.state.detail(name, stage_detail(cfg, name, info, ctx))
+                except Exception as err:  # noqa: BLE001 - a step's detail is never worth failing a scan for
+                    log(f"detail for {name} failed: {type(err).__name__}: {err}")
                 view.state.stage(name, done=True, summary=line)
             if line:
                 say(f"      {line}")

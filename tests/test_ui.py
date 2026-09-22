@@ -380,6 +380,41 @@ class PageTests(TempDirTest):
         self.assertTrue(st.snapshot()["started"])
         self.assertFalse(st.request_start())               # pressing twice starts one scan
 
+    def test_a_signal_must_not_be_mistaken_for_a_press(self):  # U-UI-49
+        """Event.wait() returns early for reasons that are not a press; the flag is the gate, not the wait.
+
+        This shipped wrong once: killing the wrapper shell released the wait, and a full scan of the machine
+        began that nobody had asked for."""
+        cli_src = self.read_module("cli.py")
+        gate = cli_src[cli_src.index("Waiting for Start scan"):cli_src.index("t0 = time.monotonic()")]
+        self.assertIn("while not view.state.scan_started:", gate)
+        self.assertIn("view.state.wait_for_start(0.5)", gate)
+
+    def test_a_step_says_what_it_found(self):  # U-UI-50
+        """A count is a number to believe or not; the names behind it can be checked."""
+        st = ui.State(self.tmp)
+        st.set_stages(["environments"], {"environments": "Looking for environments"})
+        st.detail("environments", [{"label": "Docker containers", "note": "api-1, worker-1", "tone": "ok"},
+                                   {"label": "", "note": "dropped: no label"}])
+        rows = st.snapshot()["details"]["environments"]
+        self.assertEqual([r["label"] for r in rows], ["Docker containers"])
+        st.detail("environments", [])                       # nothing to say leaves what was there
+        self.assertEqual(len(st.snapshot()["details"]["environments"]), 1)
+
+    def test_the_scan_screen_groups_and_opens_its_steps(self):  # U-UI-51
+        js = self.js_without_comments()
+        # Four pieces of work, and every step named in exactly one of them.
+        self.assertIn('const GROUPS = [["find"', js)
+        groups = js[js.index("const GROUPS = ["):js.index("const GROUP_LABEL")]
+        for stage in cli.DESCRIPTIONS:
+            self.assertIn(f'"{stage}"', groups, f"{stage} belongs to no group on the scan screen")
+        # A step with something to show opens; one without stays a line rather than a dead control.
+        self.assertIn("const head2 = el(rows ? \"button\" : \"div\", null, \"phase-head\");", js)
+        self.assertIn("state.openStep[s.name] === undefined ? !!s.current : state.openStep[s.name]", js)
+        self.assertIn('state.details[ev.stage] = ev.rows || [];', js)
+        for key in ("groupFind:", "groupRead:", "groupSearch:", "groupFinish:", "stepOpen:", "stepClose:"):
+            self.assertIn(key, self.read("app.js"))
+
     def test_the_page_offers_the_button_and_the_cli_waits(self):  # U-UI-47
         js = self.js_without_comments()
         # The scan screen is a control before it is a view.
@@ -392,9 +427,9 @@ class PageTests(TempDirTest):
         self.assertIn("state.started = !!ev.started || !!ev.finished;", js)
         # The scanner waits for the press, and says so rather than looking hung.
         cli_src = self.read_module("cli.py")
-        self.assertIn("view.state.wait_for_start()", cli_src)
+        self.assertIn("view.state.wait_for_start(", cli_src)
         self.assertIn("Waiting for Start scan in the browser view.", cli_src)
-        self.assertLess(cli_src.index("view.state.wait_for_start()"), cli_src.index("for k, name in enumerate"))
+        self.assertLess(cli_src.index("view.state.wait_for_start("), cli_src.index("for k, name in enumerate"))
 
     def test_the_list_is_ordered_by_what_it_opens(self):  # U-UI-41
         """The browser view and the report must not disagree about what to do first."""

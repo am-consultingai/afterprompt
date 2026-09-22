@@ -63,6 +63,7 @@ class State:
         self.current = None
         self.done = set()
         self.summaries = {}
+        self.details = {}
         self.progress = {}
         self.lines = []
         self.finished = False
@@ -106,6 +107,16 @@ class State:
                 self.current = name
         self._publish({"type": "stage", "name": name, "done": done})
 
+    def detail(self, stage, rows):
+        """What a step actually found, as rows the page shows when the step is opened. A count says how much
+        was done; these say what it was."""
+        rows = [r for r in (rows or []) if r.get("label")]
+        if not rows:
+            return
+        with self.lock:
+            self.details[stage] = rows
+        self._publish({"type": "detail", "stage": stage, "rows": rows})
+
     def progress_update(self, stage, done, total=None, note=None):
         """One phase's live count. total None means the total is not knowable, and the view says so."""
         with self.lock:
@@ -144,6 +155,7 @@ class State:
                                     summary=self.summaries.get(s["name"]))
                                for s in self.stages],
                     "progress": dict(self.progress),
+                    "details": {k: list(v) for k, v in self.details.items()},
                     "started": self.scan_started,
                     "finished": self.finished, "lines": self.lines[-400:]}
 

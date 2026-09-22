@@ -25,6 +25,10 @@
                   "reads the credentials already set up here, and looks for one inside the other. It stays on " +
                   "this machine: nothing is uploaded, and it starts when you press the button.",
     scanWillDo: "This scan will", scanSteps: "Steps",
+    // The eleven steps are four pieces of work. The grouping is what keeps a long list from reading as a wall.
+    groupFind: "Find what is here", groupRead: "Read it", groupSearch: "Look for credentials",
+    groupFinish: "Decide and write", groupOf: "of",
+    stepOpen: "Show what this step found", stepClose: "Hide what this step found",
     scanStartFailed: "Could not start the scan — the scanner may have closed. Run it again from the terminal.",
     scanRunning: "Scanning", scanDone: "Scan finished",
     scanRunningSub: "Each step stays on screen with what it found. You can move to Settings and back; the scan " +
@@ -172,7 +176,7 @@
     screen: ["scan", "findings", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
     collapsed: {}, unfolded: {}, settings: null, about: null, statuses: {}, checking: {},
-    conn: "connecting", notice: null, started: false, starting: false,
+    conn: "connecting", notice: null, started: false, starting: false, details: {}, openStep: {},
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -237,6 +241,85 @@
   }
 
   // ---- scan screen
+  // Which piece of work each step belongs to. A step Afterprompt does not know about still appears, in the
+  // group it is listed near, rather than vanishing because this table was not updated.
+  const GROUPS = [["find", ["environments", "discover", "env_scan"]],
+                  ["read", ["databases", "manifest"]],
+                  ["search", ["vendor_raw", "expand", "vendor_store", "entropy_raw", "entropy_store",
+                              "known", "prompts"]],
+                  ["finish", ["triage", "report", "cleanup"]]];
+  const GROUP_LABEL = () => ({ find: TEXT.groupFind, read: TEXT.groupRead, search: TEXT.groupSearch,
+                               finish: TEXT.groupFinish });
+
+  function grouped(stages) {
+    const out = GROUPS.map(([key, names]) => ({ key, names, steps: [] }));
+    const index = new Map();
+    out.forEach((g) => g.names.forEach((n) => index.set(n, g)));
+    let last = out[0];
+    for (const s of stages) {
+      const g = index.get(s.name) || last;
+      g.steps.push(s);
+      last = g;
+    }
+    return out.filter((g) => g.steps.length);
+  }
+
+  function detailRows(name) {
+    const rows = state.details[name];
+    if (!rows || !rows.length) return null;
+    const ul = el("ul", null, "step-detail");
+    for (const r of rows) {
+      const li = el("li", null, r.tone ? "tone-" + r.tone : null);
+      li.append(el("span", r.label, "step-label"));
+      if (r.note) li.append(el("span", r.note, "step-note"));
+      ul.append(li);
+    }
+    return ul;
+  }
+
+  function phases(live) {
+    const box = el("div", null, "phase-groups");
+    for (const g of grouped(state.stages)) {
+      const done = g.steps.filter((s) => s.done).length;
+      const head = el("div", null, "phase-group-head");
+      head.append(el("span", GROUP_LABEL()[g.key] || g.key, "phase-group-name"));
+      if (live) head.append(el("span", `${done} ${TEXT.groupOf} ${g.steps.length}`, "pip"));
+      box.append(head);
+      const list = el("ol", null, "phases");
+      for (const s of g.steps) {
+        const rows = live ? detailRows(s.name) : null;
+        const li = el("li", null, "phase" + (s.done ? " done" : s.current ? " current" : ""));
+        // A step that found something opens; one that has nothing to show is a line, not a dead control.
+        const head2 = el(rows ? "button" : "div", null, "phase-head");
+        const open = rows && (state.openStep[s.name] === undefined ? !!s.current : state.openStep[s.name]);
+        if (rows) {
+          head2.type = "button";
+          head2.setAttribute("aria-expanded", String(!!open));
+          head2.title = open ? TEXT.stepClose : TEXT.stepOpen;
+          head2.addEventListener("click", () => { state.openStep[s.name] = !open; render(); });
+        }
+        head2.append(live && s.done ? icon("check", "success")
+                     : live && s.current ? icon("spinner", "accent", true) : icon("dot", "quiet"),
+                     el("span", s.label, "phase-name"));
+        const p = live ? state.progress[s.name] : null;
+        if (live && s.done && s.summary) head2.append(el("span", s.summary, "phase-note"));
+        else if (p && p.note) head2.append(el("span", p.note, "phase-note"));
+        if (rows) {
+          const chev = icon("chevron", "quiet");
+          chev.classList.add("chev");
+          if (open) chev.classList.add("open");
+          head2.append(chev);
+        }
+        li.append(head2);
+        if (live && !s.done && p) li.append(progressBar(p));
+        if (rows && open) li.append(rows);
+        list.append(li);
+      }
+      box.append(list);
+    }
+    return box;
+  }
+
   function renderReady(wrap) {
     wrap.append(el("h2", TEXT.scanReady), el("p", TEXT.scanReadySub, "sub"));
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
@@ -255,16 +338,8 @@
     const chosen = field && (field.choices || []).find((c) => c.value === setting("mode"));
     if (chosen) wrap.append(el("p", `${TEXT.scanWillDo}: ${chosen.label}`, "sub"));
 
-    // The steps it will take, greyed: the same list that fills in while it runs.
-    const list = el("ol", null, "phases");
-    for (const s of state.stages) {
-      const li = el("li", null, "phase");
-      const head = el("div", null, "phase-head");
-      head.append(icon("dot", "quiet"), el("span", s.label, "phase-name"));
-      li.append(head);
-      list.append(li);
-    }
-    if (state.stages.length) wrap.append(el("p", TEXT.scanSteps, "field-label"), list);
+    // The steps it will take, greyed, grouped the way they will be while it runs.
+    if (state.stages.length) wrap.append(el("p", TEXT.scanSteps, "field-label"), phases(false));
     return wrap;
   }
 
@@ -295,20 +370,7 @@
 
     wrap.append(envStrip());
 
-    const list = el("ol", null, "phases");
-    for (const s of state.stages) {
-      const li = el("li", null, "phase" + (s.done ? " done" : s.current ? " current" : ""));
-      const head = el("div", null, "phase-head");
-      head.append(s.done ? icon("check", "success") : s.current ? icon("spinner", "accent", true) : icon("dot", "quiet"),
-                  el("span", s.label, "phase-name"));
-      const p = state.progress[s.name];
-      if (s.done && s.summary) head.append(el("span", s.summary, "phase-note"));
-      else if (p && p.note) head.append(el("span", p.note, "phase-note"));
-      li.append(head);
-      if (!s.done && p) li.append(progressBar(p));
-      list.append(li);
-    }
-    wrap.append(list);
+    wrap.append(phases(true));
 
     const details = el("details", null, "console-box");
     if (running) details.open = true;
@@ -1213,6 +1275,7 @@
     state.stages = s.stages;
     state.progress = s.progress || {};
     state.started = !!s.started || !!s.finished;
+    state.details = s.details || {};
     if (s.finished && !state.findings) await loadFindings();
     else if (state.screen === "scan") render();
   }
@@ -1269,6 +1332,7 @@
       state.progress = ev.progress || {};
       state.lines = ev.lines || [];
       state.started = !!ev.started || !!ev.finished;
+      state.details = ev.details || {};
       setState(ev.finished ? "done" : "live");
       if (ev.finished) loadFindings(); else render();
     } else if (ev.type === "line") {
@@ -1289,6 +1353,9 @@
       if (state.screen === "findings") render();
     } else if (ev.type === "finished") {
       loadFindings();
+    } else if (ev.type === "detail") {
+      state.details[ev.stage] = ev.rows || [];
+      if (state.screen === "scan") render();
     } else if (ev.type === "started") {
       state.started = true;
       refresh();
