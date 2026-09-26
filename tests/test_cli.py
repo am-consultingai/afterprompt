@@ -54,8 +54,17 @@ class StageDetailTests(TempDirTest):
         sources = {"windows_home": "/mnt/c/Users/sam", "installed": [{"product": "Cursor", "status": "scanned"}]}
         rows = cli.stage_detail(self.cfg(), "discover", {}, {"sources": sources})
         self.assertEqual(rows[0]["label"], "Windows profile")
-        self.assertIn("/mnt/c/Users/sam", rows[0]["note"])
+        self.assertIn("C:\\Users\\sam", rows[0]["note"])             # as Windows names it, not as WSL mounts it
         self.assertEqual(rows[1]["vendor"], "Cursor")              # a tool row carries its mark
+
+    def test_the_environments_step_names_windows_as_windows_does(self):  # U-CLI-D7
+        cfg = self.cfg()
+        cfg.platform = "wsl"
+        with mock.patch("afterprompt.sources.windows_home", return_value=("/mnt/c/Users/sam", "cmd.exe")):
+            rows = cli.stage_detail(cfg, "environments", {}, {"envs": self.envs(("WSL: Ubuntu (this machine)",
+                                                                                   "host"))})
+        self.assertEqual([r["label"] for r in rows], ["WSL: Ubuntu (this machine)", "Windows profile"])
+        self.assertTrue(rows[1]["note"].startswith("C:\\Users\\sam — read with this machine"))
 
     def test_listing_files_breaks_down_by_tool(self):  # U-CLI-D2
         info = {"per_source": [{"tool": "Claude Code", "side": "wsl", "files": 7388, "bytes": 1_200_000_000}],

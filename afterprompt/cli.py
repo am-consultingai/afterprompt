@@ -497,7 +497,9 @@ def stage_detail(cfg, name, info, ctx):
         if cfg is not None and getattr(cfg, "platform", None) == "wsl":
             win, how = src_mod.windows_home(cfg)
             if win:
-                add("Windows profile", f"{win} — read with this machine ({how})", "ok", "machine")
+                from afterprompt.platforms import to_windows_path
+                add("Windows profile", f"{to_windows_path(win) or win} — read with this machine ({how})", "ok",
+                    "machine")
         rest = collections.OrderedDict()
         for e in found:
             if e.kind != "host":
@@ -510,7 +512,8 @@ def stage_detail(cfg, name, info, ctx):
         # The Windows profile is a second filesystem read as part of this machine, and it is found here.
         win = (ctx.get("sources") or {}).get("windows_home")
         if win:
-            add("Windows profile", f"{win} — read as part of this machine", "ok", "machine")
+            from afterprompt.platforms import to_windows_path
+            add("Windows profile", f"{to_windows_path(win) or win} — read as part of this machine", "ok", "machine")
         for i in (ctx.get("sources") or {}).get("installed", []):
             label = f"{i['product']} [{i['env']}]" if i.get("env") else i.get("product")
             add(label, i.get("note") or ENV_STATUS_NOTE.get(i.get("status"), i.get("status")),
@@ -698,6 +701,12 @@ def run(argv, emit):
                           view.state.progress_update(PROGRESS_STAGE.get(stage, stage), done, total, note))
         # The link opens a page that reads nothing yet. A scan opens every file this machine keeps, so it
         # begins when someone presses Start scan, not because a browser was pointed at it.
+        # What the scan will cover, before it starts: the environments were found above (finding them lists them,
+        # it reads nothing inside them), and the Start screen shows them so the button is never a surprise.
+        try:
+            view.state.detail("environments", stage_detail(cfg, "environments", {}, ctx))
+        except Exception as err:  # noqa: BLE001 - a preview is never worth failing a scan for
+            log(f"environments preview failed: {err}")
         say("Waiting for Start scan in the browser view. Ctrl-C stops without scanning anything.")
         try:
             # The flag is the gate, not the wait. Event.wait() can return early — a signal delivered to the

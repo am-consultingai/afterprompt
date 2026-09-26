@@ -25,7 +25,7 @@
     scanReadySub: "Nothing has been read yet. The scan opens the history your AI tools keep on this machine, " +
                   "reads the credentials already set up here, and looks for one inside the other. It stays on " +
                   "this machine: nothing is uploaded, and it starts when you press the button.",
-    scanSteps: "Steps",
+    scanSteps: "Steps", willCover: "This scan will cover",
     // The eleven steps are four pieces of work. The grouping is what keeps a long list from reading as a wall.
     groupFind: "Find what is here", groupRead: "Read it", groupSearch: "Look for credentials",
     groupFinish: "Decide and write", groupOf: "of",
@@ -500,8 +500,12 @@
     const plan = scanPlan();
     if (plan) wrap.append(plan);
 
+    // Where it will look: this machine's environments, found when Afterprompt started — found, not read.
+    const where = detailRows("environments");
+    if (where) wrap.append(el("span", TEXT.willCover, "section-label"), where);
+
     // The steps it will take, greyed, grouped the way they will be while it runs.
-    if (state.stages.length) wrap.append(el("p", TEXT.scanSteps, "field-label"), phases(false));
+    if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), phases(false));
     return wrap;
   }
 

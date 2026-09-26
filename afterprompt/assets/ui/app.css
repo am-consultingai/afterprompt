@@ -265,6 +265,7 @@ button.phase-head .phase-note { margin-inline-end: 6px; }
 .phase-head .chev.open { transform: rotate(90deg); }
 .step-detail { list-style: none; margin: 6px 0 4px; padding: 6px 0 2px 34px; display: grid; gap: 5px;
   border-inline-start: 1px solid var(--border-subtle); margin-inline-start: 12px; }
+.section-label + .step-detail { margin-inline-start: 0; padding-inline-start: 12px; }
 .step-detail li { display: flex; gap: 12px; align-items: baseline; font-size: var(--text-sm); }
 .step-detail .step-label { color: var(--text-secondary); flex: none; max-inline-size: 45%; overflow-wrap: anywhere; }
 .step-detail .step-note { color: var(--text-tertiary); font-size: var(--text-xs); overflow-wrap: anywhere; }

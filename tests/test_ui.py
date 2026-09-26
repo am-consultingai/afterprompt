@@ -685,6 +685,16 @@ class PageTests(TempDirTest):
         self.assertIn("{ user: TEXT.whyUser, assistant: TEXT.whyAssistant, tool: TEXT.whyTool }[h.who]", hit)
         self.assertIn('pieces(h.action, "hit-cmd", false, false)', hit)   # the tool call, masked like the rest
 
+    def test_the_start_screen_shows_where_it_will_look(self):  # U-UI-69
+        js = self.js_without_comments()
+        ready = js[js.index("function renderReady(wrap)"):js.index("function scanPlan()")]
+        self.assertIn('const where = detailRows("environments");', ready)
+        self.assertLess(ready.index("TEXT.willCover"), ready.index("TEXT.scanSteps"))
+        cli_src = self.read_module("cli.py")
+        gate = cli_src[cli_src.index("view.state.set_stages(stages, DESCRIPTIONS)"):
+                       cli_src.index("while not view.state.scan_started:")]
+        self.assertIn('view.state.detail("environments", stage_detail(cfg, "environments", {}, ctx))', gate)
+
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
         js = self.js_without_comments()
@@ -808,10 +818,17 @@ class CliTests(TempDirTest):
             port, token = int(m.group(2)), m.group(3)
             h = {"Authorization": f"Bearer {token}"}
             # Nothing happens until the page asks: the scanner is sitting on the Start screen.
+            for _ in range(200):
+                if "Waiting for Start scan" in out.getvalue():
+                    break
+                time.sleep(0.05)
             c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
             c.request("GET", "/api/status", headers=h)
-            self.assertFalse(json.loads(c.getresponse().read())["started"])
+            before = json.loads(c.getresponse().read())
+            self.assertFalse(before["started"])
             c.close()
+            # ...and it already says where it will look: the environments are shown before anything is read.
+            seen["before"] = before["details"].get("environments") or []
             c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
             c.request("POST", "/api/start", body="{}",
                       headers=dict(h, **{"Content-Type": "application/json"}))
@@ -843,6 +860,8 @@ class CliTests(TempDirTest):
             code = cli.main(["--ui"])
         t.join(10)
         self.assertEqual(code, cli.EXIT_ROTATE)
+        self.assertTrue(seen["before"], "the Start screen had no environments to show")
+        self.assertEqual(seen["before"][0]["icon"], "machine")
         self.assertTrue(all(s["done"] for s in seen["stages"]))
         self.assertEqual(len(seen["findings"]["rotate"]), 4)
         for v in fx.s.values():
