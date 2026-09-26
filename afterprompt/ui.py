@@ -36,7 +36,14 @@ STATIC = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js",
           # Reference data the page needs and must not fetch from the internet: vendor marks (Simple Icons, CC0)
           # and the rotation guidance keyed by vendor.
           "/vendors.json": ("vendors.json", "application/json; charset=utf-8"),
-          "/rotation.json": ("rotation.json", "application/json; charset=utf-8")}
+          "/rotation.json": ("rotation.json", "application/json; charset=utf-8"),
+          # Bundled, never fetched: the page loads nothing from the internet. Latin subsets, SIL OFL 1.1 (the
+          # licences are beside them).
+          "/fonts.css": ("fonts.css", "text/css; charset=utf-8"),
+          "/fonts/plex-sans-400.woff2": (os.path.join("fonts", "plex-sans-400.woff2"), "font/woff2"),
+          "/fonts/plex-sans-500.woff2": (os.path.join("fonts", "plex-sans-500.woff2"), "font/woff2"),
+          "/fonts/plex-sans-600.woff2": (os.path.join("fonts", "plex-sans-600.woff2"), "font/woff2"),
+          "/fonts/frank-ruhl-libre.woff2": (os.path.join("fonts", "frank-ruhl-libre.woff2"), "font/woff2")}
 # The logo pack, from the folder next door. Named one by one: the server never joins a path it was
 # given, so there is nothing here to traverse out of.
 LOGO_STATIC = {"/logo/afterprompt-mark.svg": ("afterprompt-mark.svg", "image/svg+xml"),

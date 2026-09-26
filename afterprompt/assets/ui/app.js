@@ -12,7 +12,8 @@
 "use strict";
 (function () {
   const TEXT = {
-    connecting: "connecting", live: "scanning", ready: "ready to scan", done: "scan finished", lost: "reconnecting", refused: "refused",
+    connecting: "connecting", live: "scanning", ready: "ready to scan", done: "scan finished", lost: "reconnecting",
+    refused: "refused",
     noKey: "no key",
     tabScan: "Scan", tabFindings: "Credentials", tabSettings: "Settings", tabAbout: "About",
     needKey: "Open the link printed in your terminal: it carries the key this page needs. The key is kept out of " +
@@ -24,7 +25,7 @@
     scanReadySub: "Nothing has been read yet. The scan opens the history your AI tools keep on this machine, " +
                   "reads the credentials already set up here, and looks for one inside the other. It stays on " +
                   "this machine: nothing is uploaded, and it starts when you press the button.",
-    scanWillDo: "This scan will", scanSteps: "Steps",
+    scanSteps: "Steps",
     // The eleven steps are four pieces of work. The grouping is what keeps a long list from reading as a wall.
     groupFind: "Find what is here", groupRead: "Read it", groupSearch: "Look for credentials",
     groupFinish: "Decide and write", groupOf: "of",
@@ -50,7 +51,8 @@
     searchWhy: "The first characters only — enough to land on the line, and no more of the value than this " +
                "page already shows.",
     copyCmd: "Copy command", copyPath: "Copy path", copy: "Copy", copySearch: "Copy search command",
-    opened: "Shown in your file manager", openFailed: "Could not open it", noServer: "Could not reach Afterprompt", copied: "Copied", copyFailed: "Press ⌘/Ctrl-C to copy",
+    opened: "Shown in your file manager", openFailed: "Could not open it", noServer: "Could not reach Afterprompt",
+    copied: "Copied", copyFailed: "Press ⌘/Ctrl-C to copy",
     withCli: "From the vendor's own command line", openWith: "Open it",
     whatToDo: "What to do", about: "about", minutes: "min", openConsole: "Open", checkAudit: "Check the audit log",
     overlap: "can be rotated without downtime", breaksAtOnce: "revoking breaks callers at once",
@@ -113,6 +115,16 @@
     dismissed: "Dismissed automatically", toReview: "To review", trademarks: "Product names and marks belong to " +
                "their owners and are shown only to identify the service.",
     done: "done", ofRotated: "rotated",
+    // The rail, the list header and the palette.
+    credentials: "Credentials", groupShort: "Group by", byVendor: "Vendor", byReach: "Reach", byTool: "Tool",
+    files: "files", scanDepth: "scan", planWsl: "this machine and its WSL distributions",
+    planNoWsl: "this machine only", planContainers: "containers", changeInSettings: "Change in Settings",
+    whereFound: "Where it was found", evidence: "The evidence", howSure: "How sure",
+    palettePlaceholder: "Search credentials and commands…", paletteGo: "Go to", paletteActions: "Actions",
+    paletteCreds: "Credentials", paletteNone: "Nothing matches.", paletteOpen: "Search and commands",
+    themeLight: "Light", themeDark: "Dark", themeSystem: "Match system", appearance: "Appearance",
+    groupByWord: "Group by", startScanAction: "Start scan", collapseAll: "Collapse every group",
+    expandAll: "Expand every group",
   };
 
   const ICON = {   // 16×16, stroke 1.5: never a 24px icon scaled down, which lands strokes on half pixels
@@ -132,6 +144,10 @@
     chat: "M2.6 3.4h10.8v7.2H7.4L4.3 13.2v-2.6H2.6z",
     doc: "M3.6 2.4h8.8v11.2H3.6zM5.8 5.6h4.4M5.8 8h4.4M5.8 10.4h2.8",
     broom: "M8 1.8v6.4M4.4 8.2h7.2l1 5.9H3.4zM6.4 8.2 5.8 14M9.6 8.2l.6 5.8",
+    pulse: "M1.5 8.5h2.8l1.6-4.5 3.2 8.5 1.7-4h3.7",
+    gear: "M8 5.7a2.3 2.3 0 1 0 0 4.6 2.3 2.3 0 0 0 0-4.6ZM8 1.6v1.7M8 12.7v1.7M1.6 8h1.7M12.7 8h1.7M3.5 3.5l1.2 1.2M11.3 11.3l1.2 1.2M3.5 12.5l1.2-1.2M11.3 4.7l1.2-1.2",
+    info: "M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8ZM8 7.3v3.9M8 4.9v.2",
+    play: "M5.6 3.4v9.2l7-4.6z",
   };
 
   // What each step does, as a picture. A list of eleven sentences reads as a wall; the same list with a mark
@@ -204,7 +220,8 @@
     screen: ["scan", "findings", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
     collapsed: {}, unfolded: {}, settings: null, about: null, statuses: {}, checking: {},
-    conn: "connecting", notice: null, started: false, starting: false, details: {}, openStep: {},
+    settingsTab: null, conn: "connecting", notice: null, started: false, starting: false, finished: false,
+    details: {}, openStep: {},
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -220,25 +237,58 @@
     const pill = $("state");
     pill.dataset.state = ["live", "done", "lost"].includes(kind) ? kind : "connecting";
     // Connected is not the same as scanning: until Start is pressed there is nothing running to report.
-    pill.textContent = kind === "live" && !state.started ? TEXT.ready : (TEXT[kind] || kind);
+    pill.textContent = stateText();
+    pill.title = pill.textContent;
+    renderGo();
   }
+  const stateText = () => (state.conn === "live" && !state.started ? TEXT.ready : (TEXT[state.conn] || state.conn));
+
 
   // ---- screens -----------------------------------------------------------
+  // The rail: one icon per screen, named by its tooltip and its accessible name, with the count to rotate riding
+  // the Credentials icon. Above them, the one action — Start scan — while there is a scan to start or watch.
+  const SCREENS = [["scan", "tabScan", "pulse", "s"], ["findings", "tabFindings", "key", "c"],
+                   ["settings", "tabSettings", "gear", ","], ["about", "tabAbout", "info", "a"]];
   function renderTabs() {
     const tabs = $("tabs");
     tabs.replaceChildren();
-    const items = [["scan", TEXT.tabScan], ["findings", TEXT.tabFindings], ["settings", TEXT.tabSettings],
-                   ["about", TEXT.tabAbout]];
-    for (const [id, label] of items) {
-      const b = el("button", label, "tab");
+    for (const [id, key, art] of SCREENS) {
+      const b = el("button", null, "tab");
       b.type = "button";
+      b.title = TEXT[key];
+      b.setAttribute("aria-label", TEXT[key]);
       b.setAttribute("aria-current", String(state.screen === id));
-      if (id === "findings" && state.findings) {
-        b.append(el("span", String(state.findings.summary.rotate), "pip"));
+      b.append(icon(art));
+      if (id === "findings" && state.findings && state.findings.summary.rotate) {
+        b.append(el("span", String(state.findings.summary.rotate), "pip danger"));
       }
       b.addEventListener("click", () => show(id));
       tabs.append(b);
     }
+    const find = el("button", null, "tab");
+    find.type = "button";
+    find.title = `${TEXT.paletteOpen} (Ctrl K)`;
+    find.setAttribute("aria-label", TEXT.paletteOpen);
+    find.append(icon("search"));
+    find.addEventListener("click", openPalette);
+    tabs.append(find);
+    renderGo();
+  }
+
+  function renderGo() {
+    const box = $("go");
+    box.replaceChildren();
+    // Before the press it starts the scan; during it, it spins; once the scan has finished there is nothing to do.
+    if (!token || state.finished) return;
+    const go = el("button", null, "go");
+    go.type = "button";
+    const running = state.started || state.starting;
+    go.title = running ? TEXT.scanRunning : TEXT.scanStart;
+    go.setAttribute("aria-label", go.title);
+    go.disabled = running;
+    go.append(running ? icon("spinner", null, true) : icon("play"));
+    go.addEventListener("click", () => { show("scan"); startScan(); });
+    box.append(go);
   }
 
   function show(screen) {
@@ -352,8 +402,17 @@
     return box;
   }
 
+  // The title says what is happening, so the connection's own words would only repeat it; the rail's dot says
+  // the same, smaller, and a lost connection gets its own note.
+  function pageHead(wrap, title) {
+    const head = el("div", null, "detail-head");
+    head.append(el("h2", title, "page-title"));
+    wrap.append(head);
+  }
+
   function renderReady(wrap) {
-    wrap.append(el("h2", TEXT.scanReady), el("p", TEXT.scanReadySub, "sub"));
+    pageHead(wrap, TEXT.scanReady);
+    wrap.append(el("p", TEXT.scanReadySub, "sub"));
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
     if (state.notice) wrap.append(note(state.notice, "warning"));
 
@@ -366,16 +425,38 @@
     wrap.append(row);
 
     // What it will do, in the words the Settings screen uses, so the button is never a surprise.
-    const field = ((state.settings && state.settings.fields) || []).find((f) => f.key === "mode");
-    const chosen = field && (field.choices || []).find((c) => c.value === setting("mode"));
-    if (chosen) wrap.append(el("p", `${TEXT.scanWillDo}: ${chosen.label}`, "sub"));
+    const plan = scanPlan();
+    if (plan) wrap.append(plan);
 
     // The steps it will take, greyed, grouped the way they will be while it runs.
     if (state.stages.length) wrap.append(el("p", TEXT.scanSteps, "field-label"), phases(false));
     return wrap;
   }
 
+  // One line: how deep, which environments, what about containers — and the way to change it.
+  function scanPlan() {
+    const fields = (state.settings && state.settings.fields) || [];
+    const label = (key) => {
+      const field = fields.find((f) => f.key === key);
+      const chosen = field && (field.choices || []).find((c) => c.value === setting(key));
+      return chosen ? chosen.label : null;
+    };
+    const depth = label("mode");
+    if (!depth) return null;
+    const line = el("div", null, "plan");
+    line.append(icon("pulse", "accent"), el("b", `${depth} ${TEXT.scanDepth}`),
+                el("span", setting("no_wsl") ? TEXT.planNoWsl : TEXT.planWsl));
+    const containers = label("containers");
+    if (containers) line.append(el("span", `${TEXT.planContainers}: ${containers.toLowerCase()}`));
+    const change = el("button", TEXT.changeInSettings, "linkish");
+    change.type = "button";
+    change.addEventListener("click", () => show("settings"));
+    line.append(change);
+    return line;
+  }
+
   async function startScan() {
+    if (state.started || state.starting) return;
     state.starting = true;
     render();
     const r = await post("/api/start", {}).catch(() => null);
@@ -396,8 +477,10 @@
     // Before the scan: the page is a control, not a view. Findings from the last run may already be loaded
     // — that is what the Credentials screen is for — but this scan has still read nothing.
     if (!state.started) return box.append(renderReady(wrap));
-    const running = !state.findings;
-    wrap.append(el("h2", running ? TEXT.scanRunning : TEXT.scanDone));
+    // Findings may be on screen before this scan ends (the last scan's, or a partial pass), so they are not what
+    // says it has finished; the scanner is.
+    const running = !state.finished;
+    pageHead(wrap, running ? TEXT.scanRunning : TEXT.scanDone);
     wrap.append(el("p", running ? TEXT.scanRunningSub : TEXT.pickOne, "sub"));
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
 
@@ -556,11 +639,8 @@
   function renderFindings(box) {
     const panes = el("div", null, "panes");
     const listPane = el("section", null, "pane");
-    const heading = el("div", null, "pane-head");
-    heading.append(el("span", `${TEXT.groupBy} ${{ vendor: TEXT.groupVendor, severity: TEXT.groupSeverity,
-                                                   tool: TEXT.groupTool }[setting("group_by") || "vendor"]}`,
-                      "field-label"));
-    listPane.append(heading);
+    listPane.dataset.pane = "list";
+    listPane.append(listHead());
     // A list of twenty with no order reads as an afternoon and gets abandoned after three, so name the three.
     const lead = (state.findings ? state.findings.rotate : []).slice(0, 3);
     if (lead.length === 3 && state.findings.rotate.length > 3) {
@@ -584,6 +664,7 @@
     list.id = "list";
     list.tabIndex = 0;
     list.setAttribute("role", "listbox");
+    list.setAttribute("aria-label", TEXT.credentials);
     list.setAttribute("aria-activedescendant", state.selected ? "row-" + state.selected : "");
     list.addEventListener("keydown", onListKey);
 
@@ -609,6 +690,7 @@
       });
       list.append(head);
       if (collapsed) continue;
+      // Two lines, as a timeline row: the name, then one quiet line of what it opens, the value and the spread.
       const credential = ({ f, section }, sub) => {
         const st = statusOf(f);
         const row = el("div", null, "row" + (st === "rotated" ? " ticked" : "") +
@@ -620,14 +702,19 @@
         row.append(st === "rotated" ? icon("check", "success")
                    : st === "ignored" ? icon("dot", "quiet")
                    : icon(sev === "review" ? "key" : "alert", sev === "review" ? "warning" : "danger"));
+        const words = el("div", null, "row-words");
+        words.append(el("span", f.label, "title"));
+        const meta = el("div", null, "row-meta");
         const band = section === "rotate" && impactOf(f);
         if (band) {
           const dot = el("span", null, "band-dot " + band);
           dot.title = impactText(band)[0];
-          row.append(dot);
+          meta.append(dot, el("span", impactText(band)[0]), el("span", null, "sep"));
         }
-        row.append(el("span", f.label, "title"), el("span", f.masked, "value"));
-        if (f.files > 1) row.append(el("span", `${f.files}`, "pip"));
+        meta.append(el("span", f.masked, "value"));
+        if (f.files > 1) meta.append(el("span", null, "sep"), el("span", `${f.files} ${TEXT.files}`));
+        words.append(meta);
+        row.append(words);
         row.addEventListener("click", () => select(f.hash));
         list.append(row);
       };
@@ -663,6 +750,36 @@
     box.append(panes);
   }
 
+  // The list's header: its name, how many to rotate, and how it is grouped — the setting, one click away.
+  function listHead() {
+    const head = el("div", null, "list-head");
+    head.append(el("h2", TEXT.credentials));
+    if (state.findings) head.append(el("span", String(state.findings.summary.rotate), "count-quiet"));
+    const seg = el("div", null, "seg");
+    seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", TEXT.groupShort);
+    const by = setting("group_by") || "vendor";
+    for (const [value, label] of [["vendor", TEXT.byVendor], ["severity", TEXT.byReach], ["tool", TEXT.byTool]]) {
+      const b = el("button", label);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(by === value || (value === "severity" && by === "impact")));
+      b.addEventListener("click", () => setGroupBy(value));
+      seg.append(b);
+    }
+    head.append(seg);
+    return head;
+  }
+
+  async function setGroupBy(value) {
+    if (!state.settings) return;
+    state.settings.values.group_by = value;     // at once; the save follows, and a failure says so
+    state.collapsed = {};
+    applyViewSettings();
+    render();
+    const field = (state.settings.fields || []).find((f) => f.key === "group_by");
+    if (field) await saveSetting(field, value, null);
+  }
+
   function onListKey(ev) {
     const rows = visibleRows();
     const at = rows.indexOf(state.selected);
@@ -692,18 +809,29 @@
   }
 
   // ---- the credential card
-  function renderDetail(box) {
+  // One column, one card wide: the name and where it stands, how sure and how far it reaches, then the card that
+  // says what to do, then the evidence under small headings.
+  function renderDetail(pane) {
+    const box = el("div", null, "detail-col");
+    pane.append(box);
     const found = items().find((i) => i.f.hash === state.selected);
-    if (!found) return box.append(el("p", state.findings && state.findings.summary.rotate ? TEXT.pickOne
-                                      : TEXT.nothing, "empty"), coverage());
+    if (!found) {
+      box.append(el("p", state.findings && state.findings.summary.rotate ? TEXT.pickOne : TEXT.nothing, "empty"),
+                 coverage());
+      return;
+    }
     const { f, section } = found;
     const sev = severityOf(f, section);
     const vendor = vendorOf(f);
     const head = el("div", null, "detail-head");
     if (vendor) head.append(vendorMark(vendor));
     head.append(el("h2", f.label), el("code", f.masked));
+    const where = el("span", TEXT[STATUS_TEXT[statusOf(f)]], "status-line");
+    where.dataset.state = { rotated: "done", ignored: "connecting", rotating: "live" }[statusOf(f)] || "lost";
+    head.append(where);
     box.append(head);
 
+    // How sure we are is one question; what it opens is the other, and it is the one that sets the order.
     const badge = el("div", null, "badges");
     const kind = { live: [TEXT.liveCredential, TEXT.liveCredentialWhy, "danger"],
                    vendor: [TEXT.vendorFormat, TEXT.vendorFormatWhy, "danger"],
@@ -711,19 +839,16 @@
                    review: [TEXT.weaker, TEXT.weakerWhy, "warning"] }[sev];
     const b = el("span", kind[0], "badge");
     b.dataset.tone = kind[2];
-    badge.append(b, el("span", kind[1], "sub"));
-    box.append(badge);
-
-    // How sure we are is one question; what it opens is the other, and it is the one that sets the order.
+    badge.append(b);
     const band = section === "rotate" && impactOf(f);
-    if (band) {
-      const line = el("div", null, "badges");
-      const chip = el("span", impactText(band)[0], "badge band " + band);
-      line.append(chip, el("span", impactText(band)[1], "sub"));
-      box.append(line);
-    }
+    if (band) badge.append(el("span", impactText(band)[0], "badge band " + band));
+    box.append(badge);
+    box.append(el("p", band ? `${kind[1]} ${impactText(band)[1]}` : kind[1], "sub"));
 
     box.append(doThis(f, section, vendor));
+
+    box.append(el("span", TEXT.whereFound, "section-label"));
+    box.append(locations(f));
 
     const facts = el("dl", null, "facts");
     const add = (term, build) => {
@@ -733,32 +858,12 @@
       row.append(el("dt", term), dd);
       facts.append(row);
     };
-    add(TEXT.exposedIn, (dd) => {
-      dd.append(el("span", (f.tools || []).join(", ")));
-      const prefix = prefixOf(f);
-      const canOpen = (state.openable || {})[f.hash] || [];
-      (f.locations || []).forEach((loc, i) => {
-        const line = el("div", null, "loc");
-        line.append(el("span", loc.display + (loc.decoded ? " (decoded)" : ""), "mono"));
-        const path = stripLabel(loc.display);
-        const rule = openRule(path);
-        if (rule && !loc.decoded) {
-          const tools = el("div", null, "loc-tools");
-          if (canOpen.includes(i)) tools.append(revealButton(f.hash, i));
-          tools.append(copyButton(path, TEXT.copyPath));
-          // Windows paths get Explorer, which the Open button already is; the others get a search to run.
-          if (rule.id !== "windows") tools.append(copyButton(command(rule, path, prefix), TEXT.copySearch));
-          tools.append(el("span", rule.what, "sub"));
-          line.append(tools);
-        }
-        dd.append(line);
-      });
-    });
     add(TEXT.foundOn, (dd) => {
       const line = el("div", null, "env-inline");
       for (const m of machinesOf(f)) line.append(envMark(m), el("span", m.label || m.name));
       dd.append(line);
     });
+    if ((f.tools || []).length) add(TEXT.exposedIn, (dd) => dd.append(el("span", f.tools.join(", "))));
     if ((f.still_on_disk || []).length) {
       add(TEXT.stillOnDisk, (dd) => {
         for (const x of f.still_on_disk) dd.append(el("span", `${x.store} (${x.key})`, "mono"));
@@ -769,6 +874,40 @@
     box.append(statusBlock(f));
     box.append(actions(f, section, vendor));
     box.append(sameSteps(f, section));
+  }
+
+  /* Every place it was found, one row each: the path, what kind of file, and the three things to do with it —
+     show it in the file manager, copy the path, copy a search that lands on the line. */
+  function locations(f) {
+    const list = el("div", null, "loc-list");
+    const prefix = prefixOf(f);
+    const canOpen = (state.openable || {})[f.hash] || [];
+    (f.locations || []).forEach((loc, i) => {
+      const line = el("div", null, "loc");
+      const top = el("div", null, "loc-top");
+      const path = stripLabel(loc.display);
+      const isDb = path !== loc.display;
+      top.append(icon(isDb ? "database" : loc.side ? "file" : "chat"));
+      const words = el("div", null, "loc-path");
+      words.append(document.createTextNode(path + (loc.decoded ? " (decoded)" : "")));
+      const bits = [loc.tool, isDb ? loc.display.slice(path.length + 2, -1) : null,
+                    loc.count > 1 ? `×${loc.count}` : null].filter(Boolean);
+      if (bits.length) words.append(el("span", bits.join(" · "), "loc-kind"));
+      top.append(words);
+      line.append(top);
+      const rule = openRule(path);
+      if (rule && !loc.decoded && loc.side) {
+        const tools = el("div", null, "loc-tools");
+        if (canOpen.includes(i)) tools.append(revealButton(f.hash, i));
+        tools.append(copyButton(path, TEXT.copyPath));
+        // Windows paths get Explorer, which the Open button already is; the others get a search to run.
+        if (rule.id !== "windows") tools.append(copyButton(command(rule, path, prefix), TEXT.copySearch));
+        tools.append(el("span", rule.what, "sub"));
+        line.append(tools);
+      }
+      list.append(line);
+    });
+    return list;
   }
 
   function prefixOf(f) {
@@ -1337,19 +1476,30 @@
 
   // ---- settings
   function renderSettings(box) {
-    const wrap = el("section", null, "column");
-    wrap.append(el("h2", TEXT.tabSettings), el("p", TEXT.settingsIntro, "sub"));
-    if (state.notice) wrap.append(note(state.notice, "warning"));
-    if (!state.settings) { box.append(wrap); return; }
-    for (const [scope, title] of [["scan", TEXT.settingsScan], ["view", TEXT.settingsView]]) {
-      wrap.append(el("h3", title));
-      const cards = el("div", null, "cards");
-      for (const f of state.settings.fields.filter((x) => x.scope === scope)) cards.append(settingRow(f));
-      wrap.append(cards);
+    const layout = el("div", null, "settings-layout");
+    const nav = el("nav", null, "settings-nav");
+    nav.setAttribute("aria-label", TEXT.tabSettings);
+    const sections = [["scan", TEXT.settingsScan], ["view", TEXT.settingsView]];
+    const current = state.settingsTab || "scan";
+    for (const [scope, title] of sections) {
+      const b = el("button", title);
+      b.type = "button";
+      b.setAttribute("aria-current", String(scope === current));
+      b.addEventListener("click", () => { state.settingsTab = scope; render(); });
+      nav.append(b);
     }
-    const where = el("p", `${TEXT.savedTo} ${state.settings.path}`, "quiet-note");
-    wrap.append(where);
-    box.append(wrap);
+    const wrap = el("section");
+    const title = (sections.find(([k]) => k === current) || sections[0])[1];
+    wrap.append(el("h2", title, "page-title"), el("p", TEXT.settingsIntro, "sub"));
+    if (state.notice) wrap.append(note(state.notice, "warning"));
+    if (state.settings) {
+      const cards = el("div", null, "cards");
+      for (const f of state.settings.fields.filter((x) => x.scope === current)) cards.append(settingRow(f));
+      wrap.append(cards);
+      wrap.append(el("p", `${TEXT.savedTo} ${state.settings.path}`, "quiet-note"));
+    }
+    layout.append(nav, wrap);
+    box.append(layout);
   }
 
   function settingRow(f) {
@@ -1385,7 +1535,12 @@
       control.addEventListener("change", () => saveSetting(f, control.value === "" ? "auto" : control.value, control));
     }
     control.id = "set-" + f.key;
-    row.append(text, control);
+    let holder = control;
+    if (f.kind === "choice") {
+      holder = el("span", null, "select");
+      holder.append(control);
+    }
+    row.append(text, holder);
     return row;
   }
 
@@ -1424,7 +1579,7 @@
     const all = items().map((i) => i.f.hash);
     // Selection survives by id, never by index; if it is gone, take its nearest surviving neighbour.
     if (!all.includes(before)) state.selected = all[0] || null;
-    if (done) setState("done");
+    if (done) { state.finished = true; setState("done"); }
     // The end of the scan moves the screen, because the result is what was asked for. Findings that arrive
     // mid-scan, or from the last scan, fill the tab and wait to be opened.
     if (done && state.screen === "scan" && !wantedScreen) show("findings");
@@ -1441,6 +1596,7 @@
     state.stages = s.stages;
     state.progress = s.progress || {};
     state.started = !!s.started || !!s.finished;
+    state.finished = !!s.finished;
     state.details = s.details || {};
     if (s.finished && !state.findings) await loadFindings(true);
     else if (s.findings_ready && !state.findings) await loadFindings(false);
@@ -1499,6 +1655,7 @@
       state.progress = ev.progress || {};
       state.lines = ev.lines || [];
       state.started = !!ev.started || !!ev.finished;
+      state.finished = !!ev.finished;
       state.details = ev.details || {};
       setState(ev.finished ? "done" : "live");
       if (ev.finished) loadFindings(true);
@@ -1534,6 +1691,170 @@
       refresh();
     }
   }
+
+  // ---- the command palette: Ctrl-K (or /) from anywhere. The screens, the few actions, and every credential by
+  // name, vendor or the part of its value already on screen.
+  const pal = { open: false, query: "", at: 0, back: null };
+  function paletteEntries() {
+    const out = [];
+    for (const [id, key, , short] of SCREENS) {
+      out.push({ section: TEXT.paletteGo, label: TEXT[key], keys: ["G", short.toUpperCase()], run: () => show(id) });
+    }
+    if (!state.started) {
+      out.push({ section: TEXT.paletteActions, label: TEXT.startScanAction, run: () => { show("scan"); startScan(); } });
+    }
+    for (const [value, label] of [["light", TEXT.themeLight], ["dark", TEXT.themeDark], ["auto", TEXT.themeSystem]]) {
+      out.push({ section: TEXT.paletteActions, label, hint: TEXT.appearance, run: () => setViewSetting("ui_theme", value) });
+    }
+    for (const [value, label] of [["vendor", TEXT.byVendor], ["severity", TEXT.byReach], ["tool", TEXT.byTool]]) {
+      out.push({ section: TEXT.paletteActions, label, hint: TEXT.groupByWord,
+                 run: () => { show("findings"); setGroupBy(value); } });
+    }
+    if (state.findings) {
+      out.push({ section: TEXT.paletteActions, label: TEXT.collapseAll, run: () => foldAll(true) });
+      out.push({ section: TEXT.paletteActions, label: TEXT.expandAll, run: () => foldAll(false) });
+    }
+    for (const it of items()) {
+      out.push({ section: TEXT.paletteCreds, label: it.f.label, mono: it.f.masked, hint: vendorOf(it.f) || "",
+                 run: () => { show("findings"); reveal(it.f.hash); } });
+    }
+    return out;
+  }
+
+  function matches() {
+    const words = pal.query.toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = paletteEntries().filter((e) => {
+      const hay = `${e.label} ${e.hint || ""} ${e.mono || ""} ${e.section}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+    // Hundreds of review items would bury everything else; the first screenful of credentials is plenty to type into.
+    let creds = 0;
+    return hits.filter((e) => e.section !== TEXT.paletteCreds || ++creds <= 60);
+  }
+
+  function openPalette() {
+    pal.open = true;
+    pal.query = "";
+    pal.at = 0;
+    pal.back = document.activeElement;
+    renderPalette();
+  }
+
+  function closePalette() {
+    pal.open = false;
+    $("palette").hidden = true;
+    $("palette").replaceChildren();
+    if (pal.back && pal.back.focus) pal.back.focus();
+  }
+
+  function renderPalette() {
+    const host = $("palette");
+    host.hidden = false;
+    host.replaceChildren();
+    const panel = el("div", null, "palette-box");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-label", TEXT.paletteOpen);
+    const input = el("input");
+    input.type = "search";
+    input.placeholder = TEXT.palettePlaceholder;
+    input.value = pal.query;
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-controls", "palette-list");
+    input.setAttribute("aria-expanded", "true");
+    const list = el("div", null, "palette-list");
+    list.id = "palette-list";
+    list.setAttribute("role", "listbox");
+    const fill = () => {
+      list.replaceChildren();
+      const hits = matches();
+      pal.at = Math.max(0, Math.min(pal.at, hits.length - 1));
+      if (!hits.length) list.append(el("div", TEXT.paletteNone, "palette-empty"));
+      let section = null;
+      hits.forEach((e, i) => {
+        if (e.section !== section) { section = e.section; list.append(el("div", section, "palette-section")); }
+        const row = el("div", null, "palette-item");
+        row.id = "pal-" + i;
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", String(i === pal.at));
+        row.append(el("span", e.label));
+        if (e.mono) row.append(el("span", e.mono, "mono"));
+        if (e.keys) {
+          const k = el("span", null, "kbds");
+          for (const key of e.keys) k.append(el("kbd", key));
+          row.append(k);
+        } else if (e.hint) row.append(el("span", e.hint, "hint"));
+        row.addEventListener("mousemove", () => {
+          if (pal.at !== i) { pal.at = i; fill(); }
+        });
+        row.addEventListener("click", () => { closePalette(); e.run(); });
+        list.append(row);
+      });
+      input.setAttribute("aria-activedescendant", hits.length ? "pal-" + pal.at : "");
+      const on = document.getElementById("pal-" + pal.at);
+      if (on) on.scrollIntoView({ block: "nearest" });
+      return hits;
+    };
+    input.addEventListener("input", () => { pal.query = input.value; pal.at = 0; fill(); });
+    input.addEventListener("keydown", (ev) => {
+      const hits = matches();
+      if (ev.key === "ArrowDown") pal.at = Math.min(hits.length - 1, pal.at + 1);
+      else if (ev.key === "ArrowUp") pal.at = Math.max(0, pal.at - 1);
+      else if (ev.key === "Enter") { const e = hits[pal.at]; closePalette(); if (e) e.run(); return; }
+      else if (ev.key === "Escape") { closePalette(); ev.preventDefault(); return; }
+      else return;
+      ev.preventDefault();
+      fill();
+    });
+    panel.append(input, list);
+    host.append(panel);
+    host.onclick = (ev) => { if (ev.target === host) closePalette(); };
+    fill();
+    input.focus();
+  }
+
+  // A credential chosen from outside the list: open its group if it was folded away, then select it.
+  function reveal(hash) {
+    const g = groups().find((x) => x.items.some((i) => i.f.hash === hash));
+    if (g) state.collapsed[g.key] = false;
+    for (const row of fold(g ? g.items : [])) {
+      if (row.members && row.members.some((it) => it.f.hash === hash)) state.unfolded[row.key] = true;
+    }
+    select(hash, true);
+  }
+
+  function foldAll(shut) {
+    for (const g of groups()) state.collapsed[g.key] = shut;
+    show("findings");
+  }
+
+  async function setViewSetting(key, value) {
+    const field = ((state.settings && state.settings.fields) || []).find((f) => f.key === key);
+    if (field) await saveSetting(field, value, null);
+    render();
+  }
+
+  // Keys from anywhere: Ctrl-K or / for the palette, and "g" then a screen's letter to go there. Never while
+  // typing into a field, and never over the list's own keys (j, k, o, Space, the arrows).
+  let pendingG = false;
+  document.addEventListener("keydown", (ev) => {
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && ev.key.toLowerCase() === "k") {
+      ev.preventDefault();
+      if (pal.open) closePalette(); else openPalette();
+      return;
+    }
+    if (pal.open || ev.ctrlKey || ev.metaKey || ev.altKey || !token) return;
+    const t = ev.target;
+    if (t && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)) return;
+    if (pendingG) {
+      pendingG = false;
+      const hit = SCREENS.find((x) => x[3] === ev.key.toLowerCase());
+      if (hit) { show(hit[0]); ev.preventDefault(); }
+      return;
+    }
+    if (ev.key === "/") { ev.preventDefault(); openPalette(); }
+    else if (ev.key === "g") { pendingG = true; setTimeout(() => { pendingG = false; }, 1200); }
+  });
 
   // ---- start
   async function start() {

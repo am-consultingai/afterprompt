@@ -20,8 +20,11 @@
   --accent-ink: #ffffff;
   --lift: var(--ink);       /* which way a surface moves to sit above the canvas: down in light, up in dark */
 
-  /* Surfaces: the canvas is white and the recessed areas are tinted, not the white-card-on-grey-page of 2016. */
+  /* Surfaces: the canvas is white and the recessed areas are tinted, not the white-card-on-grey-page of 2016.
+     --canvas is the reading pane, one step off the base so a raised card reads as raised without a heavy
+     shadow; the rail and the list sit a step and two steps further in. */
   --surface-0: var(--base);
+  --canvas: color-mix(in oklab, var(--base), var(--lift) 1.2%);
   --surface-1: color-mix(in oklab, var(--base), var(--lift) 2.5%);
   --surface-2: color-mix(in oklab, var(--base), var(--lift) 5%);
   --surface-3: color-mix(in oklab, var(--base), var(--lift) 8%);
@@ -56,9 +59,11 @@
   --shadow-md: 0 2px 4px -2px rgb(0 0 0 / 3%), 0 8px 16px -4px rgb(0 0 0 / 5%);
   --shadow-lg: 0 2px 4px -2px rgb(0 0 0 / 3%), 0 16px 32px -8px rgb(0 0 0 / 5%), 0 32px 64px -16px rgb(0 0 0 / 6%);
 
-  /* Type: one family for the interface, and a monospace for values, paths and keys — the things you compare
-     character by character. No display serif here: this page is chrome and data, never long-form reading. */
-  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Type: one family for the interface, a monospace for values, paths and keys — the things you compare
+     character by character — and a display serif for titles only, at 20px and up. Both named faces are bundled
+     (fonts.css); the system stack behind them covers every script they do not. */
+  --font-ui: "IBM Plex Sans Hebrew", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Frank Ruhl Libre", Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
@@ -84,7 +89,9 @@
   --duration-swap: 0.18s;    /* content swap, cross-fade in only */
 
   --measure: 70ch;           /* 45–90 characters; a pane may be wider, the prose in it may not */
-  --rail: 340px;
+  --nav: 56px;               /* the icon rail */
+  --rail: 340px;             /* the credentials list */
+  --reading: 780px;          /* the detail column: one card wide, centred in whatever is left */
 }
 
 /*

@@ -177,7 +177,7 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
 `--ui` prints a link and hands the scan over to your browser. **It does not start scanning.** The page opens on
 a Start screen that has read nothing: it names the steps it would take and what the scan is set to do, and the
 scan begins when you press **Start scan**. Until then the run sits waiting, and Ctrl-C ends it having read
-nothing. It has four screens:
+nothing. A rail down the left edge holds the Start button and the four screens:
 
 - **Scan** — before the press, the Start screen. After it, one line per step, each staying on screen with what
   it found, a progress bar where the total is knowable and an honest counter where it is not, and the console
@@ -195,7 +195,9 @@ nothing. It has four screens:
   CLI reads as its defaults; a command-line flag still wins.
 
 Keyboard throughout: arrows or `j`/`k` move, `←`/`→` collapse and expand a group, `Enter` opens the detail,
-`Escape` goes back, `Space` ticks a credential off. It is a view over the same scan, not a different one, and it
+`Escape` goes back, `Space` ticks a credential off. `Ctrl-K` (or `/`) opens a palette that jumps to any
+credential by name, vendor or the visible part of its value, and runs the page's few commands; `g` then `s`,
+`c`, `,` or `a` goes to Scan, Credentials, Settings or About. It is a view over the same scan, not a different one, and it
 closes itself when you close the tab.
 
 It is built so that nothing else can use it: it listens on `127.0.0.1` only, every request needs the one-time

@@ -132,6 +132,14 @@ class LiveServerTests(TempDirTest):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["findings"]["rotate"][0]["masked"], "sk-ant…Ab12")
 
+    def test_fonts_are_served_from_here(self):  # U-UI-56b
+        status, h, body = self.req("GET", "/fonts/plex-sans-400.woff2", token=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(h["Content-Type"], "font/woff2")
+        self.assertEqual(body[:4], b"wOF2")
+        self.assertEqual(self.req("GET", "/fonts/../ui.py", token=False)[0], 404)
+        self.assertEqual(self.req("GET", "/fonts.css", token=False)[0], 200)
+
     def test_reveal_names_a_finding_never_a_path(self):  # U-UI-9b
         home = os.path.join(self.tmp, "home")
         write(os.path.join(home, "s1.jsonl"), "x")
@@ -374,12 +382,14 @@ class PageTests(TempDirTest):
         self.assertIn("trademarks:", js)                      # and the page says whose marks these are
 
     def test_it_fits_a_phone(self):  # U-UI-33
-        """Measured at 390px: the bar's name, tabs and state overflowed, and the page scrolled sideways."""
+        """Measured at 390px: the old top bar's name, tabs and state overflowed, and the page scrolled sideways.
+        The rail is a column on a desktop; on a phone it turns into one row across the top, above the screen."""
         css = self.read("app.css")
         narrow = css[css.index("@media (max-width: 560px)"):]
         narrow = narrow[:narrow.index("}\n}") + 3]
-        self.assertIn(".bar { block-size: auto; flex-wrap: wrap;", narrow)
-        self.assertIn(".tabs { order: 3; flex-basis: 100%; }", narrow)   # the tabs take their own row
+        self.assertIn(".app { grid-template-columns: minmax(0, 1fr); }", narrow)
+        self.assertIn(".rail { flex-direction: row; block-size: auto;", narrow)
+        self.assertIn(".tabs { flex-direction: row;", narrow)
         # Panes stack before that, so the list and the card are never side by side on a phone.
         self.assertIn("@media (max-width: 900px) { .panes { grid-template-columns: minmax(0, 1fr);", css)
 
@@ -488,8 +498,109 @@ class PageTests(TempDirTest):
 
     def test_the_header_does_not_claim_a_scan_that_has_not_started(self):  # U-UI-55
         js = self.js_without_comments()
-        self.assertIn('kind === "live" && !state.started ? TEXT.ready', js)
+        self.assertIn('state.conn === "live" && !state.started ? TEXT.ready', js)
         self.assertIn('ready: "ready to scan"', self.read("app.js"))
+
+    def test_fonts_are_bundled_and_titles_only_are_serif(self):  # U-UI-56
+        """Plex Sans for the interface and a display serif for titles, both served by the scanner, never fetched."""
+        html, fonts, tokens = self.read("index.html"), self.read("fonts.css"), self.read("tokens.css")
+        self.assertIn('<link rel="stylesheet" href="/fonts.css">', html)
+        self.assertLess(html.index("/fonts.css"), html.index("/tokens.css"))
+        for f in ("plex-sans-400", "plex-sans-500", "plex-sans-600", "frank-ruhl-libre"):
+            path = f"/fonts/{f}.woff2"
+            self.assertIn(f'url("{path}")', fonts)
+            self.assertIn(path, ui.STATIC, f"{path} is not served")
+            self.assertTrue(os.path.getsize(os.path.join(ui.HERE, ui.STATIC[path][0])) > 10000)
+            self.assertEqual(ui.STATIC[path][1], "font/woff2")
+        for licence in ("OFL-plex-sans.txt", "OFL-frank-ruhl-libre.txt"):
+            self.assertIn("SIL Open Font License", self.read(os.path.join("fonts", licence)))
+        self.assertIn("font-display: swap", fonts)
+        self.assertIn('--font-ui: "IBM Plex Sans Hebrew", system-ui', tokens)
+        self.assertIn('--font-display: "Frank Ruhl Libre"', tokens)
+        # The serif is for the display tier only: every rule that uses it sets 20px or more.
+        css = self.read("app.css")
+        for rule in re.findall(r"\{[^}]*font-family: var\(--font-display\)[^}]*\}", css):
+            self.assertRegex(rule, r"font-size: var\(--text-(?:xl|2xl)\)", rule)
+
+    def test_the_rail_names_every_screen(self):  # U-UI-57
+        """Icons alone are a guessing game: each carries a tooltip and an accessible name, and the count to rotate."""
+        html, js = self.read("index.html"), self.js_without_comments()
+        self.assertIn('<nav class="rail" aria-label="Screens">', html)
+        for part in ('id="go"', 'id="tabs"', 'id="state"', 'role="status"', 'class="sr-only">Afterprompt'):
+            self.assertIn(part, html)
+        tabs = js[js.index("function renderTabs()"):js.index("function renderGo()")]
+        self.assertIn("b.title = TEXT[key];", tabs)
+        self.assertIn('b.setAttribute("aria-label", TEXT[key]);', tabs)
+        self.assertIn('b.setAttribute("aria-current"', tabs)
+        self.assertIn("state.findings.summary.rotate", tabs)
+        # The one action: a play button until pressed, a spinner while it runs, gone once the scan has finished.
+        go = js[js.index("function renderGo()"):js.index("function show(")]
+        self.assertIn("state.finished) return;", go)
+        self.assertIn('running ? icon("spinner", null, true) : icon("play")', go)
+
+    def test_finished_is_the_scanners_word_not_the_findings(self):  # U-UI-58
+        """The last scan's findings are loaded before this one starts, so they cannot mean it has finished."""
+        js = self.js_without_comments()
+        self.assertIn("const running = !state.finished;", js)
+        self.assertNotIn("const running = !state.findings;", js)
+        self.assertIn("state.finished = !!ev.finished;", js)
+        self.assertIn("state.finished = !!s.finished;", js)
+
+    def test_the_start_screen_says_what_the_scan_will_do(self):  # U-UI-59
+        js = self.js_without_comments()
+        plan = js[js.index("function scanPlan()"):js.index("async function startScan()")]
+        for key in ('label("mode")', 'setting("no_wsl")', 'label("containers")', 'show("settings")'):
+            self.assertIn(key, plan)
+        for key in ("planWsl:", "planNoWsl:", "planContainers:", "changeInSettings:"):
+            self.assertIn(key, self.read("app.js"))
+        # Pressing Start twice, or from the rail and the page, starts one scan.
+        self.assertIn("if (state.started || state.starting) return;", js)
+
+    def test_the_palette_and_the_keys(self):  # U-UI-60
+        """Ctrl-K or / opens it from anywhere; g then a letter goes to a screen; neither fires while typing."""
+        js = self.js_without_comments()
+        keys = js[js.index("let pendingG = false;"):js.index("async function start()")]
+        self.assertIn('(ev.ctrlKey || ev.metaKey) && !ev.altKey && ev.key.toLowerCase() === "k"', keys)
+        self.assertIn('["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)', keys)
+        self.assertIn('ev.key === "/"', keys)
+        self.assertIn('ev.key === "g"', keys)
+        # The list's own keys stay the list's: g is not one of them.
+        self.assertNotIn('key === "g"', js[js.index("function onListKey"):js.index("function select(")])
+        # Every screen is reachable, and each has one letter.
+        screens = re.findall(r'\["(\w+)", "tab\w+", "\w+", "(.)"\]', js)
+        self.assertEqual([x[0] for x in screens], ["scan", "findings", "settings", "about"])
+        self.assertEqual(len({x[1] for x in screens}), 4)
+        pal = js[js.index("function renderPalette()"):js.index("function reveal(")]
+        for attr in ('"role", "dialog"', '"aria-modal", "true"', '"role", "combobox"', '"aria-activedescendant"',
+                     '"role", "listbox"', '"role", "option"'):
+            self.assertIn(attr, pal)
+        self.assertIn('ev.key === "Escape"', pal)
+        # A credential picked from it is shown even when its group is folded away.
+        found = js[js.index("function reveal("):js.index("function foldAll(")]
+        self.assertIn("state.collapsed[g.key] = false;", found)
+        self.assertIn("state.unfolded[row.key] = true;", found)
+
+    def test_settings_has_a_section_nav_and_filled_selects(self):  # U-UI-61
+        js, css = self.js_without_comments(), self.read("app.css")
+        body = js[js.index("function renderSettings("):js.index("function settingRow(")]
+        self.assertIn('[["scan", TEXT.settingsScan], ["view", TEXT.settingsView]]', body)
+        self.assertIn('b.setAttribute("aria-current", String(scope === current));', body)
+        self.assertIn('holder = el("span", null, "select");', js)
+        self.assertIn("appearance: none;", css)
+        self.assertIn("background: var(--text-secondary);", css[css.index(".select::after"):])
+
+    def test_the_list_says_how_it_is_grouped_and_changes_it(self):  # U-UI-62
+        js = self.js_without_comments()
+        head = js[js.index("function listHead()"):js.index("async function setGroupBy(")]
+        self.assertIn('[["vendor", TEXT.byVendor], ["severity", TEXT.byReach], ["tool", TEXT.byTool]]', head)
+        self.assertIn('b.setAttribute("aria-pressed"', head)
+        setter = js[js.index("async function setGroupBy("):js.index("function onListKey")]
+        self.assertIn('find((f) => f.key === "group_by")', setter)
+        self.assertIn("await saveSetting(field, value, null);", setter)
+        # Each row is two lines: the name, then what it opens, the value and the spread.
+        rows = js[js.index("const credential = ({ f, section }, sub) => {"):js.index("if (row.one) { credential(row.one, false); continue; }")]
+        self.assertIn('el("div", null, "row-meta")', rows)
+        self.assertIn("meta.append(el(\"span\", f.masked, \"value\"));", rows)
 
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
