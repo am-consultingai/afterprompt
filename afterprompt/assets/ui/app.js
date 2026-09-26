@@ -26,6 +26,10 @@
                   "reads the credentials already set up here, and looks for one inside the other. It stays on " +
                   "this machine: nothing is uploaded, and it starts when you press the button.",
     scanSteps: "Steps", willCover: "This scan will cover",
+    alwaysIncluded: "Always included: this is where Afterprompt is running.",
+    leaveOut: "Untick to leave it out of this scan", scopeFailed: "Could not change that — the scan may have " +
+              "started already.",
+    scopeWhy: "Leaving one out means nothing in it is read, and the report says it was not scanned.",
     // The eleven steps are four pieces of work. The grouping is what keeps a long list from reading as a wall.
     groupFind: "Find what is here", groupRead: "Read it", groupSearch: "Look for credentials",
     groupFinish: "Decide and write", groupOf: "of",
@@ -293,7 +297,7 @@
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
     collapsed: {}, unfolded: {}, settings: null, about: null, statuses: {}, checking: {},
     settingsTab: null, landed: false, conn: "connecting", notice: null, started: false, starting: false, finished: false,
-    details: {}, openStep: {},
+    details: {}, openStep: {}, scope: { options: [], excluded: [] },
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -369,12 +373,35 @@
     render();
   }
 
+  // Every change redraws the screen, so where the person was reading is put back afterwards: the list always,
+  // the card while it is still the same credential, the page while it is the same screen. Changing a status
+  // used to throw both panes back to the top. A different credential, or another screen, starts at its top, and
+  // only those fade in — a redraw in place does not flicker.
+  const drawn = { screen: null, selected: null };
+  const scrollOf = (sel) => { const n = document.querySelector(sel); return n ? n.scrollTop : 0; };
   function render() {
     const box = $("screen");
+    const same = drawn.screen === state.screen;
+    const card = same && drawn.selected === state.selected;
+    const at = { list: scrollOf('[data-pane="list"]'), detail: scrollOf('[data-pane="detail"]'), page: window.scrollY };
     box.replaceChildren();
-    box.classList.remove("swap");
-    void box.offsetWidth;                  // restart the fade; content fades in only, never out and in
-    box.classList.add("swap");
+    if (!card) {
+      box.classList.remove("swap");
+      void box.offsetWidth;                  // restart the fade; content fades in only, never out and in
+      box.classList.add("swap");
+    }
+    draw(box);
+    drawn.screen = state.screen;
+    drawn.selected = state.selected;
+    if (!same) return;
+    const list = document.querySelector('[data-pane="list"]');
+    if (list) list.scrollTop = at.list;
+    const detail = document.querySelector('[data-pane="detail"]');
+    if (detail && card) detail.scrollTop = at.detail;
+    window.scrollTo(0, at.page);
+  }
+
+  function draw(box) {
     if (!token) return box.append(note(TEXT.needKey, "warning"));
     if (state.conn === "refused") return box.append(note(TEXT.refusedText, "danger"));
     $("foot").hidden = state.screen === "findings";
@@ -500,13 +527,50 @@
     const plan = scanPlan();
     if (plan) wrap.append(plan);
 
-    // Where it will look: this machine's environments, found when Afterprompt started — found, not read.
-    const where = detailRows("environments");
+    // Where it will look: this machine's environments, found when Afterprompt started — found, not read — each
+    // with its own mark and a box to leave it out.
+    const where = (state.scope.options || []).length ? scopeList() : detailRows("environments");
     if (where) wrap.append(el("span", TEXT.willCover, "section-label"), where);
 
     // The steps it will take, greyed, grouped the way they will be while it runs.
     if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), phases(false));
     return wrap;
+  }
+
+  function scopeList() {
+    const box = el("div", null, "scope");
+    const out = new Set(state.scope.excluded || []);
+    for (const o of state.scope.options) {
+      const row = el("label", null, "scope-row" + (out.has(o.id) ? " off" : ""));
+      const tick = el("input");
+      tick.type = "checkbox";
+      tick.checked = !out.has(o.id);
+      tick.disabled = !!o.required || state.started || state.starting;
+      tick.title = o.required ? TEXT.alwaysIncluded : TEXT.leaveOut;
+      tick.addEventListener("change", () => setScope(o.id, tick.checked));
+      const words = el("span", null, "grow");
+      words.append(el("span", o.label, "env-name"));
+      if (o.note) words.append(el("span", o.note, "why"));
+      row.append(tick, envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform }), words);
+      box.append(row);
+    }
+    if (state.scope.options.some((o) => !o.required)) box.append(el("p", TEXT.scopeWhy, "why"));
+    return box;
+  }
+
+  async function setScope(id, include) {
+    const before = state.scope.excluded.slice();
+    state.scope.excluded = include ? before.filter((x) => x !== id) : before.concat([id]);
+    render();
+    const r = await post("/api/scope", { id, include }).catch(() => null);
+    if (!r || !r.ok) {
+      state.scope.excluded = before;
+      state.notice = TEXT.scopeFailed;
+    } else {
+      state.scope.excluded = (await r.json()).excluded || [];
+      state.notice = null;
+    }
+    render();
   }
 
   // One line: how deep, which environments, what about containers — and the way to change it.
@@ -1463,7 +1527,7 @@
     if (!key && m && m.kind && (env.kinds || {})[m.kind]) key = env.kinds[m.kind];
     // The host's own mark comes from the platform, which coverage names as a plain string.
     if (!key && m && m.kind === "host") {
-      const plat = ((state.findings || {}).coverage || {}).platform;
+      const plat = m.platform || ((state.findings || {}).coverage || {}).platform;
       key = (env.platforms || {})[plat] || null;
     }
     const cell = el("span", null, "mark");
@@ -1725,6 +1789,7 @@
     state.progress = s.progress || {};
     state.started = !!s.started || !!s.finished;
     state.finished = !!s.finished;
+    state.scope = s.scope || state.scope;
     state.details = s.details || {};
     if (s.finished && !state.findings) await loadFindings(true);
     else if (s.findings_ready && !state.findings) await loadFindings(false);
@@ -1784,6 +1849,7 @@
       state.lines = ev.lines || [];
       state.started = !!ev.started || !!ev.finished;
       state.finished = !!ev.finished;
+      state.scope = ev.scope || state.scope;
       state.details = ev.details || {};
       setState(ev.finished ? "done" : "live");
       if (ev.finished) loadFindings(true);
@@ -1814,6 +1880,8 @@
     } else if (ev.type === "started") {
       state.started = true;
       if (state.conn === "live") setState("live");
+      refresh();
+    } else if (ev.type === "scope") {
       refresh();
     } else if (ev.type === "stage" || ev.type === "stages") {
       refresh();

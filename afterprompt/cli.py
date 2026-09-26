@@ -11,6 +11,7 @@ import time
 import traceback
 
 from afterprompt import __version__, config, envs, exposures, platforms, progress, worker
+from afterprompt.sources import LEFT_OUT
 from afterprompt.util import (human_bytes, human_duration, log, makedirs, read_json, say, set_console_sink, set_log,
                               write_json)
 
@@ -411,7 +412,7 @@ def run_stage(cfg, name, ctx):
 def stage_result_line(name, info):
     if name == "discover":
         extra = ""
-        if info.get("windows_home_source") not in ("not applicable", "disabled"):
+        if info.get("windows_home_source") not in ("not applicable", "disabled", LEFT_OUT):
             extra = f" · Windows profile: {info.get('windows_home') or 'not found'} ({info.get('windows_home_source')})"
         return f"{info['roots']} locations, {info['databases']} chat databases{extra}"
     if name == "databases":
@@ -470,6 +471,42 @@ def partial_findings(cfg, ctx, meta):
     path = cfg.w("partial-findings.json")
     write_json(path, data)
     return path
+
+
+def scope_options(cfg, env_list):
+    """What the Start screen offers to tick in or out. The machine the scan runs on is not a choice: it is where
+    Afterprompt is running. Under WSL the Windows profile is one, though it is not an environment of its own —
+    leaving it out is what --windows-home none does."""
+    from afterprompt import sources as src_mod
+    from afterprompt.platforms import to_windows_path
+    out = []
+    for e in env_list:
+        if e.kind == "host":
+            out.append({"id": e.side, "label": e.label, "name": e.name, "kind": "host", "platform": cfg.platform,
+                        "note": KIND_NOTE["host"], "required": True})
+            if cfg.platform == "wsl":
+                win, how = src_mod.windows_home(cfg)
+                if win:
+                    out.append({"id": "windows", "label": "Windows profile", "name": "Windows", "kind": "windows",
+                                "note": f"{to_windows_path(win) or win} — read with this machine", "required": False})
+        else:
+            out.append({"id": e.side, "label": e.label, "name": e.name, "kind": e.kind,
+                        "note": KIND_NOTE.get(e.kind), "required": False})
+    return out
+
+
+def apply_scope(cfg, env_list, left_out, meta, meta_path):
+    """Leave out what the page unticked, before anything is read. The run records the narrower list, so a resumed
+    run keeps the choice rather than quietly widening it again."""
+    if "windows" in left_out:
+        cfg.windows_home_arg = "none"
+    kept = [e for e in env_list if e.kind == "host" or e.side not in left_out]
+    dropped = [e.label for e in env_list if e not in kept] + (["Windows profile"] if "windows" in left_out else [])
+    meta["environments"] = [e.to_dict() for e in kept[1:]]
+    meta.setdefault("options", {})["windows_home"] = cfg.windows_home_arg
+    write_json(meta_path, meta)
+    say(f"Left out of this scan: {', '.join(dropped)}")
+    return kept, stage_list(cfg.deep, len(kept) > 1, worker=cfg.worker)
 
 
 def stage_detail(cfg, name, info, ctx):
@@ -664,6 +701,8 @@ def run(argv, emit):
                 "options": {"extra_roots": cfg.extra_roots, "excludes": cfg.excludes,
                             "max_disk_gb": cfg.max_disk_bytes / config.GIB, "include_keychain": cfg.include_keychain,
                             "windows_home": cfg.windows_home_arg}}
+    if resumed and (meta.get("options") or {}).get("windows_home") == "none" and not cfg.windows_home_arg:
+        cfg.windows_home_arg = "none"          # left out on the Start screen when this run began
     if resumed and "environments" in meta:
         env_list = [envs.host(cfg)] + [envs.Environment.from_dict(d) for d in meta["environments"]]
     else:
@@ -705,6 +744,7 @@ def run(argv, emit):
         # it reads nothing inside them), and the Start screen shows them so the button is never a surprise.
         try:
             view.state.detail("environments", stage_detail(cfg, "environments", {}, ctx))
+            view.state.offer_scope(scope_options(cfg, env_list))
         except Exception as err:  # noqa: BLE001 - a preview is never worth failing a scan for
             log(f"environments preview failed: {err}")
         say("Waiting for Start scan in the browser view. Ctrl-C stops without scanning anything.")
@@ -720,6 +760,12 @@ def run(argv, emit):
             say("Nothing was scanned.")
             stop_ui(view)
             return EXIT_INTERRUPTED
+        with view.state.lock:
+            left_out = set(view.state.excluded)
+        if left_out:
+            env_list, stages = apply_scope(cfg, env_list, left_out, meta, meta_path)
+            ctx["envs"] = env_list
+            view.state.set_stages(stages, DESCRIPTIONS)
     t0 = time.monotonic()
     current = None
     try:

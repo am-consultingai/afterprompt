@@ -91,6 +91,9 @@ class State:
         self._begin = threading.Event()
         self._stop = threading.Event()
         self.subscribers = []
+        # Which environments the next scan covers: offered before Start, chosen on the page, applied at Start.
+        self.scope = []
+        self.excluded = set()
         self.last_beat = None
         self.started = time.monotonic()
 
@@ -157,6 +160,29 @@ class State:
         """Block until the page asks. False means the wait timed out and nothing was asked for."""
         return self._begin.wait(timeout)
 
+    def offer_scope(self, options):
+        """The environments the page may tick in or out: [{id, label, name, kind, note, required}]."""
+        with self.lock:
+            self.scope = [dict(o) for o in options]
+            known = {o["id"] for o in self.scope}
+            self.excluded &= known
+        self._publish({"type": "scope"})
+
+    def set_scope(self, env_id, include):
+        """One environment in or out of the scan that has not started. None when that is not a choice to make:
+        the scan has started, the id is not offered, or it is the machine the scan runs on."""
+        with self.lock:
+            if self.scan_started:
+                return None
+            option = next((o for o in self.scope if o["id"] == env_id), None)
+            if option is None or option.get("required"):
+                return None
+            (self.excluded.discard if include else self.excluded.add)(env_id)
+            out = sorted(self.excluded)
+        log(f"scope: {env_id} {'included' if include else 'left out'} from the browser view")
+        self._publish({"type": "scope"})
+        return out
+
     def offer_findings(self, path):
         """Findings the page may show before this scan ends: a partial pass taken mid-scan, or the ones the
         last scan left behind. The scan is not finished; there is simply something to look at already."""
@@ -182,6 +208,7 @@ class State:
                     "details": {k: list(v) for k, v in self.details.items()},
                     "findings_ready": bool(self.findings_path),
                     "started": self.scan_started,
+                    "scope": {"options": [dict(o) for o in self.scope], "excluded": sorted(self.excluded)},
                     "finished": self.finished, "lines": self.lines[-400:]}
 
     def checklist(self):
@@ -397,6 +424,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "unknown setting or value out of range"})
             else:
                 self._send(200, {"values": values})
+        elif path == "/api/scope":
+            env_id = body.get("id") if isinstance(body, dict) else None
+            include = body.get("include") if isinstance(body, dict) else None
+            out = st.set_scope(env_id, include) if isinstance(env_id, str) and isinstance(include, bool) else None
+            if out is None:
+                self._send(409 if st.scan_started else 400,
+                           {"error": "the scan has started" if st.scan_started else "not an environment to choose"})
+            else:
+                self._send(200, {"excluded": out})
         elif path == "/api/start":
             # The only endpoint that makes the machine do something. It takes no arguments: what the scan
             # will do was decided in Settings before this was pressed.

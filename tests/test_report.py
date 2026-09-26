@@ -295,3 +295,15 @@ class EmptyEnvironmentTests(unittest.TestCase):
         self.assertIn(("Checked, nothing to scan", "3 with no AI tool history in them (c0, c1, c2)"), rows)
         self.assertTrue(envs.is_empty({"status": "skipped", "reason": envs.EMPTY_REASON}))      # older report
         self.assertFalse(envs.is_empty({"status": "skipped", "reason": "turned off for this scan"}))
+
+
+class LeftOutWindowsTests(unittest.TestCase):
+    def test_a_left_out_windows_profile_is_not_called_missing(self):  # U-REP-SCOPE
+        from afterprompt import report
+        cov = {"platform": "wsl", "windows_home": None, "windows_home_source": "left out of this scan",
+               "sources": [], "databases": {"total": 0, "ok": 0, "failed": []}, "unreadable_files": 0,
+               "excluded_files": 0, "vendored_files": 0, "scan_session_files": 0, "live_values": {}, "prompts": {},
+               "limits": [], "missing_locations": [], "pattern_truncations": [], "keychain": "not requested",
+               "other_homes": []}
+        self.assertEqual(dict(report.coverage_rows({"coverage": cov}))["Windows profile"],
+                         "not scanned: left out of this scan")

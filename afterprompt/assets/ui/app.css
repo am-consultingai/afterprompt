@@ -793,3 +793,20 @@ mark.hl-masked { background: var(--surface-3); color: var(--text-secondary); }
   .sheet { max-block-size: 100vh; border-radius: 0; }
   .legend { margin-inline-start: 0; }
 }
+
+/* --- what the scan will cover: one row per environment, its mark, a box to leave it out --- */
+.scope { display: grid; gap: 4px; max-inline-size: var(--measure); }
+.scope-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-row);
+  cursor: pointer;
+}
+.scope-row:has(input:disabled) { cursor: default; }
+.scope-row .grow { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-inline-size: 0; }
+.scope-row .why { font-size: var(--text-xs); }
+.scope-row.off { background: none; }
+.scope-row.off .env-name { color: var(--text-tertiary); text-decoration: line-through; }
+.scope-row .mark { inline-size: 22px; block-size: 22px; }
+.scope-row .mark svg { inline-size: 14px; block-size: 14px; }
+.scope > .why { margin-block-start: 4px; }

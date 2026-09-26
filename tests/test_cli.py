@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import io
+import json
 import os
 from collections import namedtuple
 from unittest import mock
@@ -65,6 +66,39 @@ class StageDetailTests(TempDirTest):
                                                                                    "host"))})
         self.assertEqual([r["label"] for r in rows], ["WSL: Ubuntu (this machine)", "Windows profile"])
         self.assertTrue(rows[1]["note"].startswith("C:\\Users\\sam — read with this machine"))
+
+    def test_what_the_start_screen_offers(self):  # U-CLI-S1
+        from afterprompt import envs
+        cfg = self.cfg()
+        cfg.platform = "wsl"
+        found = [envs.Environment("Ubuntu", "host", "WSL: Ubuntu (this machine)", "wsl:Ubuntu"),
+                 envs.Environment("api", "docker", "Docker: api", "docker:api")]
+        with mock.patch("afterprompt.sources.windows_home", return_value=("/mnt/c/Users/sam", "cmd.exe")):
+            opts = cli.scope_options(cfg, found)
+        self.assertEqual([(o["id"], o["required"]) for o in opts],
+                         [("wsl:Ubuntu", True), ("windows", False), ("docker:api", False)])
+        self.assertTrue(opts[1]["note"].startswith("C:\\Users\\sam"))
+
+    def test_leaving_out_narrows_the_run_and_records_it(self):  # U-CLI-S2
+        from afterprompt import envs
+        cfg = self.cfg()
+        found = [envs.Environment("Ubuntu", "host", "WSL: Ubuntu (this machine)", "wsl:Ubuntu"),
+                 envs.Environment("api", "docker", "Docker: api", "docker:api"),
+                 envs.Environment("db", "docker", "Docker: db", "docker:db")]
+        meta_path = os.path.join(self.tmp, "run.json")
+        meta = {"environments": [e.to_dict() for e in found[1:]]}
+        with mock.patch.object(cli, "say"):
+            kept, stages = cli.apply_scope(cfg, found, {"docker:api", "windows"}, meta, meta_path)
+        self.assertEqual([e.side for e in kept], ["wsl:Ubuntu", "docker:db"])
+        self.assertIn("env_scan", stages)
+        self.assertEqual(cfg.windows_home_arg, "none")                     # the Windows side is not read
+        with open(meta_path, encoding="utf-8") as fh:
+            saved = json.load(fh)
+        self.assertEqual([e["side"] for e in saved["environments"]], ["docker:db"])   # a resume keeps the choice
+        self.assertEqual(saved["options"]["windows_home"], "none")
+        with mock.patch.object(cli, "say"):
+            kept, stages = cli.apply_scope(cfg, kept, {"docker:db"}, meta, meta_path)
+        self.assertNotIn("env_scan", stages)                               # nothing left to scan beside the host
 
     def test_listing_files_breaks_down_by_tool(self):  # U-CLI-D2
         info = {"per_source": [{"tool": "Claude Code", "side": "wsl", "files": 7388, "bytes": 1_200_000_000}],

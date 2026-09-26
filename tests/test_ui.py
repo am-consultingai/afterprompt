@@ -190,6 +190,26 @@ class LiveServerTests(TempDirTest):
         self.assertEqual(self.req("POST", "/api/excerpt", body={"path": "/etc/passwd"})[0], 400)
         self.assertEqual(self.req("POST", "/api/excerpt", body={"hash": h, "index": 0}, token=False)[0], 401)
 
+    def test_scope_is_chosen_before_start_and_frozen_after(self):  # U-UI-72
+        self.state.offer_scope([{"id": "wsl:Ubuntu", "label": "WSL: Ubuntu (this machine)", "kind": "host",
+                                 "required": True},
+                                {"id": "windows", "label": "Windows profile", "kind": "windows", "required": False},
+                                {"id": "docker:api", "label": "Docker: api", "kind": "docker", "required": False}])
+        ok = lambda body: self.req("POST", "/api/scope", body=body)
+        self.assertEqual(ok({"id": "wsl:Ubuntu", "include": False})[0], 400)      # the machine it runs on
+        self.assertEqual(ok({"id": "nope", "include": False})[0], 400)
+        self.assertEqual(ok({"id": "windows", "include": "no"})[0], 400)
+        status, _, body = ok({"id": "windows", "include": False})
+        self.assertEqual((status, json.loads(body)["excluded"]), (200, ["windows"]))
+        ok({"id": "docker:api", "include": False})
+        self.assertEqual(json.loads(ok({"id": "windows", "include": True})[2])["excluded"], ["docker:api"])
+        self.assertEqual(json.loads(self.req("GET", "/api/status")[2])["scope"]["excluded"], ["docker:api"])
+        self.assertEqual(ok({"id": "docker:api", "include": False})[0], 200)
+        self.req("POST", "/api/start", body={})
+        self.assertEqual(ok({"id": "docker:api", "include": True})[0], 409)       # the scan has what it has
+        self.assertEqual(self.state.excluded, {"docker:api"})
+        self.assertEqual(self.req("POST", "/api/scope", body={"id": "windows", "include": False}, token=False)[0], 401)
+
     def test_checklist(self):  # U-UI-10
         ok = {"hash": "abc123def4567890", "done": True}
         self.assertEqual(self.req("POST", "/api/checklist", body=ok)[0], 200)
@@ -688,12 +708,35 @@ class PageTests(TempDirTest):
     def test_the_start_screen_shows_where_it_will_look(self):  # U-UI-69
         js = self.js_without_comments()
         ready = js[js.index("function renderReady(wrap)"):js.index("function scanPlan()")]
-        self.assertIn('const where = detailRows("environments");', ready)
+        self.assertIn('const where = (state.scope.options || []).length ? scopeList() : detailRows("environments");',
+                      ready)
         self.assertLess(ready.index("TEXT.willCover"), ready.index("TEXT.scanSteps"))
         cli_src = self.read_module("cli.py")
         gate = cli_src[cli_src.index("view.state.set_stages(stages, DESCRIPTIONS)"):
                        cli_src.index("while not view.state.scan_started:")]
         self.assertIn('view.state.detail("environments", stage_detail(cfg, "environments", {}, ctx))', gate)
+
+    def test_each_environment_can_be_left_out_before_start(self):  # U-UI-70
+        js = self.js_without_comments()
+        scope = js[js.index("function scopeList()"):js.index("async function setScope(")]
+        self.assertIn('tick.type = "checkbox";', scope)
+        self.assertIn("tick.disabled = !!o.required || state.started || state.starting;", scope)
+        self.assertIn("envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform })", scope)
+        self.assertIn('post("/api/scope", { id, include })', js)
+        cli_src = self.read_module("cli.py")
+        gate = cli_src[cli_src.index("while not view.state.scan_started:"):cli_src.index("t0 = time.monotonic()")]
+        self.assertIn("left_out = set(view.state.excluded)", gate)       # read once, after the press
+        self.assertIn("apply_scope(cfg, env_list, left_out, meta, meta_path)", gate)
+
+    def test_a_redraw_keeps_the_reader_where_they_were(self):  # U-UI-71
+        """Changing a status redrew the screen and threw both panes to the top."""
+        js = self.js_without_comments()
+        r = js[js.index("function render()"):js.index("function draw(box)")]
+        self.assertIn("const card = same && drawn.selected === state.selected;", r)
+        self.assertIn("if (list) list.scrollTop = at.list;", r)
+        self.assertIn("if (detail && card) detail.scrollTop = at.detail;", r)   # a new credential starts at its top
+        self.assertLess(r.index("draw(box);"), r.index("list.scrollTop = at.list"))
+        self.assertIn("if (!card) {", r)                                         # and only a change fades in
 
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""

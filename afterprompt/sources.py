@@ -39,6 +39,10 @@ def sides(cfg):
 _WIN_CACHE = {}
 
 
+# Said the same way wherever it shows: the Start screen's box, --windows-home none, the report.
+LEFT_OUT = "left out of this scan"
+
+
 def windows_home(cfg):
     key = (cfg.platform, cfg.windows_home_arg)
     if key in _WIN_CACHE:
@@ -48,7 +52,7 @@ def windows_home(cfg):
     elif cfg.platform != "wsl":
         res = (None, "not applicable")
     elif cfg.windows_home_arg and cfg.windows_home_arg.lower() == "none":
-        res = (None, "disabled")
+        res = (None, LEFT_OUT)
     elif cfg.windows_home_arg:
         p = os.path.abspath(cfg.windows_home_arg)
         res = (p, "--windows-home") if os.path.isdir(p) else (None, f"--windows-home not found: {p}")

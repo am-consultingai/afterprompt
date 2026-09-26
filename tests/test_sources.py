@@ -108,7 +108,7 @@ class SourcesTests(TempDirTest):
     def test_missing_and_windows_none(self):  # U-SRC-7
         out = discover(make_cfg(self.tmp, "wsl", self.home, windows_home="none"))
         self.assertIsNone(out["windows_home"])
-        self.assertEqual(out["windows_home_source"], "disabled")
+        self.assertEqual(out["windows_home_source"], "left out of this scan")
         self.assertTrue(any(m["path"].endswith(".claude") for m in out["missing"]))
 
     def test_extra_roots(self):  # U-SRC-8

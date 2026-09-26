@@ -178,7 +178,9 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
 scan left findings, the page opens on them, and a new scan is the Start button on the rail. Otherwise it opens on
 a Start screen that has read nothing: it names the steps it would take and what the scan is set to do, and the
 scan begins when you press **Start scan**. Until then the run sits waiting, and Ctrl-C ends it having read
-nothing. A rail down the left edge holds the Start button and the four screens:
+nothing: it lists the environments the scan will cover (the machine it runs on, the Windows profile under WSL,
+each WSL distribution and running container), each with its own mark and a box to leave it out of this scan.
+A rail down the left edge holds the Start button and the four screens:
 
 - **Scan** — before the press, the Start screen. After it, one line per step, each staying on screen with what
   it found, a progress bar where the total is knowable and an honest counter where it is not, and the console

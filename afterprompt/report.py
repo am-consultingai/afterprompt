@@ -286,7 +286,11 @@ def coverage_rows(data):
     if not c["sources"]:
         rows.append(("AI tool data", "none found"))
     if c["platform"] == "wsl":
-        rows.append(("Windows profile", f"{c['windows_home'] or 'not found'} ({c['windows_home_source']})"))
+        from afterprompt.sources import LEFT_OUT
+        if not c["windows_home"] and c["windows_home_source"] == LEFT_OUT:
+            rows.append(("Windows profile", f"not scanned: {LEFT_OUT}"))
+        else:
+            rows.append(("Windows profile", f"{c['windows_home'] or 'not found'} ({c['windows_home_source']})"))
     # One line per environment. A clean total must never hide a gap in one of them — but a container that was
     # opened and held no AI tool history is not a gap, and six of them are one line, not six.
     from afterprompt.envs import is_empty
