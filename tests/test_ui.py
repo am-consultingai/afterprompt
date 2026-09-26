@@ -756,6 +756,19 @@ class PageTests(TempDirTest):
         for key in ("stageFind:", "stageRead:", "stageLook:", "stageDecide:", "stageLookWhat:"):
             self.assertIn(key, self.read("app.js"))
 
+    def test_many_environments_scroll_in_one_row(self):  # U-UI-74
+        """Fourteen environments stacked four rows deep and pushed the pipeline off the screen: they keep their size
+        and scroll sideways, the heading says how many, and the fixed one is shown ticked rather than grey."""
+        css, js = self.read("app.css"), self.js_without_comments()
+        tiles = css[css.index(".tiles {"):css.index(".tiles > .tile")]
+        self.assertIn("flex-wrap: nowrap;", tiles)
+        self.assertIn("overflow-x: auto;", tiles)
+        self.assertIn(".tiles > .tile { flex: none;", css)
+        self.assertIn("inline-size: 124px;", css[css.index(".tile {"):])
+        self.assertIn("n > 1 ? `${TEXT.willCover} · ${n}` : TEXT.willCover", js)
+        tiles_js = js[js.index("function scopeTiles()"):js.index("async function setScope(")]
+        self.assertIn('mark = el("span", null, "tile-lock");', tiles_js)
+
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
         js = self.js_without_comments()

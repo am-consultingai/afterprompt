@@ -607,7 +607,9 @@
     // Where it will look, and how deep: side by side, the two things to decide before pressing.
     const grid = el("div", null, "scan-grid");
     const where = el("section", null, "scan-where");
-    where.append(el("span", TEXT.willCover, "section-label"));
+    // How many there are, since past a handful the row scrolls and some are out of sight.
+    const n = (state.scope.options || []).length;
+    where.append(el("span", n > 1 ? `${TEXT.willCover} · ${n}` : TEXT.willCover, "section-label"));
     where.append((state.scope.options || []).length ? scopeTiles() : (detailRows("environments") || el("span")));
     const depth = depthPanel();
     grid.append(where);
@@ -635,7 +637,16 @@
       tick.disabled = !!o.required || state.started || state.starting;
       tick.setAttribute("aria-label", o.label);
       tick.addEventListener("change", () => setScope(o.id, tick.checked));
-      tile.append(tick, envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform }),
+      // The machine it runs on is always in: a filled tick, not a disabled box, which browsers draw grey and which
+      // then reads as "not selected".
+      let mark = tick;
+      if (o.required) {
+        mark = el("span", null, "tile-lock");
+        mark.setAttribute("role", "img");
+        mark.setAttribute("aria-label", TEXT.alwaysIncluded);
+        mark.append(icon("check"));
+      }
+      tile.append(mark, envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform }),
                   el("span", o.kind === "windows" ? TEXT.windowsSide : o.name, "tile-name"),
                   el("span", o.required ? TEXT.tileAlways : (TILE_KIND()[o.kind] || o.kind), "tile-kind"));
       box.append(tile);
