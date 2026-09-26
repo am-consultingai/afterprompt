@@ -241,20 +241,99 @@ def _jsonl(path):
                 continue
 
 
-def summarize_locations(hits):
+# A row of an extracted chat database, as databases.py writes it: "### <table> | key=<key> | value=…".
+RECORD = re.compile(rb"### (.+?) \| key=(.*?) \| ")
+RECORDS_KEPT = 5
+
+
+ROW_INDEX = {}
+
+
+def row_index(path):
+    """(offsets, rows) from the index databases.py wrote beside a dump, or None when there is none."""
+    from afterprompt.databases import rows_index
+    if path not in ROW_INDEX:
+        offsets, rows = [], []
+        try:
+            with open(rows_index(path), encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        o, t, k = json.loads(line)
+                    except (ValueError, TypeError):
+                        continue
+                    offsets.append(o)
+                    rows.append((t, k))
+            ROW_INDEX[path] = (offsets, rows)
+        except OSError:
+            ROW_INDEX[path] = None
+    return ROW_INDEX[path]
+
+
+def record_at(path, offset, reach=16 * 1024 ** 2):
+    """The table and key of the database row a hit in an extracted dump sits in, or None.
+
+    Kept on the location so the browser view can fetch that one row by key — milliseconds — instead of searching a
+    database that can run to gigabytes. The dumps are plaintext and are gone before triage runs, so the answer
+    comes from the row index written beside them; a dump kept on disk (--keep-work, or an index that was not
+    written) is read backwards from the hit instead, at most `reach`."""
+    if not isinstance(offset, int):
+        return None
+    idx = row_index(path)
+    if idx and idx[0]:
+        import bisect
+        i = bisect.bisect_right(idx[0], offset) - 1
+        return {"table": idx[1][i][0], "key": idx[1][i][1]} if i >= 0 else None
+    try:
+        with open(path, "rb") as fh:
+            pos, start = offset, None
+            while pos > 0 and offset - pos < reach:
+                step = min(65536, pos)
+                pos -= step
+                fh.seek(pos)
+                i = fh.read(step).rfind(b"\n")
+                if i >= 0:
+                    start = pos + i + 1
+                    break
+            if start is None and pos == 0:
+                start = 0
+            if start is None:
+                return None
+            fh.seek(start)
+            head = fh.read(4096)
+    except (OSError, TypeError, ValueError):
+        return None
+    m = RECORD.match(head)
+    if not m:
+        return None
+    return {"table": m.group(1).decode("utf-8", "replace"), "key": m.group(2).decode("utf-8", "replace")}
+
+
+def summarize_locations(hits, ext=None):
     c = collections.Counter()
     meta = {}
+    records = collections.defaultdict(list)
     for loc in hits:
         k = (loc["display"], loc["decoded"])
         c[k] += 1
         meta[k] = loc
-    locs = [{"display": d, "tool": meta[(d, dec)]["tool"], "side": meta[(d, dec)]["side"], "count": n,
-             "decoded": dec} for (d, dec), n in c.most_common()]
+        # Which rows of a chat database, while the extracted dump is still on disk to say.
+        if ext and not loc["decoded"] and len(records[k]) < RECORDS_KEPT and loc.get("f") and is_under(loc["f"], ext):
+            rec = record_at(loc["f"], loc.get("o"))
+            if rec and rec not in records[k]:
+                records[k].append(rec)
+    locs = []
+    for (d, dec), n in c.most_common():
+        row = {"display": d, "tool": meta[(d, dec)]["tool"], "side": meta[(d, dec)]["side"], "count": n,
+               "decoded": dec}
+        if records[(d, dec)]:
+            row["records"] = records[(d, dec)]
+        locs.append(row)
     return locs
 
 
 def build(cfg, sources, now=None):
     now = now or cfg.now or time.time()
+    ROW_INDEX.clear()
     res = Resolver(cfg, sources)
     live = read_json(cfg.w("live_index.json"), {}) or {}
     dismissed = collections.Counter()
@@ -396,7 +475,7 @@ def build(cfg, sources, now=None):
                 revoke = store_hint(s["store"], s["key"])
                 if revoke:
                     break
-        locs = summarize_locations(f["hits"])
+        locs = summarize_locations(f["hits"], res.ext)
         reason_key = f["category"]
         if f["category"] == "pattern":
             reason_key = "pattern" if f["section"] == "rotate" and f["tier"] == "A" else (

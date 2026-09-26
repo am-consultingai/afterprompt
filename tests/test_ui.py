@@ -164,6 +164,32 @@ class LiveServerTests(TempDirTest):
                                       token=False)[0], 401)
             popen.assert_not_called()
 
+    def test_the_reader_answers_masked_or_says_why(self):  # U-UI-63
+        from tests.samples import SecretFactory
+        from afterprompt.util import mask, sha16
+        key = SecretFactory(5).sample("anthropic_key")
+        home = os.path.join(self.tmp, "home")
+        write(os.path.join(home, "s1.jsonl"), f"please use {key} for this\n")
+        h = sha16(key.encode())
+        loc = {"display": "~/s1.jsonl", "side": "linux", "tool": "Claude Code", "count": 1, "decoded": False}
+        fp = os.path.join(self.tmp, "findings.json")
+        write_json(fp, {"platform": {"kind": "linux"}, "environments": [{"kind": "host", "side": "linux"}],
+                        "rotate": [{"hash": h, "match_hashes": [h], "masked": mask(key.encode()), "length": len(key),
+                                    "patterns": ["anthropic_key"], "locations": [loc, dict(loc, side="docker:api")]}],
+                        "review": []})
+        self.state.home = home
+        self.state.finish(fp)
+        status, _, body = self.req("POST", "/api/excerpt", body={"hash": h, "index": 0})
+        self.assertEqual(status, 200)
+        out = json.loads(body)
+        self.assertTrue(out["ok"], out)
+        self.assertEqual([x["t"] for x in out["hits"][0]["text"] if x.get("k") == "target"], [mask(key.encode())])
+        self.assertNotIn(key, body.decode())                 # the one thing this endpoint must never do
+        refusal = json.loads(self.req("POST", "/api/excerpt", body={"hash": h, "index": 1})[2])
+        self.assertEqual((refusal["ok"], refusal["code"]), (False, "elsewhere"))
+        self.assertEqual(self.req("POST", "/api/excerpt", body={"path": "/etc/passwd"})[0], 400)
+        self.assertEqual(self.req("POST", "/api/excerpt", body={"hash": h, "index": 0}, token=False)[0], 401)
+
     def test_checklist(self):  # U-UI-10
         ok = {"hash": "abc123def4567890", "done": True}
         self.assertEqual(self.req("POST", "/api/checklist", body=ok)[0], 200)
@@ -601,6 +627,37 @@ class PageTests(TempDirTest):
         rows = js[js.index("const credential = ({ f, section }, sub) => {"):js.index("if (row.one) { credential(row.one, false); continue; }")]
         self.assertIn('el("div", null, "row-meta")', rows)
         self.assertIn("meta.append(el(\"span\", f.masked, \"value\"));", rows)
+
+    def test_every_refusal_is_explained(self):  # U-UI-64
+        """A place the reader will not or cannot show opens a popup that says why: every code the server can send
+        has a title and an explanation here, and the ones that are a safeguard doing its job say so."""
+        js = self.js_without_comments()
+        codes = set(re.findall(r'refuse\("(\w+)"', self.read_module("excerpt.py")))
+        codes |= set(re.findall(r'"(elsewhere|not_path)"', self.read_module("excerpt.py")))
+        self.assertGreaterEqual(len(codes), 12)
+        table = self.read("app.js")
+        table = table[table.index("refusals: {"):table.index("onPurpose:")]
+        for code in codes:
+            self.assertRegex(table, rf"\b{code}: \[\"", f"{code} has no explanation on the page")
+        on_purpose = re.search(r"onPurpose: \[([^\]]*)\]", self.read("app.js")).group(1)
+        self.assertEqual(set(re.findall(r'"(\w+)"', on_purpose)),
+                         {"decoded", "conversation", "elsewhere", "too_large", "binary"})
+        view = js[js.index("function refusalView("):js.index("function readerView(")]
+        self.assertIn("TEXT.refusals[code] || TEXT.refusals.unreadable", view)   # an unknown code still explains
+        self.assertIn("TEXT.blockedOnPurpose : TEXT.couldNotOpen", view)
+        self.assertIn('"alertdialog"', js)
+        self.assertIn('if (ev.key === "Escape") { ev.preventDefault(); closeSheet(); }', js)
+
+    def test_open_it_is_on_every_place(self):  # U-UI-65
+        """Including the ones it will refuse: the refusal explains, which a missing button never does."""
+        js = self.js_without_comments()
+        locs = js[js.index("function locations(f)"):js.index("function prefixOf(f)")]
+        self.assertLess(locs.index("openReader(f, i, open)"), locs.index("const rule = openRule(path);"))
+        self.assertIn('post("/api/excerpt", { hash: f.hash, index })', js)
+        # What a transcript says is data: marks and text are built with textContent, never parsed as markup.
+        pieces = js[js.index("function pieces("):js.index("const pal = {")]
+        self.assertIn("document.createTextNode(p.t)", pieces)
+        self.assertIn('el("mark", p.t,', pieces)
 
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""

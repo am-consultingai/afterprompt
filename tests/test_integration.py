@@ -45,6 +45,22 @@ class IntegrationTests(TempDirTest):
             self.assertIn(reason, d["dismissed"])
         self.assertEqual(d["coverage"]["databases"]["ok"], 1)
 
+    def test_the_reader_opens_what_the_scan_found(self):  # I-READER
+        """End to end: the scan notes which chat record held a value, and the reader fetches that record and shows the
+        value masked in it — the whole path the browser view's Open it takes, without the browser."""
+        from afterprompt import excerpt
+        fx = Fixture(self.tmp, "wsl")
+        self.scan(fx, expect=10)
+        d = fx.findings()
+        f = summary(d)[0][fx.masked("F2")]
+        i, loc = next((i, l) for i, l in enumerate(f["locations"]) if l["display"].endswith("(chat database)"))
+        self.assertEqual(loc["records"], [{"table": "cursorDiskKV", "key": "bubbleId:composer0:bubble0"}])
+        out = excerpt.open_location(d, f["hash"], i, home=fx.home)
+        self.assertTrue(out["ok"], out)
+        self.assertEqual((out["kind"], out["hits"][0]["where"]), ("database", "bubbleId:composer0:bubble0"))
+        self.assertIn("why does git push fail with token", "".join(p["t"] for p in out["hits"][0]["text"]))
+        self.assertNotIn(fx.s["F2"], json.dumps(out))
+
     def test_wsl_deep(self):  # I-2
         fx = Fixture(self.tmp, "wsl")
         self.scan(fx, "--deep", expect=10)

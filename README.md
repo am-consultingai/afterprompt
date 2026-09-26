@@ -206,10 +206,21 @@ requests naming another host are refused (DNS rebinding), cross-site requests ar
 ever sent, and the page is served with a strict Content-Security-Policy and loads nothing from the internet.
 Everything it shows was already masked for `findings.json`.
 
-**Open it** beside a location shows that file in your file manager (Explorer with the file selected, Finder's
-reveal, or the folder on Linux). The page names only the finding and which of its locations; the path is looked
-up by Afterprompt in its own findings, and a file in another environment (another WSL distribution, a container)
-is refused rather than guessed at. It never opens the file itself.
+**Open it** beside a location opens a reader in the page: each place the credential sits in that file (up to
+twenty), with its line or chat record, who wrote it (your message, the assistant, a tool's output), a line of
+context either side, and the credential highlighted. Every value that looks like a secret is masked there, not
+only this one: other findings, anything a credential pattern matches, and long random-looking tokens, and a
+window never ends part-way through a token. A chat database opens at the record the scan noted, in milliseconds
+however large the file; a report from an older version has no record noted, so the database is searched for up
+to ten seconds.
+
+When a place will not open, a popup says why and what to do instead. Some are safeguards doing their job — a
+file in another environment (another WSL distribution, a container) is not read from this one, a value found
+only inside decoded data has no readable place, a conversation is not a file, a file over 64 MB or a binary one
+is not shown — and some are the file itself: it has gone, it no longer holds the value, it could not be read.
+**Show in folder** opens the file manager at the file (Explorer with it selected, Finder's reveal, or the folder
+on Linux) and never opens the file. Both name only the finding and which of its locations; the path is looked up
+by Afterprompt in its own findings.
 
 ## Reading the report
 

@@ -1,10 +1,16 @@
 import glob
+import json
 import os
 import sqlite3
 import unittest
 
 from afterprompt import databases
 from tests.helpers import TempDirTest, cursor_db, make_cfg, requires_posix
+
+
+def slurp(path):
+    with open(path, "rb") as fh:
+        return fh.read()
 
 
 def read_parts(cfg):
@@ -32,6 +38,29 @@ class CursorTests(TempDirTest):
         self.assertIn(f"### SOURCE {db}", text)
         self.assertIn("hello there", text)
         self.assertIn("### ItemTable | key=workbench.state", text)
+
+    def test_each_row_is_indexed_by_offset_and_key(self):  # U-CUR-9
+        """The dump is plaintext and goes before triage; the index of which row starts where outlives it, and holds
+        only table names, record keys and offsets."""
+        from afterprompt import triage
+        db = os.path.join(self.tmp, "state.vscdb")
+        cursor_db(db, [(1, "hello there secret-value-1"), (2, "reply")])
+        databases.extract(self.cfg, self.srcs(db))
+        dump = sorted(glob.glob(os.path.join(self.cfg.w("extracted", "db"), "000_*.txt")))[0]
+        blob = slurp(dump)
+        with open(databases.rows_index(dump), encoding="utf-8") as fh:
+            index = [json.loads(line) for line in fh]
+        self.assertEqual([(t, k) for _, t, k in index],
+                         [("ItemTable", "workbench.state"), ("cursorDiskKV", "bubbleId:composer0:bubble0"),
+                          ("cursorDiskKV", "bubbleId:composer1:bubble1")])
+        for offset, table, key in index:
+            self.assertTrue(blob[offset:].startswith(f"### {table} | key={key} | ".encode()))
+        self.assertNotIn("hello there", slurp(databases.rows_index(dump)).decode())
+        # With the dump gone, as it is by the time triage runs, the index still names the row a hit was in.
+        hit = blob.index(b"secret-value-1")
+        os.remove(dump)
+        triage.ROW_INDEX.clear()
+        self.assertEqual(triage.record_at(dump, hit), {"table": "cursorDiskKV", "key": "bubbleId:composer0:bubble0"})
 
     def test_wal_content(self):  # U-CUR-2
         db = os.path.join(self.tmp, "wal.vscdb")

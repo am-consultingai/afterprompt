@@ -5,7 +5,8 @@ allowlist of read-only endpoints plus a few small writes (checklist ticks, statu
 No endpoint takes a path or returns an unmasked secret: everything it serves was already masked for
 findings.json. Two make the machine do something, and neither takes anything that could steer it: /api/start
 begins the scan already configured, and /api/reveal shows a reported file in the file manager, named by finding
-and index, never by path (reveal.py).
+and index, never by path (reveal.py). /api/excerpt reads one, named the same way, and returns only the places the
+value sits with every secret in them masked (excerpt.py).
 
 Defences (U1, U2), each checked on every request:
 - bound to 127.0.0.1 only, on an ephemeral port (never 0.0.0.0: no firewall prompt, no LAN exposure);
@@ -26,7 +27,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from afterprompt import exposures, reveal, settings, watch
+from afterprompt import excerpt, exposures, reveal, settings, watch
 from afterprompt.util import log, read_json, write_json
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
@@ -409,6 +410,16 @@ class Handler(BaseHTTPRequestHandler):
             if ok:
                 log(f"revealed location {body.get('index')} of {h} for {self.client_address[0]}")
             self._send(200 if ok else 409, {"ok": ok, "why": why})
+        elif path == "/api/excerpt":
+            # The reader: the places one finding sits in one of its files, every secret in them masked. Like
+            # /api/reveal it names a finding and an index, never a path.
+            h = body.get("hash") if isinstance(body, dict) else None
+            if not exposures.valid_hash(h):
+                self._send(400, {"error": "hash must be a value hash"})
+                return
+            out = excerpt.open_location(st.findings() or {}, h, body.get("index"), home=st.home)
+            log(f"reader: location {body.get('index')} of {h}: {'shown' if out.get('ok') else out.get('code')}")
+            self._send(200, out)
         elif path == "/api/checklist":
             h = body.get("hash") if isinstance(body, dict) else None
             if not (isinstance(h, str) and 8 <= len(h) <= 64 and all(c in "0123456789abcdef" for c in h)):

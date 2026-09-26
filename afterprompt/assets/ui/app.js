@@ -123,8 +123,67 @@
     palettePlaceholder: "Search credentials and commands…", paletteGo: "Go to", paletteActions: "Actions",
     paletteCreds: "Credentials", paletteNone: "Nothing matches.", paletteOpen: "Search and commands",
     themeLight: "Light", themeDark: "Dark", themeSystem: "Match system", appearance: "Appearance",
-    groupByWord: "Group by", startScanAction: "Start scan", collapseAll: "Collapse every group",
+    aiTool: "The AI tool", groupByWord: "Group by", startScanAction: "Start scan", collapseAll: "Collapse every group",
     expandAll: "Expand every group",
+    // The reader, and what it says when it will not or cannot open a place.
+    showInFolder: "Show in folder", close: "Close", reading: "Reading the file…",
+    searchingDb: "Searching the chat database for it. The scan that found this did not note which record holds " +
+                 "it, so this can take up to ten seconds.",
+    readerPlaces: "places in this file", readerPlace: "place in this file", readerShowing: "showing the first",
+    readerLine: "Line", readerRecord: "Record", readerCut: "…",
+    readerMasked: "Every value that looks like a secret is masked here, not only this one — this page never shows " +
+                  "a full value. The file itself is not changed.",
+    readerPartial: "The search stopped after {seconds} seconds; these are the places found by then.",
+    legendThis: "this credential", legendOther: "another finding — open it", legendMasked: "masked",
+    whoUser: "a message you sent", whoAssistant: "the assistant's reply", whoTool: "a tool's output",
+    chatDatabase: "chat database", blockedOnPurpose: "Kept closed on purpose", couldNotOpen: "Could not open it",
+    whatYouCanDo: "What you can do",
+    refusals: {
+      stale: ["This place is no longer in the findings",
+              "The findings changed after this page drew them — a newer scan may have finished. Choose the " +
+              "credential again from the list."],
+      decoded: ["Found only inside encoded data",
+                "The scan found this value by decoding something in the file — base64, gzip or a JWT. The file " +
+                "holds only the encoded form, so there is no readable place in it to show you. Rotating the " +
+                "credential is what matters; the encoded copy is harmless once the credential is revoked."],
+      conversation: ["This is a conversation, not a file",
+                     "The scan read this value out of {tool}'s own history: {where}. That names a conversation, " +
+                     "not a file on disk, so there is nothing here to open. Find that conversation in {tool} to " +
+                     "see it, and delete it there once the credential is rotated."],
+      elsewhere: ["This file is in another environment",
+                  "It is inside {env}, a separate filesystem. Afterprompt reads only files on the machine it runs " +
+                  "on, so that no environment can be used to read into another. Run Afterprompt inside {env} " +
+                  "to open it there."],
+      not_path: ["This location is not a file", "The scan recorded where it found this value, but not as a " +
+                 "path on this machine, so there is nothing here to open."],
+      gone: ["This file is no longer on disk",
+             "It was there when the scan ran, and it has since been moved or deleted. If you cleaned it up, " +
+             "that is the result you wanted: Check now records that the value is gone."],
+      not_in_file: ["The value is no longer in this file",
+                    "The file is still there, but the credential is not in it any more — it was edited or " +
+                    "rewritten after the scan. Check now records that."],
+      record_changed: ["The chat record no longer holds the value",
+                       "The database still has the record the scan found it in, but the value is not in it any " +
+                       "more: the chat was edited or cleared. Check now records that."],
+      too_large: ["This file is too large to open here",
+                  "It is {size}. The reader stops at {limit} so the page stays quick and the whole file is " +
+                  "never held in memory. Show it in its folder and search it for {prefix} to land on the value."],
+      binary: ["This is not a text file",
+               "It holds binary data, which would show as noise here. Show it in its folder and open it with the " +
+               "program it belongs to."],
+      unreadable: ["Afterprompt could not read this file",
+                   "The system refused: {error}. It may be locked by the program that owns it, or readable only " +
+                   "by another account. Afterprompt does not elevate or unlock files."],
+      cannot_locate: ["Afterprompt cannot point at it in this file",
+                      "This finding was recorded without what the reader needs to find it again. A new scan " +
+                      "records it; until then, search the file for the value's first characters."],
+      db_timeout: ["This chat database is too slow to search",
+                   "It is {size}, and the scan that found this value is from before Afterprompt noted which " +
+                   "record holds it, so finding it means reading the whole database. That took longer than " +
+                   "{seconds} seconds. Run a new scan: it notes the record, and this opens at once."],
+    },
+    // Which refusals are a safeguard doing its job, rather than something going wrong.
+    onPurpose: ["decoded", "conversation", "elsewhere", "too_large", "binary"],
   };
 
   const ICON = {   // 16×16, stroke 1.5: never a 24px icon scaled down, which lands strokes on half pixels
@@ -148,6 +207,7 @@
     gear: "M8 5.7a2.3 2.3 0 1 0 0 4.6 2.3 2.3 0 0 0 0-4.6ZM8 1.6v1.7M8 12.7v1.7M1.6 8h1.7M12.7 8h1.7M3.5 3.5l1.2 1.2M11.3 11.3l1.2 1.2M3.5 12.5l1.2-1.2M11.3 4.7l1.2-1.2",
     info: "M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8ZM8 7.3v3.9M8 4.9v.2",
     play: "M5.6 3.4v9.2l7-4.6z",
+    shield: "M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6ZM5.8 8l1.6 1.6 2.9-3.1",
   };
 
   // What each step does, as a picture. A list of eleven sentences reads as a wall; the same list with a mark
@@ -895,16 +955,22 @@
       if (bits.length) words.append(el("span", bits.join(" · "), "loc-kind"));
       top.append(words);
       line.append(top);
+      // Open it is offered on every place, including the ones it will refuse: the refusal says why, which is
+      // more use than a missing button.
+      const tools = el("div", null, "loc-tools");
+      const open = el("button", TEXT.openWith, "copy primary");
+      open.type = "button";
+      open.addEventListener("click", () => openReader(f, i, open));
+      tools.append(open);
       const rule = openRule(path);
       if (rule && !loc.decoded && loc.side) {
-        const tools = el("div", null, "loc-tools");
         if (canOpen.includes(i)) tools.append(revealButton(f.hash, i));
         tools.append(copyButton(path, TEXT.copyPath));
-        // Windows paths get Explorer, which the Open button already is; the others get a search to run.
+        // Windows paths get Explorer, which Show in folder already is; the others get a search to run.
         if (rule.id !== "windows") tools.append(copyButton(command(rule, path, prefix), TEXT.copySearch));
         tools.append(el("span", rule.what, "sub"));
-        line.append(tools);
       }
+      line.append(tools);
       list.append(line);
     });
     return list;
@@ -938,7 +1004,7 @@
   // The server shows the file in the file manager. The page names the finding and which of its locations, never
   // a path, so there is nothing here that could point the machine anywhere the scan did not already report.
   function revealButton(hash, index) {
-    const b = el("button", TEXT.openWith, "copy primary");
+    const b = el("button", TEXT.showInFolder, "copy");
     b.type = "button";
     b.addEventListener("click", async () => {
       b.disabled = true;
@@ -951,7 +1017,7 @@
         why = TEXT.noServer;
       }
       b.textContent = why ? why.charAt(0).toUpperCase() + why.slice(1) : TEXT.opened;
-      setTimeout(() => { b.textContent = TEXT.openWith; b.disabled = false; }, why ? 4000 : 1600);
+      setTimeout(() => { b.textContent = TEXT.showInFolder; b.disabled = false; }, why ? 4000 : 1600);
     });
     return b;
   }
@@ -1692,6 +1758,175 @@
     }
   }
 
+  // ---- the reader: Open it on a place. The server returns the few places the value sits, every secret in them
+  // masked, or why it will not or cannot show them; either way something opens and says what it is.
+  const sheet = { open: false, back: null };
+  const fill = (template, params) => String(template).replace(/\{(\w+)\}/g, (_, k) =>
+    (params[k] === undefined || params[k] === null || params[k] === "" ? "?" : String(params[k])));
+
+  async function openReader(f, index, button) {
+    sheet.back = button || document.activeElement;
+    // A database from an older scan is searched, not looked up, and that can take a while: say so up front.
+    const loc = (f.locations || [])[index] || {};
+    const slow = stripLabel(loc.display) !== loc.display && !(loc.records || []).length;
+    const wait = el("div", null, "reading");
+    wait.append(icon("spinner", "accent", true), el("p", slow ? TEXT.searchingDb : TEXT.reading));
+    showSheet(wait, "refusal");
+    let out = null;
+    try {
+      const r = await post("/api/excerpt", { hash: f.hash, index });
+      out = await r.json();
+    } catch (e) {
+      out = { ok: false, code: "unreadable", params: { error: TEXT.noServer } };
+    }
+    if (!sheet.open) return;                       // closed while it was reading
+    if (out.ok) showSheet(readerView(f, index, out), "reader");
+    else showSheet(refusalView(f, index, out), "refusal");
+  }
+
+  function showSheet(content, kind) {
+    const host = $("sheet");
+    sheet.open = true;
+    host.hidden = false;
+    host.replaceChildren();
+    const panel = el("div", null, "palette-box");
+    panel.classList.add("sheet", kind);
+    panel.setAttribute("role", kind === "refusal" ? "alertdialog" : "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.tabIndex = -1;
+    panel.append(content);
+    host.append(panel);
+    host.onclick = (ev) => { if (ev.target === host) closeSheet(); };
+    const first = panel.querySelector("[data-autofocus]") || panel;
+    first.focus();
+  }
+
+  function closeSheet() {
+    sheet.open = false;
+    $("sheet").hidden = true;
+    $("sheet").replaceChildren();
+    if (sheet.back && sheet.back.focus) sheet.back.focus();
+  }
+
+  function sheetHead(f, out, title) {
+    const head = el("div", null, "sheet-head");
+    const words = el("div", null, "grow");
+    if (title) words.append(el("h2", title, "sheet-title"));
+    const path = el("div", out.display || "", "sheet-path");
+    path.classList.add("mono");
+    words.append(path);
+    const bits = [out.tool, out.kind === "database" ? TEXT.chatDatabase : null,
+                  out.size ? bytes(out.size) : null].filter(Boolean);
+    if (bits.length) words.append(el("div", bits.join(" · "), "why"));
+    const x = el("button", null, "sheet-close");
+    x.type = "button";
+    x.title = TEXT.close;
+    x.setAttribute("aria-label", TEXT.close);
+    x.append(icon("cross"));
+    x.addEventListener("click", closeSheet);
+    head.append(words, x);
+    return head;
+  }
+
+  // The same three ways out wherever they apply: show the file where it sits, copy its path, look again.
+  function sheetActions(f, index, out, code) {
+    const row = el("div", null, "sheet-actions");
+    const canOpen = ((state.openable || {})[f.hash] || []).includes(index);
+    if (canOpen && !["gone", "stale"].includes(code)) row.append(revealButton(f.hash, index));
+    if (out.display && !["conversation", "decoded", "stale", "gone"].includes(code) && (f.locations[index] || {}).side) {
+      row.append(copyButton(out.display, TEXT.copyPath));
+    }
+    if (["gone", "not_in_file", "record_changed"].includes(code)) {
+      const again = el("button", TEXT.checkNow, "copy");
+      again.type = "button";
+      again.addEventListener("click", () => { closeSheet(); recheck(f); });
+      row.append(again);
+    }
+    const done = el("button", TEXT.close, "button");
+    done.type = "button";
+    done.dataset.autofocus = "";
+    done.addEventListener("click", closeSheet);
+    row.append(done);
+    return row;
+  }
+
+  function refusalView(f, index, out) {
+    const code = (out && out.code) || "unreadable";
+    const [title, body] = TEXT.refusals[code] || TEXT.refusals.unreadable;
+    const params = Object.assign({ tool: out.tool || TEXT.aiTool, prefix: out.prefix }, out.params || {});
+    if (params.size !== undefined) params.size = bytes(params.size);
+    if (params.limit !== undefined) params.limit = bytes(params.limit);
+    const wrap = el("div", null, "refusal-body");
+    const on = TEXT.onPurpose.includes(code);
+    const tag = el("span", on ? TEXT.blockedOnPurpose : TEXT.couldNotOpen, "badge");
+    tag.dataset.tone = on ? "info" : "warning";
+    const top = el("div", null, "refusal-top");
+    top.append(icon(on ? "shield" : "alert", on ? "accent" : "warning"), tag);
+    wrap.append(top, sheetHead(f, out, title));
+    wrap.append(el("p", fill(body, params), "refusal-text"));
+    wrap.append(sheetActions(f, index, out, code));
+    return wrap;
+  }
+
+  function readerView(f, index, out) {
+    const wrap = el("div", null, "reader-body");
+    wrap.append(sheetHead(f, out, f.label));
+    const count = el("div", null, "reader-count");
+    const shown = (out.hits || []).length;
+    count.append(el("b", `${out.total} ${out.total === 1 ? TEXT.readerPlace : TEXT.readerPlaces}`));
+    if (shown < out.total) count.append(el("span", `${TEXT.readerShowing} ${shown}`));
+    const legend = el("span", null, "legend");
+    for (const [cls, words] of [["hl-target", TEXT.legendThis], ["hl-other", TEXT.legendOther],
+                                ["hl-masked", TEXT.legendMasked]]) {
+      legend.append(el("mark", "abc…", cls), el("span", words));
+    }
+    count.append(legend);
+    wrap.append(count, el("p", TEXT.readerMasked, "why"));
+    if (out.partial) wrap.append(note(fill(TEXT.readerPartial, out), "warning"));
+    const list = el("div", null, "reader-hits");
+    for (const h of out.hits || []) list.append(hitView(h));
+    wrap.append(list, sheetActions(f, index, out, null));
+    return wrap;
+  }
+
+  function hitView(h) {
+    const card = el("section", null, "hit");
+    const head = el("div", null, "hit-head");
+    head.append(el("b", h.where ? `${TEXT.readerRecord} ${h.where}` : `${TEXT.readerLine} ${h.line.toLocaleString()}`));
+    const who = { user: TEXT.whoUser, assistant: TEXT.whoAssistant, tool: TEXT.whoTool }[h.who];
+    if (who) head.append(el("span", who, "hit-who"));
+    card.append(head);
+    const lines = el("div", null, "hit-lines");
+    if (h.before) lines.append(pieces(h.before, "hit-ctx", false, h.before_cut));
+    lines.append(pieces(h.text, "hit-main", h.cut_before, h.cut_after));
+    if (h.after) lines.append(pieces(h.after, "hit-ctx", false, h.after_cut));
+    card.append(lines);
+    return card;
+  }
+
+  // One line of the file as text and masks, every node built with textContent: what a transcript says is data.
+  function pieces(parts, kind, cutBefore, cutAfter) {
+    // Its own class names: "main" is the app column, and borrowing it once laid these lines out as a flex column.
+    const line = el("div", null, "hit-line");
+    line.classList.add(kind);
+    if (cutBefore) line.append(el("span", TEXT.readerCut, "cut"));
+    for (const p of parts || []) {
+      if (!p.k) { line.append(document.createTextNode(p.t)); continue; }
+      const m = el("mark", p.t, p.k === "target" ? "hl-target" : p.k === "other" ? "hl-other" : "hl-masked");
+      if (p.k === "other" && p.hash) {
+        m.title = p.label || "";
+        m.tabIndex = 0;
+        m.setAttribute("role", "button");
+        const go = () => { closeSheet(); show("findings"); reveal(p.hash); };
+        m.addEventListener("click", go);
+        m.addEventListener("keydown", (ev) => { if (ev.key === "Enter") go(); });
+      }
+      line.append(m);
+    }
+    if (cutAfter) line.append(el("span", TEXT.readerCut, "cut"));
+    return line;
+  }
+
   // ---- the command palette: Ctrl-K (or /) from anywhere. The screens, the few actions, and every credential by
   // name, vendor or the part of its value already on screen.
   const pal = { open: false, query: "", at: 0, back: null };
@@ -1838,6 +2073,10 @@
   // typing into a field, and never over the list's own keys (j, k, o, Space, the arrows).
   let pendingG = false;
   document.addEventListener("keydown", (ev) => {
+    if (sheet.open) {
+      if (ev.key === "Escape") { ev.preventDefault(); closeSheet(); }
+      return;
+    }
     if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && ev.key.toLowerCase() === "k") {
       ev.preventDefault();
       if (pal.open) closePalette(); else openPalette();
