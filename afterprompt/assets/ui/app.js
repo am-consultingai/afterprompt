@@ -136,6 +136,18 @@
     readerPartial: "The search stopped after {seconds} seconds; these are the places found by then.",
     legendThis: "this credential", legendOther: "another finding — open it", legendMasked: "masked",
     whoUser: "a message you sent", whoAssistant: "the assistant's reply", whoTool: "a tool's output",
+    // Why a place matters, in one sentence: the value left the file it belongs in and went somewhere it does not.
+    whyUser: "You sent this in a message: it went to the AI model with the conversation, and a copy is kept in " +
+             "this history.",
+    whyAssistant: "The assistant wrote this out: it came back from the AI model, and a copy is kept in this " +
+                  "history.",
+    whyTool: "A tool the agent ran returned this: its output was sent to the AI model as part of the " +
+             "conversation, and a copy is kept in this history.",
+    toolRan: "The agent ran",
+    windowsSide: "Windows", windowsRead: "read from WSL, as part of this machine",
+    // The scanner's own words for an environment with nothing in it, matched in reports older than its flag.
+    emptyReason: "no AI tool history in it",
+    checkedEmpty: "Also checked", checkedEmptyWhy: "no AI tool history in them, so nothing to scan",
     chatDatabase: "chat database", blockedOnPurpose: "Kept closed on purpose", couldNotOpen: "Could not open it",
     whatYouCanDo: "What you can do",
     refusals: {
@@ -280,7 +292,7 @@
     screen: ["scan", "findings", "settings", "about"].includes(wantedScreen) ? wantedScreen : "scan",
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
     collapsed: {}, unfolded: {}, settings: null, about: null, statuses: {}, checking: {},
-    settingsTab: null, conn: "connecting", notice: null, started: false, starting: false, finished: false,
+    settingsTab: null, landed: false, conn: "connecting", notice: null, started: false, starting: false, finished: false,
     details: {}, openStep: {},
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
@@ -1306,13 +1318,36 @@
   function machineRows() {
     const d = state.findings;
     if (!d) return [];
-    if ((d.environments || []).length) return d.environments;
+    if ((d.environments || []).length) return d.environments.concat(windowsRow(d));
+    // A scan of one environment lists none, so the host is described from the platform — and when that is WSL,
+    // Windows still sits beside it.
     const cov = d.coverage || {};
-    return [{ name: cov.platform, kind: "host", side: cov.platform, label: TEXT.machineThis,
+    const plat = { wsl: "WSL", linux: "Linux", macos: "macOS", windows: TEXT.windowsSide }[cov.platform];
+    return [{ name: cov.platform, kind: "host", side: cov.platform,
+              label: plat ? `${plat} (${TEXT.machineThis.toLowerCase()})` : TEXT.machineThis,
               status: "scanned", files: cov.files, bytes: cov.bytes,
               rotate: (d.summary || {}).rotate, review: (d.summary || {}).review,
-              other_homes: cov.other_homes || [] }];
+              other_homes: cov.other_homes || [] }].concat(windowsRow(d));
   }
+
+  /* A scan run in WSL reads the Windows profile as a second filesystem of the same machine, so the scanner does not
+     list it as an environment of its own. It is one as far as a leaked key is concerned — Cursor's chats live
+     there — so the page names it beside the WSL distribution, with what was found on it. */
+  function windowsRow(d) {
+    const plat = d.platform || {};
+    if (!plat.kind && (d.coverage || {}).platform === "wsl" && d.coverage.windows_home) {
+      return windowsRow({ platform: { kind: "wsl", windows_home: d.coverage.windows_home }, rotate: d.rotate,
+                          review: d.review });
+    }
+    if (plat.kind !== "wsl" || !plat.windows_home) return [];
+    const count = (list) => (list || []).filter((f) => (f.sides || []).includes("windows")).length;
+    return [{ name: "windows", kind: "windows", side: "windows", status: "scanned",
+              label: `${TEXT.windowsSide} (${plat.windows_home})`, note: TEXT.windowsRead,
+              rotate: count(d.rotate), review: count(d.review), other_homes: [] }];
+  }
+
+  // Looked inside and held nothing to scan: a container that runs a database, say. One line for all of them.
+  const isEmptyEnv = (m) => !!m.empty || (m.status === "skipped" && m.reason === TEXT.emptyReason);
 
   /* Which environment a finding was found in. Merged runs stamp every finding with its side; a scan of
      one machine leaves that empty, and then the answer is simply this machine. */
@@ -1352,15 +1387,19 @@
     if (!d || !rows.length) return wrap;
     wrap.append(el("h3", TEXT.environments));
     const list = el("div", null, "env-list");
-    for (const m of rows) {
+    for (const m of rows.filter((x) => !isEmptyEnv(x))) {
       const card = el("div", null, "env" + (m.status === "scanned" ? "" : " off"));
       card.append(envMark(m));
       const words = el("div", null, "grow");
       words.append(el("div", m.label || m.name, "env-name"));
-      const sources = (d.coverage.sources || []).filter((x) => x.side === machineSide(m));
+      // Coverage names the host's side by platform ("wsl"), the environments by distribution ("wsl:Ubuntu-E").
+      const plat = (d.platform || {}).kind;
+      const sources = (d.coverage.sources || []).filter((x) => x.side === machineSide(m) ||
+                                                                (m.kind === "host" && x.side === plat));
       const bits = [];
+      if (m.note) bits.push(m.note);
       if (m.status === "scanned") {
-        bits.push(`${(m.files || 0).toLocaleString()} ${TEXT.inFiles}`);
+        if (m.files) bits.push(`${m.files.toLocaleString()} ${TEXT.inFiles}`);
         if (m.rotate || m.review) {
           bits.push(`${(m.rotate || 0).toLocaleString()} ${TEXT.rotateNow.toLowerCase()}`);
         }
@@ -1396,6 +1435,11 @@
       list.append(card);
     }
 
+    const empty = rows.filter(isEmptyEnv);
+    if (empty.length) {
+      const names = empty.map((m) => m.name || m.label);
+      wrap.append(el("p", `${TEXT.checkedEmpty}: ${names.join(", ")} — ${TEXT.checkedEmptyWhy}.`, "why"));
+    }
     const homes = rows.reduce((acc, m) => acc.concat(m.other_homes || []), []);
     if (homes.length) {
       wrap.append(el("p", `${TEXT.otherHomes}: ${homes.join(", ")}`, "why"));
@@ -1420,6 +1464,10 @@
     }
     const cell = el("span", null, "mark");
     const art = (REF.vendors.icons || {})[key];
+    if (!art && m && m.kind === "windows") {
+      cell.append(icon("machine", "quiet"));
+      return cell;
+    }
     if (!art) {
       cell.append(el("span", (name || "?").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?",
                      "mono-mark"));
@@ -1522,7 +1570,12 @@
     }
     wrap.append(counts);
     const rows = [];
-    for (const e of d.environments || []) rows.push([e.label, e.status + (e.reason ? ": " + e.reason : "")]);
+    const empty = (d.environments || []).filter(isEmptyEnv);
+    for (const e of (d.environments || []).filter((x) => !isEmptyEnv(x)).concat(windowsRow(d))) {
+      rows.push([e.label, e.note || (e.status + (e.reason ? ": " + e.reason : ""))]);
+    }
+    if (empty.length) rows.push([TEXT.checkedEmpty, `${empty.map((e) => e.name || e.label).join(", ")} — ` +
+                                                    TEXT.checkedEmptyWhy]);
     for (const i of (d.coverage.installed || []).filter((x) => x.status !== "scanned")) {
       rows.push([TEXT.installedNotScanned, `${i.product}: ${i.note}`]);
     }
@@ -1648,7 +1701,12 @@
     if (done) { state.finished = true; setState("done"); }
     // The end of the scan moves the screen, because the result is what was asked for. Findings that arrive
     // mid-scan, or from the last scan, fill the tab and wait to be opened.
-    if (done && state.screen === "scan" && !wantedScreen) show("findings");
+    // The results are the main screen. Opening the page on the last scan's findings goes straight to them, the
+    // same as the end of a scan does; starting another is one click on the rail, never a gate in front of them.
+    // Once only: after that, the screen is wherever the person put it.
+    const first = !state.landed;
+    state.landed = true;
+    if (state.screen === "scan" && !wantedScreen && (done || (first && !state.started))) show("findings");
     else render();
     renderTabs();
   }
@@ -1896,6 +1954,17 @@
     const who = { user: TEXT.whoUser, assistant: TEXT.whoAssistant, tool: TEXT.whoTool }[h.who];
     if (who) head.append(el("span", who, "hit-who"));
     card.append(head);
+    const why = { user: TEXT.whyUser, assistant: TEXT.whyAssistant, tool: TEXT.whyTool }[h.who];
+    if (why || h.action) {
+      const story = el("div", null, "hit-story");
+      if (h.action) {
+        const ran = el("div", null, "hit-action");
+        ran.append(el("span", `${TEXT.toolRan} `), pieces(h.action, "hit-cmd", false, false));
+        story.append(ran);
+      }
+      if (why) story.append(el("div", why));
+      card.append(story);
+    }
     const lines = el("div", null, "hit-lines");
     if (h.before) lines.append(pieces(h.before, "hit-ctx", false, h.before_cut));
     lines.append(pieces(h.text, "hit-main", h.cut_before, h.cut_after));

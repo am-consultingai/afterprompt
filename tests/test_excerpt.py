@@ -145,6 +145,15 @@ class TextFileTests(Base):
         text = self.text(self.open(self.report(f), f)["hits"][0])
         self.assertIn('line one\nline two "quoted"', text)
 
+    def test_json_inside_json_reads_as_text_too(self):
+        """A tool's result stored as a JSON string inside the record: its line breaks are escaped twice."""
+        inner = json.dumps({"contents": f"# comment\nKEY={KEY}\nNEXT=1"})
+        self.write_transcript(json.dumps({"result": inner}))
+        f = finding(KEY, "~/.claude/projects/p/s.jsonl")
+        text = self.text(self.open(self.report(f), f)["hits"][0])
+        self.assertIn("# comment\nKEY=", text)
+        self.assertNotIn("\\n", text)
+
     def test_found_by_pattern_when_the_masked_form_carries_no_prefix(self):
         """A short value is masked as abc***, so there is no prefix to search for; the scan's pattern finds it."""
         self.write_transcript(f"here {KEY} there")
@@ -264,6 +273,39 @@ class DatabaseTests(Base):
         self.assertEqual(out["hits"][0]["where"], "bubbleId:b")
         self.assertIn("my key is", self.text(out["hits"][0]))
         self.assert_nothing_raw(out, KEY)
+
+    def test_a_record_says_who_wrote_it_and_what_the_tool_did(self):
+        """The difference between "you pasted this" and "the agent read your .env" is why it matters. A tool's
+        argument is masked like everything else: a command line can carry a secret of its own."""
+        self.db([("bubbleId:read", {"type": 2, "toolFormerData": {"name": "read_file_v2", "params": json.dumps(
+                    {"targetFile": "/home/me/app/.env.docker"})}, "text": f"KEY={KEY}"}),
+                 ("bubbleId:ran", {"type": 2, "toolFormerData": {"name": "run_terminal_cmd", "params": {
+                     "command": f"curl -H 'Authorization: token {OTHER}' https://api.github.com"}}, "text": KEY}),
+                 ("bubbleId:me", {"type": 1, "text": f"use {KEY}"})])
+        f = self.finding([{"table": "cursorDiskKV", "key": k} for k in ("bubbleId:read", "bubbleId:ran", "bubbleId:me")])
+        out = self.open(self.report(f), f)
+        by = {h["where"]: h for h in out["hits"]}
+        self.assertEqual(by["bubbleId:read"]["who"], "tool")
+        self.assertEqual("".join(p["t"] for p in by["bubbleId:read"]["action"]),
+                         "read_file_v2 /home/me/app/.env.docker")
+        self.assertEqual(by["bubbleId:me"]["who"], "user")
+        self.assertIsNone(by["bubbleId:me"]["action"])
+        self.assertIn("run_terminal_cmd curl", "".join(p["t"] for p in by["bubbleId:ran"]["action"]))
+        self.assert_nothing_raw(out, KEY, OTHER)
+
+    def test_a_record_with_line_breaks_still_reads_as_json(self):
+        """The record decides, not the line: a real line break inside a record does not stop it being JSON."""
+        path = self.db([])
+        con = sqlite3.connect(path)
+        raw = '{"a": "first\nsecond", "result": "{\\"contents\\": \\"x\\\\nKEY=' + KEY + '\\\\ny\\"}"}'
+        con.execute("insert into cursorDiskKV values (?, ?)", ("bubbleId:nl", raw.replace("\\n", "\n", 1).encode()))
+        con.commit()
+        con.close()
+        f = self.finding([{"table": "cursorDiskKV", "key": "bubbleId:nl"}])
+        hit = self.open(self.report(f), f)["hits"][0]
+        text = self.text(hit) + self.text(hit, "before")
+        self.assertIn("KEY=" + f["masked"], text)
+        self.assertNotIn("\\n", text)                       # no escape left unread, before or at the value
 
     def test_a_record_that_no_longer_holds_it(self):
         self.db([("bubbleId:b", {"text": "edited"})])

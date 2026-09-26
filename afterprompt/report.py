@@ -287,11 +287,19 @@ def coverage_rows(data):
         rows.append(("AI tool data", "none found"))
     if c["platform"] == "wsl":
         rows.append(("Windows profile", f"{c['windows_home'] or 'not found'} ({c['windows_home_source']})"))
-    # One line per environment. A clean total must never hide a gap in one of them.
+    # One line per environment. A clean total must never hide a gap in one of them — but a container that was
+    # opened and held no AI tool history is not a gap, and six of them are one line, not six.
+    from afterprompt.envs import is_empty
+    empty = [env for env in data.get("environments") or [] if is_empty(env)]
     for env in data.get("environments") or []:
+        if is_empty(env):
+            continue
         rows.append((f"Environment: {env['label']}", environment_text(env)))
         if env.get("other_homes"):
             rows.append((f"Other users on {env['label']}", other_homes_text(env["other_homes"])))
+    if empty:
+        names = ", ".join(e.get("name") or e["label"] for e in empty[:6]) + (", …" if len(empty) > 6 else "")
+        rows.append(("Checked, nothing to scan", f"{len(empty)} with no AI tool history in them ({names})"))
     if not data.get("environments") and c.get("other_homes"):
         rows.append(("Other users on this machine", other_homes_text(c["other_homes"])))
     # Everything that was looked for, so a silence about containers is never mistaken for coverage.

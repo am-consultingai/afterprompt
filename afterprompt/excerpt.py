@@ -22,6 +22,7 @@ When a location cannot be shown, the answer says why, as a code the page turns i
 another environment, it was found only inside decoded data, it is a conversation inside a chat database rather
 than a file, it has gone, it is too large, it could not be read.
 """
+import json
 import os
 import re
 import sqlite3
@@ -231,18 +232,33 @@ def unescape(s):
 
 def text(b, json_like=False):
     s = b.decode("utf-8", "replace").replace("\r", "")
-    return unescape(s) if json_like else s
+    if not json_like:
+        return s
+    s = unescape(s)
+    # Cursor keeps a tool's result as a JSON string inside the record's JSON, so its line breaks arrive escaped
+    # twice; one more pass, and only while what is left still reads as escaped text.
+    return unescape(s) if ("\\n" in s or '\\"' in s) else s
 
 
-def masked_region(blob, ws, we, lo, hi, others, targets, masked_target):
-    # A line of JSON (a transcript, a chat record) is shown with its escapes read; anything else as it is.
-    json_like = blob[lo:lo + 64].lstrip()[:1] in (b"{", b"[")
+def looks_json(b):
+    return b[:64].lstrip()[:1] in (b"{", b"[")
+
+
+def masked_region(blob, ws, we, lo, hi, others, targets, masked_target, json_like=None):
+    # A line of JSON (a transcript line, a chat record) is shown with its escapes read; anything else as it is.
+    if json_like is None:
+        json_like = looks_json(blob[lo:lo + 64])
     """One region of blob, snapped, searched with margin, and cut into pieces."""
     ws, we = snap(blob, ws, we, lo, hi)
     a, b = max(lo, ws - SCAN_MARGIN), min(hi, we + SCAN_MARGIN)
     spans = [(s, e, "target", None) for s, e in targets if e > a and s < b]
     spans += others.spans(blob, a, b) + secrets_in(blob, a, b)
     return segments(blob, ws, we, choose(spans, blob), masked_target, json_like)
+
+
+def json_for(blob, ls, record):
+    """A database record is JSON or not as a whole: a line break inside it does not start a new document."""
+    return looks_json(blob) if record else looks_json(blob[ls:ls + 64])
 
 
 def speaker(line):
@@ -252,7 +268,41 @@ def speaker(line):
     return None
 
 
-def hits_in(blob, spans, f, others, where=None):
+STORY_CAP = 8 * 1024 ** 2
+TARGET_KEYS = ("targetFile", "target_file", "file_path", "path", "relativeWorkspacePath", "command", "query",
+               "pattern", "url")
+
+
+def record_story(blob, others):
+    """What a chat record is, when it is JSON: who wrote it, and for a tool call, which tool and on what — the
+    difference between "you pasted this" and "the agent read your .env", which is the whole of why it matters.
+    The tool's argument is masked like everything else, since a command line can carry a secret of its own."""
+    if len(blob) > STORY_CAP:
+        return None, None
+    try:
+        j = json.loads(blob)
+    except (ValueError, UnicodeDecodeError):
+        return None, None
+    if not isinstance(j, dict):
+        return None, None
+    tool = j.get("toolFormerData")
+    if isinstance(tool, dict) and tool.get("name"):
+        params = tool.get("params") or tool.get("rawArgs") or {}
+        if isinstance(params, str):
+            try:
+                params = json.loads(params)
+            except ValueError:
+                params = {}
+        target = next((str(params[k]) for k in TARGET_KEYS if isinstance(params, dict) and params.get(k)), "")
+        what = f"{tool['name']} {target}".strip().encode("utf-8", "replace")
+        pieces, _, _ = masked_region(what, 0, len(what), 0, len(what), others, [], "…")
+        return "tool", pieces
+    if j.get("role") == "tool":
+        return "tool", None
+    return {1: "user", 2: "assistant"}.get(j.get("type")), None
+
+
+def hits_in(blob, spans, f, others, where=None, story=(None, None)):
     """Each place, as its line number, who wrote that line, the window on it, and a line of context each side."""
     out, line_no, counted = [], 1, 0
     for s, e in spans[:MAX_HITS]:
@@ -262,14 +312,16 @@ def hits_in(blob, spans, f, others, where=None):
         le = blob.find(b"\n", e)
         le = len(blob) if le < 0 else le
         ws, we = max(ls, s - AROUND), min(le, e + AROUND)
-        pieces, ws, we = masked_region(blob, ws, we, ls, le, others, spans, f.get("masked") or "…")
-        hit = {"line": line_no, "where": where, "who": speaker(blob[ls:le]),
+        jl = json_for(blob, ls, where is not None)
+        pieces, ws, we = masked_region(blob, ws, we, ls, le, others, spans, f.get("masked") or "…", jl)
+        hit = {"line": line_no, "where": where, "who": story[0] or speaker(blob[ls:le]), "action": story[1],
                "cut_before": ws > ls, "cut_after": we < le, "text": pieces, "before": None, "after": None}
         if ls > 0:
             ps = blob.rfind(b"\n", 0, ls - 1) + 1
             pe = min(ls - 1, ps + CONTEXT)
             if pe > ps:
-                hit["before"], _, cut = masked_region(blob, ps, pe, ps, ls - 1, others, [], "…")
+                hit["before"], _, cut = masked_region(blob, ps, pe, ps, ls - 1, others, [], "…",
+                                                      json_for(blob, ps, where is not None))
                 hit["before_cut"] = cut < ls - 1
         if le < len(blob):
             ns = le + 1
@@ -277,7 +329,8 @@ def hits_in(blob, spans, f, others, where=None):
             nend = len(blob) if nend < 0 else nend
             ne = min(nend, ns + CONTEXT)
             if ne > ns:
-                hit["after"], _, cut = masked_region(blob, ns, ne, ns, nend, others, [], "…")
+                hit["after"], _, cut = masked_region(blob, ns, ne, ns, nend, others, [], "…",
+                                                     json_for(blob, ns, where is not None))
                 hit["after_cut"] = cut < nend
         out.append(hit)
     return out
@@ -337,7 +390,8 @@ def read_database(path, f, loc, others, seconds=DB_SECONDS, clock=time.monotonic
         if spans:
             total += len(spans)
             if len(hits) < MAX_HITS:
-                hits.extend(hits_in(blob, spans, f, others, where=str(key)[:160])[:MAX_HITS - len(hits)])
+                hits.extend(hits_in(blob, spans, f, others, where=str(key)[:160],
+                                    story=record_story(blob, others))[:MAX_HITS - len(hits)])
 
     try:
         known = tables(con)

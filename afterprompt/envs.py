@@ -174,6 +174,15 @@ def save_result(state_dir, res):
     return res
 
 
+EMPTY_REASON = "no AI tool history in it"
+
+
+def is_empty(env):
+    """An environment that was looked inside and held nothing to scan (a container that runs a database, say).
+    Reports from before the "empty" field say it only in the reason."""
+    return bool(env.get("empty")) or (env.get("status") == "skipped" and env.get("reason") == EMPTY_REASON)
+
+
 def skipped(e, reason):
     return dict(e.to_dict(), status="skipped", reason=reason, notice=None, other_homes=[], findings=None, exit=None)
 
@@ -211,7 +220,8 @@ def _scan_container(e, cfg, worker_args, say, state_dir, stdin):
     if not got["paths"]:
         # The common case by far: a container that runs a database, not an assistant.
         shutil.rmtree(work, ignore_errors=True)
-        return dict(e.to_dict(), status="skipped", reason="no AI tool history in it",
+        # "empty" says so in a field rather than in words, so a view can fold these into one line.
+        return dict(e.to_dict(), status="skipped", reason=EMPTY_REASON, empty=True,
                     notice=None, other_homes=[], findings=None, exit=None)
     try:
         res = _record(e, run_local(e, work, cfg, worker_args, say, state_dir, stdin), "scanned",

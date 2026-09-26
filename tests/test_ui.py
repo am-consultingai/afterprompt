@@ -659,6 +659,32 @@ class PageTests(TempDirTest):
         self.assertIn("document.createTextNode(p.t)", pieces)
         self.assertIn('el("mark", p.t,', pieces)
 
+    def test_the_results_are_the_main_screen(self):  # U-UI-66
+        """Opening the page on findings that already exist lands on them; Start is on the rail, never a gate."""
+        js = self.js_without_comments()
+        land = js[js.index("async function loadFindings("):js.index("async function refresh()")]
+        self.assertIn('state.screen === "scan" && !wantedScreen && (done || (first && !state.started))', land)
+        self.assertIn("state.landed = true;", land)                   # once: after that it stays where it is put
+
+    def test_windows_is_named_and_empty_environments_fold(self):  # U-UI-67
+        js = self.js_without_comments()
+        row = js[js.index("function windowsRow(d)"):js.index("const isEmptyEnv")]
+        self.assertIn('plat.kind !== "wsl" || !plat.windows_home', row)
+        self.assertIn('side: "windows"', row)
+        self.assertIn("d.environments.concat(windowsRow(d))", js)       # so Found on and grouping name it too
+        self.assertIn("other_homes: cov.other_homes || [] }].concat(windowsRow(d));", js)   # and with one environment
+        self.assertIn("m.empty || (m.status === \"skipped\" && m.reason === TEXT.emptyReason)", js)
+        strip = js[js.index("function envStrip()"):js.index("function envMark(m)")]
+        self.assertIn("rows.filter((x) => !isEmptyEnv(x))", strip)
+        self.assertIn("TEXT.checkedEmpty", strip)
+        self.assertIn('if (!art && m && m.kind === "windows")', js)     # a machine, not a "WI" monogram
+
+    def test_a_place_says_why_it_matters(self):  # U-UI-68
+        js = self.js_without_comments()
+        hit = js[js.index("function hitView(h)"):js.index("function pieces(")]
+        self.assertIn("{ user: TEXT.whyUser, assistant: TEXT.whyAssistant, tool: TEXT.whyTool }[h.who]", hit)
+        self.assertIn('pieces(h.action, "hit-cmd", false, false)', hit)   # the tool call, masked like the rest
+
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
         js = self.js_without_comments()

@@ -174,7 +174,8 @@ Scans can be interrupted with Ctrl-C. Running `./afterprompt.sh` again with the 
 
 ## The browser view (`--ui`)
 
-`--ui` prints a link and hands the scan over to your browser. **It does not start scanning.** The page opens on
+`--ui` prints a link and hands the scan over to your browser. **It does not start scanning.** When a previous
+scan left findings, the page opens on them, and a new scan is the Start button on the rail. Otherwise it opens on
 a Start screen that has read nothing: it names the steps it would take and what the scan is set to do, and the
 scan begins when you press **Start scan**. Until then the run sits waiting, and Ctrl-C ends it having read
 nothing. A rail down the left edge holds the Start button and the four screens:
@@ -186,7 +187,8 @@ nothing. A rail down the left edge holds the Start button and the four screens:
   stored data, act as you, one service), with the first three named at the top. Grouped by vendor, or by what
   it opens, or by the AI tool it leaked into; only non-empty groups are shown and each is collapsible. Many
   values of one kind from one place fold into a single row that opens, so one noisy transcript cannot fill the
-  list. Choosing one shows where it leaked, whether a copy is still on disk, and **what to do about it**:
+  list. Choosing one shows where it leaked (and on which environment: under WSL the Windows profile is named as one,
+beside the distribution; containers with no AI tool history are folded into one line), whether a copy is still on disk, and **what to do about it**:
   numbered steps from that vendor's own documentation, a link straight to the page where you revoke it, its
   audit log where one exists, and a tick that is remembered by value hash so the next scan still knows you have
   done it.

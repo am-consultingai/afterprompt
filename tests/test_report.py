@@ -276,3 +276,22 @@ class DroppedReasonsTests(unittest.TestCase):
         self.assertEqual(rows["Random-looking tokens not shown"],
                          "shape: slug: 1,200; no secret-related word right before it: 40")
         self.assertNotIn("Random-looking tokens not shown", dict(report.coverage_rows({"coverage": cov})))
+
+
+class EmptyEnvironmentTests(unittest.TestCase):
+    def test_containers_with_nothing_in_them_are_one_row(self):  # U-REP-EMPTY
+        from afterprompt import envs, report
+        cov = {"platform": "linux", "sources": [], "databases": {"total": 0, "ok": 0, "failed": []},
+               "unreadable_files": 0, "excluded_files": 0, "vendored_files": 0, "scan_session_files": 0,
+               "live_values": {}, "prompts": {}, "limits": [], "missing_locations": [], "pattern_truncations": [],
+               "keychain": "not requested", "other_homes": []}
+        data = {"coverage": cov,
+                "environments": [{"label": "WSL: Ubuntu", "name": "Ubuntu", "status": "scanned", "kind": "host"}] +
+                                [{"label": f"Docker: c{i}", "name": f"c{i}", "status": "skipped", "kind": "docker",
+                                  "reason": envs.EMPTY_REASON, "empty": i % 2 == 0} for i in range(3)]}
+        rows = report.coverage_rows(data)
+        labels = [k for k, _ in rows]
+        self.assertFalse([k for k in labels if k.startswith("Environment: Docker")])
+        self.assertIn(("Checked, nothing to scan", "3 with no AI tool history in them (c0, c1, c2)"), rows)
+        self.assertTrue(envs.is_empty({"status": "skipped", "reason": envs.EMPTY_REASON}))      # older report
+        self.assertFalse(envs.is_empty({"status": "skipped", "reason": "turned off for this scan"}))
