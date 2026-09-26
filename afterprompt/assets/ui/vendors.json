@@ -1,5 +1,5 @@
 {
- "about": "Vendor marks from Simple Icons (CC0 1.0), used to identify the service a credential belongs to. Brands that asked Simple Icons to remove their mark are shown as a monogram instead. The marks are the trademarks of their owners; see assets/NOTICE.md.",
+ "about": "Vendor marks from Simple Icons (CC0 1.0), used to identify the service a credential belongs to. Brands that asked Simple Icons to remove their mark are shown as a monogram instead. The one exception is listed in not_from_simple_icons. The marks are the trademarks of their owners; see assets/NOTICE.md.",
  "source": "https://github.com/simple-icons/simple-icons (v16.32.0, CC0 1.0)",
  "icons": {
   "Airtable": {
@@ -271,6 +271,11 @@
    "path": "M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701",
    "title": "Apple",
    "slug": "apple"
+  },
+  "Windows": {
+   "title": "Windows",
+   "slug": "windows",
+   "path": "M0 0h11.377v11.377H0zm12.623 0H24v11.377H12.623zM0 12.623h11.377V24H0zm12.623 0H24V24H12.623z"
   }
  },
  "patterns": {
@@ -402,8 +407,11 @@
   "Slack",
   "Twilio"
  ],
+ "not_from_simple_icons": {
+  "Windows": "The Windows logo (four squares), a trademark of Microsoft Corporation, drawn in one ink colour to identify the Windows side of a WSL machine. Simple Icons does not carry it at Microsoft's request; it is included here by the project owner's decision. See assets/NOTICE.md."
+ },
  "environments": {
-  "about": "Which mark to draw for an environment. The name comes from WSL, Docker or the platform; a name that matches nothing is drawn as a monogram, and Windows always is, because its mark is not ours to redistribute. The patterns are matched case-insensitively and carry no inline flags: JavaScript has no (?i).",
+  "about": "Which mark to draw for an environment. The name comes from WSL, Docker or the platform; a name that matches nothing is drawn as a monogram. The patterns are matched case-insensitively and carry no inline flags: JavaScript has no (?i).",
   "match": [
    [
     "^ubuntu",
@@ -458,7 +466,8 @@
    "wsl": "Linux",
    "docker": "Docker",
    "podman": "Docker",
-   "folder": "Linux"
+   "folder": "Linux",
+   "windows": "Windows"
   },
   "platforms": {
    "linux": "Linux",

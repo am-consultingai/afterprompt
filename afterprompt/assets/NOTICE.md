@@ -18,3 +18,9 @@ modified version, remove or replace them and do not present your version as an A
 which are released under CC0 1.0. The marks themselves are the trademarks of their respective owners and are used
 here only to identify which service a credential belongs to. Brands that asked Simple Icons to remove their mark
 are shown as a plain monogram instead, not as a reproduction of their logo.
+
+The one mark in `vendors.json` that is not from Simple Icons is the **Windows logo**, a trademark of Microsoft
+Corporation. Simple Icons does not carry it at Microsoft's request. It is included by the project owner's decision,
+drawn in a single colour at icon size, only to show which part of a WSL machine (its Windows side) a finding came
+from. It implies no endorsement by Microsoft. Its entry is listed under `not_from_simple_icons`, and it can be
+removed by deleting that entry and the `Windows` icon, after which Windows is drawn as a plain machine icon again.

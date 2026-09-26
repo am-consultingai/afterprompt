@@ -168,8 +168,25 @@ class ReferenceDataTests(unittest.TestCase):
         for group in ("kinds", "platforms"):
             for key, name in env[group].items():
                 with self.subTest(group=group, key=key):
-                    # Windows has no redistributable mark, so it is named but drawn as a monogram.
-                    self.assertTrue(name in v["icons"] or name == "Windows", name)
+                    self.assertIn(name, v["icons"], name)
+        # Windows is drawn with its own mark wherever the page names it: the Windows side of a WSL machine.
+        self.assertEqual((env["kinds"]["windows"], env["platforms"]["windows"]), ("Windows", "Windows"))
+
+    def test_a_mark_not_from_simple_icons_is_declared(self):  # U-SET-23
+        """Every mark but the declared ones comes from Simple Icons. One that does not is listed with where it is
+        from, has its art, and is named in the notice, so it can be found and removed as easily as it was added."""
+        v = self.load("vendors.json")
+        extra = v["not_from_simple_icons"]
+        self.assertEqual(sorted(extra), ["Windows"])
+        with open(os.path.join(os.path.dirname(UI_DIR), "NOTICE.md"), encoding="utf-8") as fh:
+            notice = fh.read()
+        for name, why in extra.items():
+            with self.subTest(mark=name):
+                self.assertIn(name, v["icons"])
+                self.assertIn("trademark", why)
+                self.assertIn(f"**{name} logo**", notice)
+                self.assertNotIn(name, v["monogram_only"])
+        self.assertIn("not_from_simple_icons", v["about"])
 
     def test_rotation_guidance_is_sourced(self):  # U-SET-12
         r = self.load("rotation.json")
