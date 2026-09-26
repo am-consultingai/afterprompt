@@ -807,6 +807,13 @@ mark.hl-masked { background: var(--surface-3); color: var(--text-secondary); }
 .scope-row .why { font-size: var(--text-xs); }
 .scope-row.off { background: none; }
 .scope-row.off .env-name { color: var(--text-tertiary); text-decoration: line-through; }
-.scope-row .mark { inline-size: 22px; block-size: 22px; }
-.scope-row .mark svg { inline-size: 14px; block-size: 14px; }
 .scope > .why { margin-block-start: 4px; }
+
+/* An environment is recognised by its mark before its name is read, so the mark is large wherever environments
+   are listed: the Start screen's choices and the environments after a scan. Same art, larger cell. */
+.env .mark, .scope-row .mark { inline-size: 36px; block-size: 36px; border-radius: var(--radius-card); }
+.env .mark svg, .scope-row .mark svg { inline-size: 22px; block-size: 22px; }
+.env .mark .ic, .scope-row .mark .ic { inline-size: 22px; block-size: 22px; }
+.env .mark .ic svg, .scope-row .mark .ic svg { inline-size: 22px; block-size: 22px; stroke-width: 1.2; }
+.env .mono-mark, .scope-row .mono-mark { font-size: var(--text-xs); }
+.env, .scope-row { padding-block: 10px; gap: 12px; }
