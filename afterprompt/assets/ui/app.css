@@ -817,3 +817,85 @@ mark.hl-masked { background: var(--surface-3); color: var(--text-secondary); }
 .env .mark .ic svg, .scope-row .mark .ic svg { inline-size: 22px; block-size: 22px; stroke-width: 1.2; }
 .env .mono-mark, .scope-row .mono-mark { font-size: var(--text-xs); }
 .env, .scope-row { padding-block: 10px; gap: 12px; }
+
+/* --- the Scan screen: a head with the one action, where and how deep side by side, then the pipeline ------ */
+.scan-screen { max-inline-size: 1040px; }
+.scan-head { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.scan-head .sub { margin-block-start: 6px; }
+.scan-head > .grow { flex: 1 1 320px; }      /* on a narrow screen the button goes under the words, not beside */
+button.go-big {
+  display: inline-flex; align-items: center; gap: 10px;
+  min-block-size: 44px; padding-inline: 22px 26px; border-radius: 999px;
+  font-size: var(--text-md); box-shadow: var(--shadow-md);
+}
+button.go-big .ic, button.go-big .ic svg { inline-size: 18px; block-size: 18px; }
+.scan-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 32px; }
+@media (max-width: 820px) { .scan-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+
+/* An environment as a tile: the mark large, the name under it, a tick in the corner. */
+.tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+.tile {
+  position: relative;
+  display: grid; justify-items: center; align-content: start; gap: 6px;
+  inline-size: 124px; padding: 18px 10px 12px;
+  background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm); cursor: pointer; text-align: center;
+  transition: border-color var(--duration-hover) var(--ease-out), opacity var(--duration-hover) var(--ease-out);
+}
+.tile:hover { border-color: var(--border-strong); }
+.tile.fixed { cursor: default; }
+.tile input { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; }
+.tile .mark { inline-size: 52px; block-size: 52px; border-radius: var(--radius-card); background: var(--surface-2); }
+.tile .mark svg, .tile .mark .ic, .tile .mark .ic svg { inline-size: 30px; block-size: 30px; }
+.tile .mono-mark { font-size: var(--text-md); }
+.tile-name { font-weight: var(--weight-label); overflow-wrap: anywhere; line-height: 1.3; }
+.tile-kind { font-size: var(--text-xs); color: var(--text-tertiary); }
+.tile.off { opacity: 0.5; box-shadow: none; background: none; }
+.tile.off .tile-name { text-decoration: line-through; }
+
+.depth-seg { margin-inline-start: 0; }
+.depth-seg button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: var(--text-sm); }
+.depth-seg button:disabled { cursor: default; }
+.scan-depth .why { margin-block-start: 8px; max-inline-size: 36ch; }
+.depth-more { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-block-start: 10px;
+  font-size: var(--text-sm); color: var(--text-secondary); }
+
+/* The pipeline: four stages joined by a line, each a large icon in a ring that fills as its steps finish. */
+.pipeline { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); }
+.stage { position: relative; }
+.stage + .stage::before {
+  content: ""; position: absolute; inset-block-start: 31px; inset-inline: calc(-50% + 36px) calc(50% + 36px);
+  block-size: 2px; background: var(--border); border-radius: 1px;
+}
+.stage.done + .stage::before, .stage.active + .stage::before { background: color-mix(in oklab, var(--border), var(--accent) 45%); }
+.stage-node {
+  inline-size: 100%; display: grid; justify-items: center; gap: 8px;
+  padding: 0 6px 10px; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+  border-radius: var(--radius-card);
+}
+.stage-node:hover .ring { transform: scale(1.04); }
+.stage.open .stage-node { background: var(--surface-2); }
+.stage.open .stage-node { padding-block-start: 0; }
+.ring { position: relative; display: grid; place-items: center; inline-size: 64px; block-size: 64px;
+  transition: transform var(--duration-hover) var(--ease-out); }
+/* Only the ring turns (so it fills from the top); the icon inside it stays upright. */
+.ring > svg { position: absolute; inset: 0; inline-size: 64px; block-size: 64px; transform: rotate(-90deg); }
+.ring-track { fill: var(--surface-raised); stroke: var(--border); stroke-width: 3; }
+.ring-fill { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round;
+  transition: stroke-dasharray var(--duration-swap) var(--ease-out); }
+.stage.done .ring-fill { stroke: var(--success); }
+.ring-fill[data-empty="true"] { stroke: none; }            /* a round cap on nothing is still a dot */
+.ring .ic, .ring .ic svg { inline-size: 26px; block-size: 26px; position: relative; }
+.stage.waiting .ring .ic { color: var(--text-tertiary); }
+:dir(rtl) .ring > svg { transform: rotate(-90deg) scaleY(-1); }
+.stage-words { display: grid; gap: 1px; text-align: center; }
+.stage-name { font-weight: 600; }
+.stage-what { font-size: var(--text-xs); color: var(--text-tertiary); max-inline-size: 22ch; }
+.stage.active .stage-what { color: var(--accent); }
+.pipeline-wrap > .phase-groups { margin-block-start: 8px; padding: 12px 14px; background: var(--surface-raised);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-card); }
+@media (max-width: 560px) {
+  .pipeline { grid-template-columns: repeat(2, 1fr); row-gap: 12px; }
+  .stage:nth-child(3)::before { display: none; }
+}
+.scan-screen > .progress { padding-inline-start: 0; max-inline-size: var(--measure); }

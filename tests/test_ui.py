@@ -594,10 +594,12 @@ class PageTests(TempDirTest):
 
     def test_the_start_screen_says_what_the_scan_will_do(self):  # U-UI-59
         js = self.js_without_comments()
-        plan = js[js.index("function scanPlan()"):js.index("async function startScan()")]
-        for key in ('label("mode")', 'setting("no_wsl")', 'label("containers")', 'show("settings")'):
+        # How deep is the choice itself, saved as the setting it is, and the rest of the settings one click away.
+        plan = js[js.index("function depthPanel()"):js.index("async function startScan()")]
+        for key in ('f.key === "mode"', 'setViewSetting("mode", c.value)', 'label("containers")', 'show("settings")',
+                    "b.disabled = state.started || state.starting;"):
             self.assertIn(key, plan)
-        for key in ("planWsl:", "planNoWsl:", "planContainers:", "changeInSettings:"):
+        for key in ("quickWhy:", "deepWhy:", "planContainers:", "changeInSettings:"):
             self.assertIn(key, self.read("app.js"))
         # Pressing Start twice, or from the rail and the page, starts one scan.
         self.assertIn("if (state.started || state.starting) return;", js)
@@ -707,9 +709,8 @@ class PageTests(TempDirTest):
 
     def test_the_start_screen_shows_where_it_will_look(self):  # U-UI-69
         js = self.js_without_comments()
-        ready = js[js.index("function renderReady(wrap)"):js.index("function scanPlan()")]
-        self.assertIn('const where = (state.scope.options || []).length ? scopeList() : detailRows("environments");',
-                      ready)
+        ready = js[js.index("function renderReady(wrap)"):js.index("const TILE_KIND")]
+        self.assertIn('(state.scope.options || []).length ? scopeTiles() : (detailRows("environments")', ready)
         self.assertLess(ready.index("TEXT.willCover"), ready.index("TEXT.scanSteps"))
         cli_src = self.read_module("cli.py")
         gate = cli_src[cli_src.index("view.state.set_stages(stages, DESCRIPTIONS)"):
@@ -718,7 +719,7 @@ class PageTests(TempDirTest):
 
     def test_each_environment_can_be_left_out_before_start(self):  # U-UI-70
         js = self.js_without_comments()
-        scope = js[js.index("function scopeList()"):js.index("async function setScope(")]
+        scope = js[js.index("function scopeTiles()"):js.index("async function setScope(")]
         self.assertIn('tick.type = "checkbox";', scope)
         self.assertIn("tick.disabled = !!o.required || state.started || state.starting;", scope)
         self.assertIn("envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform })", scope)
@@ -737,6 +738,23 @@ class PageTests(TempDirTest):
         self.assertIn("if (detail && card) detail.scrollTop = at.detail;", r)   # a new credential starts at its top
         self.assertLess(r.index("draw(box);"), r.index("list.scrollTop = at.list"))
         self.assertIn("if (!card) {", r)                                         # and only a change fades in
+
+    def test_the_scan_is_a_pipeline_of_four_stages(self):  # U-UI-73
+        """Ten steps as ten lines read as a wall; as four stages, each a ring that fills, they read as a shape."""
+        js = self.js_without_comments()
+        st = js[js.index("function stageState(g)"):js.index("function ring(")]
+        # Only a known total counts towards a ring: a step with none moves it when it is done, never by a guess.
+        self.assertIn("const part = p && p.total ? Math.min(1, p.done / p.total) : 0;", st)
+        pipe = js[js.index("function pipeline(live)"):js.index("function pageHead(")]
+        self.assertIn("const open = state.openStage === undefined ? (running ? running.key : null) : state.openStage;",
+                      pipe)                                          # what is running now is open without a click
+        self.assertIn("if (open) wrap.append(phases(live, open));", pipe)   # and every step is still there
+        self.assertIn('b.setAttribute("aria-expanded"', pipe)
+        self.assertEqual(set(re.findall(r"(\w+): \"(\w+)\"", js[js.index("const GROUP_ICON"):
+                                                                js.index("const STAGE_NAME")])),
+                         {("find", "search"), ("read", "database"), ("search", "key"), ("finish", "doc")})
+        for key in ("stageFind:", "stageRead:", "stageLook:", "stageDecide:", "stageLookWhat:"):
+            self.assertIn(key, self.read("app.js"))
 
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""

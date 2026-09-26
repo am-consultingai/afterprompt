@@ -25,7 +25,19 @@
     scanReadySub: "Nothing has been read yet. The scan opens the history your AI tools keep on this machine, " +
                   "reads the credentials already set up here, and looks for one inside the other. It stays on " +
                   "this machine: nothing is uploaded, and it starts when you press the button.",
-    scanSteps: "Steps", willCover: "This scan will cover",
+    scanSteps: "What it does", willCover: "Where it looks",
+    scanReadyShort: "Reads the history your AI tools keep here and checks it for credentials. Nothing leaves " +
+                    "this machine, and nothing is read until you press Start.",
+    scanDoneShort: "Everything it found is on the Credentials screen.", seeCredentials: "See the credentials",
+    stageFind: "Find", stageRead: "Read", stageLook: "Look", stageDecide: "Decide",
+    stageFindWhat: "AI tools and environments", stageReadWhat: "chats and history files",
+    stageLookWhat: "{n} credential patterns", stageDecideWhat: "what to rotate, and the report",
+    tileHost: "always scanned", tileAlways: "always scanned", tileWindows: "Windows side",
+    tileWsl: "WSL distribution", tileContainer: "container", tileFolder: "folder",
+    depthLabel: "How deep",
+    quickWhy: "Quick reads everything as it is stored. A few minutes on most machines.",
+    deepWhy: "Deep also decodes what is packed inside (base64, gzip, JWTs) and sweeps for random-looking " +
+             "tokens. It finds more and takes much longer.",
     alwaysIncluded: "Always included: this is where Afterprompt is running.",
     leaveOut: "Untick to leave it out of this scan", scopeFailed: "Could not change that — the scan may have " +
               "started already.",
@@ -223,6 +235,7 @@
     gear: "M8 5.7a2.3 2.3 0 1 0 0 4.6 2.3 2.3 0 0 0 0-4.6ZM8 1.6v1.7M8 12.7v1.7M1.6 8h1.7M12.7 8h1.7M3.5 3.5l1.2 1.2M11.3 11.3l1.2 1.2M3.5 12.5l1.2-1.2M11.3 4.7l1.2-1.2",
     info: "M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8ZM8 7.3v3.9M8 4.9v.2",
     play: "M5.6 3.4v9.2l7-4.6z",
+    layers: "M8 2 14 5.2 8 8.4 2 5.2ZM2 8l6 3.2L14 8M2 10.8 8 14l6-3.2",
     shield: "M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6ZM5.8 8l1.6 1.6 2.9-3.1",
   };
 
@@ -297,7 +310,7 @@
     stages: [], progress: {}, lines: [], findings: null, checklist: {}, selected: null,
     collapsed: {}, unfolded: {}, settings: null, about: null, statuses: {}, checking: {},
     settingsTab: null, landed: false, conn: "connecting", notice: null, started: false, starting: false, finished: false,
-    details: {}, openStep: {}, scope: { options: [], excluded: [] },
+    details: {}, openStep: {}, openStage: undefined, scope: { options: [], excluded: [] },
   };
   const setting = (key) => (state.settings && state.settings.values ? state.settings.values[key] : undefined);
 
@@ -457,9 +470,10 @@
     return ul;
   }
 
-  function phases(live) {
+  // The steps of one stage, or of all of them: what each step is, whether it is done, and what it found.
+  function phases(live, only) {
     const box = el("div", null, "phase-groups");
-    for (const g of grouped(state.stages)) {
+    for (const g of grouped(state.stages).filter((x) => !only || x.key === only)) {
       const done = g.steps.filter((s) => s.done).length;
       const head = el("div", null, "phase-group-head");
       head.append(el("span", GROUP_LABEL()[g.key] || g.key, "phase-group-name"));
@@ -501,6 +515,70 @@
     return box;
   }
 
+  // ---- the pipeline: four stages, each a large icon in a ring that fills as its steps finish
+  // Decide is a document, not a tick: a grey tick on a stage that has not started reads as done.
+  const GROUP_ICON = { find: "search", read: "database", search: "key", finish: "doc" };
+  const STAGE_NAME = () => ({ find: TEXT.stageFind, read: TEXT.stageRead, search: TEXT.stageLook,
+                              finish: TEXT.stageDecide });
+  const STAGE_WHAT = () => ({ find: TEXT.stageFindWhat, read: TEXT.stageReadWhat,
+                              search: fill(TEXT.stageLookWhat, { n: (state.about && state.about.patterns) || "" }),
+                              finish: TEXT.stageDecideWhat });
+
+  // How far a stage is: its finished steps, plus the running one's share where its total is known. Nothing is
+  // estimated — a step with no known total counts only when it is done.
+  function stageState(g) {
+    const done = g.steps.filter((s) => s.done).length;
+    const cur = g.steps.find((s) => s.current && !s.done);
+    const p = cur ? state.progress[cur.name] : null;
+    const part = p && p.total ? Math.min(1, p.done / p.total) : 0;
+    const status = done === g.steps.length ? "done" : (cur || done ? "active" : "waiting");
+    return { done, total: g.steps.length, cur, p, status, fraction: (done + part) / g.steps.length };
+  }
+
+  function ring(fraction, status, art) {
+    const cell = el("span", null, "ring");
+    const r = 26;
+    const len = 2 * Math.PI * r;
+    const svg = svgEl("svg", { viewBox: "0 0 60 60", "aria-hidden": "true" });
+    svg.append(svgEl("circle", { cx: 30, cy: 30, r, class: "ring-track" }));
+    const arc = svgEl("circle", { cx: 30, cy: 30, r, class: "ring-fill", "data-empty": String(!(fraction > 0)),
+                                  "stroke-dasharray": `${(len * fraction).toFixed(1)} ${len.toFixed(1)}` });
+    svg.append(arc);
+    cell.append(svg, status === "done" ? icon("check", "success") : icon(art, status === "active" ? "accent" : null));
+    return cell;
+  }
+
+  function pipeline(live) {
+    const wrap = el("div", null, "pipeline-wrap");
+    const list = el("ol", null, "pipeline");
+    const groups = grouped(state.stages);
+    // Open by default: the stage that is running, so what is happening now is on screen without a click.
+    const running = live ? groups.find((g) => stageState(g).status === "active") : null;
+    const open = state.openStage === undefined ? (running ? running.key : null) : state.openStage;
+    for (const g of groups) {
+      const st = live ? stageState(g) : { status: "waiting", fraction: 0, done: 0, total: g.steps.length };
+      const li = el("li", null, "stage " + st.status + (open === g.key ? " open" : ""));
+      const b = el("button", null, "stage-node");
+      b.type = "button";
+      b.setAttribute("aria-expanded", String(open === g.key));
+      b.title = g.steps.map((x) => x.label).join("\n");
+      b.addEventListener("click", () => { state.openStage = open === g.key ? null : g.key; render(); });
+      b.append(ring(st.fraction, st.status, GROUP_ICON[g.key] || "dot"));
+      const words = el("span", null, "stage-words");
+      words.append(el("span", STAGE_NAME()[g.key] || g.key, "stage-name"));
+      const what = live && st.cur ? st.cur.label
+        : live && st.status === "done" ? `${st.total} ${TEXT.groupOf} ${st.total} ${TEXT.done}`
+        : STAGE_WHAT()[g.key];
+      words.append(el("span", what, "stage-what"));
+      b.append(words);
+      li.append(b);
+      list.append(li);
+    }
+    wrap.append(list);
+    if (open) wrap.append(phases(live, open));
+    return wrap;
+  }
+
   // The title says what is happening, so the connection's own words would only repeat it; the rail's dot says
   // the same, smaller, and a lost connection gets its own note.
   function pageHead(wrap, title) {
@@ -510,51 +588,58 @@
   }
 
   function renderReady(wrap) {
-    pageHead(wrap, TEXT.scanReady);
-    wrap.append(el("p", TEXT.scanReadySub, "sub"));
+    wrap.classList.add("scan-screen");
+    const head = el("div", null, "scan-head");
+    const words = el("div", null, "grow");
+    words.append(el("h2", TEXT.scanReady, "page-title"), el("p", TEXT.scanReadyShort, "sub"));
+    const go = el("button", null, "primary");
+    go.classList.add("go-big");
+    go.type = "button";
+    go.disabled = !!state.starting;
+    go.append(state.starting ? icon("spinner", null, true) : icon("play"),
+              el("span", state.starting ? TEXT.scanStarting : TEXT.scanStart));
+    go.addEventListener("click", startScan);
+    head.append(words, go);
+    wrap.append(head);
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
     if (state.notice) wrap.append(note(state.notice, "warning"));
 
-    const go = el("button", state.starting ? TEXT.scanStarting : TEXT.scanStart, "primary");
-    go.type = "button";
-    go.disabled = !!state.starting;
-    go.addEventListener("click", startScan);
-    const row = el("div", null, "ready-go");
-    row.append(go);
-    wrap.append(row);
+    // Where it will look, and how deep: side by side, the two things to decide before pressing.
+    const grid = el("div", null, "scan-grid");
+    const where = el("section", null, "scan-where");
+    where.append(el("span", TEXT.willCover, "section-label"));
+    where.append((state.scope.options || []).length ? scopeTiles() : (detailRows("environments") || el("span")));
+    const depth = depthPanel();
+    grid.append(where);
+    if (depth) grid.append(depth);
+    wrap.append(grid);
 
-    // What it will do, in the words the Settings screen uses, so the button is never a surprise.
-    const plan = scanPlan();
-    if (plan) wrap.append(plan);
-
-    // Where it will look: this machine's environments, found when Afterprompt started — found, not read — each
-    // with its own mark and a box to leave it out.
-    const where = (state.scope.options || []).length ? scopeList() : detailRows("environments");
-    if (where) wrap.append(el("span", TEXT.willCover, "section-label"), where);
-
-    // The steps it will take, greyed, grouped the way they will be while it runs.
-    if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), phases(false));
+    // What it does: four stages, the steps of each one a click away.
+    if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), pipeline(false));
     return wrap;
   }
 
-  function scopeList() {
-    const box = el("div", null, "scope");
+  // An environment as a tile: its mark, large; its name; a tick to leave it out. The long description is the
+  // tooltip, so the tile says what it is at a glance and the detail is there on a hover.
+  const TILE_KIND = () => ({ host: TEXT.tileHost, windows: TEXT.tileWindows, wsl: TEXT.tileWsl,
+                             docker: TEXT.tileContainer, podman: TEXT.tileContainer, folder: TEXT.tileFolder });
+  function scopeTiles() {
+    const box = el("div", null, "tiles");
     const out = new Set(state.scope.excluded || []);
     for (const o of state.scope.options) {
-      const row = el("label", null, "scope-row" + (out.has(o.id) ? " off" : ""));
+      const tile = el("label", null, "tile" + (out.has(o.id) ? " off" : "") + (o.required ? " fixed" : ""));
+      tile.title = [o.label, o.note, o.required ? TEXT.alwaysIncluded : TEXT.leaveOut].filter(Boolean).join("\n");
       const tick = el("input");
       tick.type = "checkbox";
       tick.checked = !out.has(o.id);
       tick.disabled = !!o.required || state.started || state.starting;
-      tick.title = o.required ? TEXT.alwaysIncluded : TEXT.leaveOut;
+      tick.setAttribute("aria-label", o.label);
       tick.addEventListener("change", () => setScope(o.id, tick.checked));
-      const words = el("span", null, "grow");
-      words.append(el("span", o.label, "env-name"));
-      if (o.note) words.append(el("span", o.note, "why"));
-      row.append(tick, envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform }), words);
-      box.append(row);
+      tile.append(tick, envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform }),
+                  el("span", o.kind === "windows" ? TEXT.windowsSide : o.name, "tile-name"),
+                  el("span", o.required ? TEXT.tileAlways : (TILE_KIND()[o.kind] || o.kind), "tile-kind"));
+      box.append(tile);
     }
-    if (state.scope.options.some((o) => !o.required)) box.append(el("p", TEXT.scopeWhy, "why"));
     return box;
   }
 
@@ -573,26 +658,41 @@
     render();
   }
 
-  // One line: how deep, which environments, what about containers — and the way to change it.
-  function scanPlan() {
+  // How deep, as the choice itself rather than a sentence about it, and what else the settings say.
+  function depthPanel() {
     const fields = (state.settings && state.settings.fields) || [];
+    const field = fields.find((f) => f.key === "mode");
+    if (!field) return null;
     const label = (key) => {
-      const field = fields.find((f) => f.key === key);
-      const chosen = field && (field.choices || []).find((c) => c.value === setting(key));
+      const f = fields.find((x) => x.key === key);
+      const chosen = f && (f.choices || []).find((c) => c.value === setting(key));
       return chosen ? chosen.label : null;
     };
-    const depth = label("mode");
-    if (!depth) return null;
-    const line = el("div", null, "plan");
-    line.append(icon("pulse", "accent"), el("b", `${depth} ${TEXT.scanDepth}`),
-                el("span", setting("no_wsl") ? TEXT.planNoWsl : TEXT.planWsl));
+    const box = el("section", null, "scan-depth");
+    box.append(el("span", TEXT.depthLabel, "section-label"));
+    const seg = el("div", null, "seg depth-seg");
+    seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", TEXT.depthLabel);
+    for (const c of field.choices || []) {
+      const b = el("button", null);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(setting("mode") === c.value));
+      b.disabled = state.started || state.starting;
+      b.append(icon(c.value === "deep" ? "layers" : "pulse"), el("span", c.label));
+      b.title = c.value === "deep" ? TEXT.deepWhy : TEXT.quickWhy;
+      b.addEventListener("click", () => setViewSetting("mode", c.value));
+      seg.append(b);
+    }
+    box.append(seg, el("p", setting("mode") === "deep" ? TEXT.deepWhy : TEXT.quickWhy, "why"));
     const containers = label("containers");
-    if (containers) line.append(el("span", `${TEXT.planContainers}: ${containers.toLowerCase()}`));
+    const more = el("div", null, "depth-more");
+    if (containers) more.append(icon("box", "quiet"), el("span", `${TEXT.planContainers}: ${containers.toLowerCase()}`));
     const change = el("button", TEXT.changeInSettings, "linkish");
     change.type = "button";
     change.addEventListener("click", () => show("settings"));
-    line.append(change);
-    return line;
+    more.append(change);
+    box.append(more);
+    return box;
   }
 
   async function startScan() {
@@ -620,16 +720,31 @@
     // Findings may be on screen before this scan ends (the last scan's, or a partial pass), so they are not what
     // says it has finished; the scanner is.
     const running = !state.finished;
-    pageHead(wrap, running ? TEXT.scanRunning : TEXT.scanDone);
-    wrap.append(el("p", running ? TEXT.scanRunningSub : TEXT.pickOne, "sub"));
+    wrap.classList.add("scan-screen");
+    const head = el("div", null, "scan-head");
+    const words = el("div", null, "grow");
+    words.append(el("h2", running ? TEXT.scanRunning : TEXT.scanDone, "page-title"));
+    // What it is doing now, and how far, in one line: the stage's panel below has the bar.
+    const now = running && grouped(state.stages).map(stageState).find((x) => x.cur);
+    const count = now && now.p ? (now.p.total ? ` · ${now.p.done.toLocaleString()} ${TEXT.ofTotal} ` +
+                                                 now.p.total.toLocaleString() : ` · ${now.p.done.toLocaleString()}`) : "";
+    words.append(el("p", now ? now.cur.label + count : running ? TEXT.scanRunningSub : TEXT.scanDoneShort, "sub"));
+    head.append(words);
+    if (!running) {
+      const see = el("button", null, "primary");
+      see.classList.add("go-big");
+      see.type = "button";
+      see.append(icon("key"), el("span", TEXT.seeCredentials));
+      see.addEventListener("click", () => show("findings"));
+      head.append(see);
+    }
+    wrap.append(head);
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
 
-    wrap.append(envStrip());
-
-    wrap.append(phases(true));
+    wrap.append(pipeline(true));
+    if (!running) wrap.append(envStrip());
 
     const details = el("details", null, "console-box");
-    if (running) details.open = true;
     details.append(el("summary", TEXT.showConsole));
     const pre = el("pre", state.lines.join("\n"), "console");
     pre.setAttribute("aria-label", TEXT.console);
