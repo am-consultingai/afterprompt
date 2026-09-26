@@ -75,9 +75,11 @@ class StageDetailTests(TempDirTest):
                  envs.Environment("api", "docker", "Docker: api", "docker:api")]
         with mock.patch("afterprompt.sources.windows_home", return_value=("/mnt/c/Users/sam", "cmd.exe")):
             opts = cli.scope_options(cfg, found)
+        # Every one a choice, the machine it runs on included, and each says what it reads.
         self.assertEqual([(o["id"], o["required"]) for o in opts],
-                         [("wsl:Ubuntu", True), ("windows", False), ("docker:api", False)])
+                         [("wsl:Ubuntu", False), ("windows", False), ("docker:api", False)])
         self.assertTrue(opts[1]["note"].startswith("C:\\Users\\sam"))
+        self.assertEqual([o["reads"] for o in opts], [cfg.home, "C:\\Users\\sam", "its AI tool folders"])
 
     def test_leaving_out_narrows_the_run_and_records_it(self):  # U-CLI-S2
         from afterprompt import envs
@@ -99,6 +101,15 @@ class StageDetailTests(TempDirTest):
         with mock.patch.object(cli, "say"):
             kept, stages = cli.apply_scope(cfg, kept, {"docker:db"}, meta, meta_path)
         self.assertNotIn("env_scan", stages)                               # nothing left to scan beside the host
+        self.assertFalse(cfg.skip_host)
+        # The machine it runs on, left out: it stays in the list (the scan runs there) but reads nothing of its own.
+        with mock.patch.object(cli, "say") as said:
+            kept, _ = cli.apply_scope(cfg, found, {"wsl:Ubuntu"}, meta, meta_path)
+        self.assertTrue(cfg.skip_host)
+        self.assertEqual(kept[0].side, "wsl:Ubuntu")
+        self.assertIn("WSL: Ubuntu (this machine)", said.call_args[0][0])
+        with open(meta_path, encoding="utf-8") as fh:
+            self.assertTrue(json.load(fh)["options"]["skip_host"])          # and a resume keeps it out
 
     def test_listing_files_breaks_down_by_tool(self):  # U-CLI-D2
         info = {"per_source": [{"tool": "Claude Code", "side": "wsl", "files": 7388, "bytes": 1_200_000_000}],

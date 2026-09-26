@@ -268,9 +268,7 @@ def collect(cfg, sources, project_budget=120.0):
     c = Collector(cfg.now or None)
     status = {"keychain": "not requested"}
     handled = set()   # files parsed as structured stores are not re-read as credential-named files
-    homes = [(sources["platform"], cfg.home)]
-    if sources.get("windows_home"):
-        homes.append(("windows", sources["windows_home"]))
+    homes = src.scanned_homes(cfg, sources)
     prune = [p for p in (cfg.install_dir, cfg.base_dir) if p]
     for _, home in homes:                            # AI tool data is what gets scanned, not a credential store
         prune += [src.claude_dir(home), os.path.join(home, ".claude"), os.path.join(home, ".cursor")]
@@ -345,7 +343,9 @@ def collect(cfg, sources, project_budget=120.0):
                 handled.add(os.path.normpath(f))
                 ssh_slices(c, f, txt, "private key body slice")
 
-    if cfg.include_keychain:
+    if cfg.include_keychain and sources.get("host_left_out"):
+        status["keychain"] = "not read: this machine was left out of this scan"
+    elif cfg.include_keychain:
         if cfg.platform == "macos":
             keychain(c, status)
         else:

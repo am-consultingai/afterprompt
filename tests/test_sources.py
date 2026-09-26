@@ -83,6 +83,40 @@ class SourcesTests(TempDirTest):
         self.assertIn(os.path.join(a, ".claude"), paths)
         self.assertIn(os.path.join(b, ".mcp.json"), paths)
 
+    def test_a_left_out_machine_reads_nothing_of_its_own(self):  # U-SRC-SCOPE
+        """Left out on the Start screen, this machine's own filesystem is not read — its AI history, its credential
+        files, its prompts — while the Windows side, which was not left out, still is."""
+        from afterprompt import prompts, stores
+        from tests.samples import SecretFactory
+        win = os.path.join(self.tmp, "Users", "me")
+        os.makedirs(os.path.join(win, ".claude", "projects"))
+        write(os.path.join(win, ".claude.json"), "{}")
+        cursor_db(os.path.join(win, "AppData", "Roaming", "Cursor", "User", "globalStorage", "state.vscdb"), [])
+        os.makedirs(os.path.join(self.home, ".claude", "projects"))
+        cursor_db(os.path.join(self.home, ".config", "Cursor", "User", "globalStorage", "state.vscdb"), [])
+        keys = SecretFactory(3)
+        host_key, win_key = keys.sample("github_token"), keys.sample("github_token")
+        write(os.path.join(self.home, "app", ".env"), f"GITHUB_TOKEN={host_key}\n")
+        write(os.path.join(win, "proj", ".env"), f"GITHUB_TOKEN={win_key}\n")
+        write(os.path.join(self.home, ".claude", "history.jsonl"), json.dumps({"display": "host prompt"}) + "\n")
+        write(os.path.join(win, ".claude", "history.jsonl"), json.dumps({"display": "windows prompt"}) + "\n")
+
+        cfg = make_cfg(self.tmp, "wsl", self.home, windows_home=win, skip_host=True)
+        out = discover(cfg)
+        self.assertTrue(out["host_left_out"])
+        self.assertEqual({r["side"] for r in out["roots"]}, {"windows"})
+        self.assertEqual({d["side"] for d in out["databases"]}, {"windows"})
+        self.assertEqual(sources.scanned_homes(cfg, out), [("windows", win)])
+        values = stores.collect(cfg, out)[0]
+        self.assertIn(win_key.encode(), values)
+        self.assertNotIn(host_key.encode(), values)
+        said = " ".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in prompts.collect_prompts(cfg, out))
+        self.assertNotIn("host prompt", said)
+
+        # With it in, both are read: the difference is the choice, not the fixture.
+        both = discover(make_cfg(self.tmp, "wsl", self.home, windows_home=win))
+        self.assertEqual({r["side"] for r in both["roots"]}, {"windows", "wsl"})
+
     def test_windows_project_keys(self):  # U-SRC-5 (Windows keys)
         from afterprompt import platforms
         win = os.path.join(self.tmp, "Users", "me")

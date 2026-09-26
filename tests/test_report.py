@@ -307,3 +307,20 @@ class LeftOutWindowsTests(unittest.TestCase):
                "other_homes": []}
         self.assertEqual(dict(report.coverage_rows({"coverage": cov}))["Windows profile"],
                          "not scanned: left out of this scan")
+
+
+class LeftOutHostTests(unittest.TestCase):
+    def test_a_left_out_machine_is_reported_as_not_scanned(self):  # U-REP-HOST
+        from afterprompt import merge, report
+        cov = {"platform": "wsl", "windows_home": "C:\\Users\\me", "windows_home_source": "cmd.exe",
+               "host_left_out": True, "sources": [], "databases": {"total": 0, "ok": 0, "failed": []},
+               "unreadable_files": 0, "excluded_files": 0, "vendored_files": 0, "scan_session_files": 0,
+               "live_values": {}, "prompts": {}, "limits": [], "missing_locations": [], "pattern_truncations": [],
+               "keychain": "not requested", "other_homes": []}
+        self.assertEqual(dict(report.coverage_rows({"coverage": cov}))["This machine"],
+                         "not scanned: left out of this scan")
+        host = {"rotate": [], "review": [], "review_totals": {}, "dismissed": {}, "summary": {}, "coverage": cov}
+        env = {"name": "Ubuntu", "kind": "host", "label": "WSL: Ubuntu (this machine)", "side": "wsl:Ubuntu"}
+        merged = merge.merge(host, env, [])
+        self.assertEqual((merged["environments"][0]["status"], merged["environments"][0]["reason"]),
+                         ("skipped", "left out of this scan"))

@@ -866,6 +866,8 @@ button.go-big .ic, button.go-big .ic svg { inline-size: 18px; block-size: 18px; 
 .tile .mono-mark { font-size: var(--text-md); }
 .tile-name { font-weight: var(--weight-label); overflow-wrap: anywhere; line-height: 1.3; }
 .tile-kind { font-size: var(--text-xs); color: var(--text-tertiary); }
+.tile-reads { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-secondary);
+  max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile.off { opacity: 0.5; box-shadow: none; background: none; }
 .tile.off .tile-name { text-decoration: line-through; }
 

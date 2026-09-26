@@ -179,7 +179,10 @@ scan left findings, the page opens on them, and a new scan is the Start button o
 a Start screen that has read nothing: it names the steps it would take and what the scan is set to do, and the
 scan begins when you press **Start scan**. Until then the run sits waiting, and Ctrl-C ends it having read
 nothing: it lists the environments the scan will cover (the machine it runs on, the Windows profile under WSL,
-each WSL distribution and running container), each with its own mark and a box to leave it out of this scan.
+each WSL distribution and running container), each with its own mark, the folder it reads, and a box to leave it
+out of this scan. Leaving one out means nothing in it is read: not its AI history and not its credential files —
+the machine Afterprompt runs on included. Beyond those folders the scan reads only the project folders your AI
+tools have worked in (for credential files); it does not search whole drives.
 A rail down the left edge holds the Start button and the four screens:
 
 - **Scan** — before the press, the Start screen. After it, one line per step, each staying on screen with what

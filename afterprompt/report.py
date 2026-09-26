@@ -76,6 +76,7 @@ def coverage(cfg, sources):
         "platform": sources.get("platform"),
         "windows_home": sources.get("windows_home"),
         "windows_home_source": sources.get("windows_home_source"),
+        "host_left_out": bool(sources.get("host_left_out")),
         "other_homes": envs.other_homes(cfg.home),
         # Every kind of environment that was looked for, found or not: the answer to "what about Docker?"
         # belongs in the report whether or not this machine has any.
@@ -285,8 +286,10 @@ def coverage_rows(data):
         rows.append((f"{s['tool']} ({side_label(s['side'])})", f"{s['files']:,} files, {human_bytes(s['bytes'])}"))
     if not c["sources"]:
         rows.append(("AI tool data", "none found"))
+    from afterprompt.sources import LEFT_OUT
+    if c.get("host_left_out"):
+        rows.append(("This machine", f"not scanned: {LEFT_OUT}"))
     if c["platform"] == "wsl":
-        from afterprompt.sources import LEFT_OUT
         if not c["windows_home"] and c["windows_home_source"] == LEFT_OUT:
             rows.append(("Windows profile", f"not scanned: {LEFT_OUT}"))
         else:

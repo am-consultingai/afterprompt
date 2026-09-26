@@ -196,7 +196,7 @@ class LiveServerTests(TempDirTest):
                                 {"id": "windows", "label": "Windows profile", "kind": "windows", "required": False},
                                 {"id": "docker:api", "label": "Docker: api", "kind": "docker", "required": False}])
         ok = lambda body: self.req("POST", "/api/scope", body=body)
-        self.assertEqual(ok({"id": "wsl:Ubuntu", "include": False})[0], 400)      # the machine it runs on
+        self.assertEqual(ok({"id": "wsl:Ubuntu", "include": False})[0], 400)      # offered as fixed: not a choice
         self.assertEqual(ok({"id": "nope", "include": False})[0], 400)
         self.assertEqual(ok({"id": "windows", "include": "no"})[0], 400)
         status, _, body = ok({"id": "windows", "include": False})
@@ -209,6 +209,16 @@ class LiveServerTests(TempDirTest):
         self.assertEqual(ok({"id": "docker:api", "include": True})[0], 409)       # the scan has what it has
         self.assertEqual(self.state.excluded, {"docker:api"})
         self.assertEqual(self.req("POST", "/api/scope", body={"id": "windows", "include": False}, token=False)[0], 401)
+
+    def test_nothing_left_in_scope_is_nothing_to_start(self):  # U-UI-75
+        self.state.offer_scope([{"id": "wsl:U", "label": "U", "kind": "host", "required": False},
+                                {"id": "windows", "label": "W", "kind": "windows", "required": False}])
+        self.req("POST", "/api/scope", body={"id": "wsl:U", "include": False})
+        self.req("POST", "/api/scope", body={"id": "windows", "include": False})
+        self.assertEqual(self.req("POST", "/api/start", body={})[0], 409)
+        self.assertFalse(self.state.scan_started)                                   # nothing was read
+        self.req("POST", "/api/scope", body={"id": "windows", "include": True})
+        self.assertEqual(self.req("POST", "/api/start", body={})[0], 200)
 
     def test_checklist(self):  # U-UI-10
         ok = {"hash": "abc123def4567890", "done": True}
@@ -768,6 +778,15 @@ class PageTests(TempDirTest):
         self.assertIn("n > 1 ? `${TEXT.willCover} · ${n}` : TEXT.willCover", js)
         tiles_js = js[js.index("function scopeTiles()"):js.index("async function setScope(")]
         self.assertIn('mark = el("span", null, "tile-lock");', tiles_js)
+
+    def test_a_tile_says_what_it_reads(self):  # U-UI-76
+        js = self.js_without_comments()
+        tiles = js[js.index("function scopeTiles()"):js.index("async function setScope(")]
+        self.assertIn('const reads = el("span", o.reads, "tile-reads");', tiles)
+        ready = js[js.index("function renderReady(wrap)"):js.index("const TILE_KIND")]
+        self.assertIn("go.disabled = !!state.starting || empty;", ready)
+        self.assertIn("TEXT.plusProjects", ready)
+        self.assertIn('status: cov.host_left_out ? "skipped" : "scanned"', js)
 
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""

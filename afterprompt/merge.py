@@ -198,7 +198,11 @@ def merge(host_data, host_env, results):
     out.update(merge_findings(parts))
     out["coverage"] = merge_coverage(host_data.get("coverage") or {}, others)
     out["schema"] = 2
-    host_row = dict(host_env, status="scanned", reason=None, notice=None,
+    # Left out on the Start screen, the machine it ran on read nothing of its own: say so, not "scanned".
+    from afterprompt.sources import LEFT_OUT
+    left_out = bool((host_data.get("coverage") or {}).get("host_left_out"))
+    host_row = dict(host_env, status="skipped" if left_out else "scanned", reason=LEFT_OUT if left_out else None,
+                    notice=None,
                     other_homes=(host_data.get("coverage") or {}).get("other_homes", []))
     out["environments"] = [environment_row(host_row, host_data)] + \
         [environment_row(r, r.get("findings")) for r in results]

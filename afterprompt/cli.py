@@ -473,25 +473,30 @@ def partial_findings(cfg, ctx, meta):
     return path
 
 
+READS = {"wsl": "its home folder", "docker": "its AI tool folders", "podman": "its AI tool folders"}
+
+
 def scope_options(cfg, env_list):
-    """What the Start screen offers to tick in or out. The machine the scan runs on is not a choice: it is where
-    Afterprompt is running. Under WSL the Windows profile is one, though it is not an environment of its own —
-    leaving it out is what --windows-home none does."""
+    """What the Start screen offers to tick in or out: every environment, the machine it runs on included, each
+    with the folder it reads. Leaving one out means nothing in it is read — AI history and credential files alike.
+    Under WSL the Windows profile is one, though it is not an environment of its own."""
     from afterprompt import sources as src_mod
     from afterprompt.platforms import to_windows_path
     out = []
     for e in env_list:
         if e.kind == "host":
+            home = cfg.home if cfg.platform != "windows" else (to_windows_path(cfg.home) or cfg.home)
             out.append({"id": e.side, "label": e.label, "name": e.name, "kind": "host", "platform": cfg.platform,
-                        "note": KIND_NOTE["host"], "required": True})
+                        "note": KIND_NOTE["host"], "reads": home, "required": False})
             if cfg.platform == "wsl":
                 win, how = src_mod.windows_home(cfg)
                 if win:
+                    shown = to_windows_path(win) or win
                     out.append({"id": "windows", "label": "Windows profile", "name": "Windows", "kind": "windows",
-                                "note": f"{to_windows_path(win) or win} — read with this machine", "required": False})
+                                "note": f"{shown} — read with this machine", "reads": shown, "required": False})
         else:
             out.append({"id": e.side, "label": e.label, "name": e.name, "kind": e.kind,
-                        "note": KIND_NOTE.get(e.kind), "required": False})
+                        "note": KIND_NOTE.get(e.kind), "reads": e.home or READS.get(e.kind), "required": False})
     return out
 
 
@@ -500,10 +505,15 @@ def apply_scope(cfg, env_list, left_out, meta, meta_path):
     run keeps the choice rather than quietly widening it again."""
     if "windows" in left_out:
         cfg.windows_home_arg = "none"
+    # The machine it runs on stays in the list either way — the scan runs there — but left out, none of its own
+    # files are read (sources.discover drops its home).
+    cfg.skip_host = any(e.kind == "host" and e.side in left_out for e in env_list)
     kept = [e for e in env_list if e.kind == "host" or e.side not in left_out]
-    dropped = [e.label for e in env_list if e not in kept] + (["Windows profile"] if "windows" in left_out else [])
+    dropped = ([env_list[0].label] if cfg.skip_host else []) + [e.label for e in env_list if e not in kept] + \
+        (["Windows profile"] if "windows" in left_out else [])
     meta["environments"] = [e.to_dict() for e in kept[1:]]
     meta.setdefault("options", {})["windows_home"] = cfg.windows_home_arg
+    meta["options"]["skip_host"] = cfg.skip_host
     write_json(meta_path, meta)
     say(f"Left out of this scan: {', '.join(dropped)}")
     return kept, stage_list(cfg.deep, len(kept) > 1, worker=cfg.worker)
@@ -703,6 +713,8 @@ def run(argv, emit):
                             "windows_home": cfg.windows_home_arg}}
     if resumed and (meta.get("options") or {}).get("windows_home") == "none" and not cfg.windows_home_arg:
         cfg.windows_home_arg = "none"          # left out on the Start screen when this run began
+    if resumed and (meta.get("options") or {}).get("skip_host"):
+        cfg.skip_host = True
     if resumed and "environments" in meta:
         env_list = [envs.host(cfg)] + [envs.Environment.from_dict(d) for d in meta["environments"]]
     else:

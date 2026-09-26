@@ -53,9 +53,7 @@ def _jsonl(path):
 
 def collect_prompts(cfg, sources):
     prompts = []
-    homes = [(sources["platform"], cfg.home)]
-    if sources.get("windows_home"):
-        homes.append(("windows", sources["windows_home"]))
+    homes = src.scanned_homes(cfg, sources)
     self_dirs = sources.get("self_exclude", [])
     for side, home in homes:
         cdir = src.claude_dir(home) if side != "windows" else os.path.join(home, ".claude")

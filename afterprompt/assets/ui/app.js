@@ -32,13 +32,17 @@
     stageFind: "Find", stageRead: "Read", stageLook: "Look", stageDecide: "Decide",
     stageFindWhat: "AI tools and environments", stageReadWhat: "chats and history files",
     stageLookWhat: "{n} credential patterns", stageDecideWhat: "what to rotate, and the report",
-    tileHost: "always scanned", tileAlways: "always scanned", tileWindows: "Windows side",
+    tileHost: "this machine", tileAlways: "always scanned", tileWindows: "Windows side",
+    leftOut: "left out of this scan",
+    nothingToScan: "Every environment is left out, so there is nothing to scan. Tick at least one.",
+    plusProjects: "It also reads the project folders your AI tools have worked in, for credential files.",
     tileWsl: "WSL distribution", tileContainer: "container", tileFolder: "folder",
     depthLabel: "How deep",
     quickWhy: "Quick reads everything as it is stored. A few minutes on most machines.",
     deepWhy: "Deep also decodes what is packed inside (base64, gzip, JWTs) and sweeps for random-looking " +
              "tokens. It finds more and takes much longer.",
     alwaysIncluded: "Always included: this is where Afterprompt is running.",
+    leftOutRead: "Left out, nothing in it is read: not its AI history, not its credential files.",
     leaveOut: "Untick to leave it out of this scan", scopeFailed: "Could not change that — the scan may have " +
               "started already.",
     scopeWhy: "Leaving one out means nothing in it is read, and the report says it was not scanned.",
@@ -595,7 +599,11 @@
     const go = el("button", null, "primary");
     go.classList.add("go-big");
     go.type = "button";
-    go.disabled = !!state.starting;
+    // Every environment left out is nothing to scan: the button says so by being off, and a line says why.
+    const empty = (state.scope.options || []).length > 0 &&
+                  state.scope.options.every((o) => (state.scope.excluded || []).includes(o.id));
+    go.disabled = !!state.starting || empty;
+    if (empty) go.title = TEXT.nothingToScan;
     go.append(state.starting ? icon("spinner", null, true) : icon("play"),
               el("span", state.starting ? TEXT.scanStarting : TEXT.scanStart));
     go.addEventListener("click", startScan);
@@ -603,6 +611,7 @@
     wrap.append(head);
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
     if (state.notice) wrap.append(note(state.notice, "warning"));
+    if (empty) wrap.append(note(TEXT.nothingToScan, "warning"));
 
     // Where it will look, and how deep: side by side, the two things to decide before pressing.
     const grid = el("div", null, "scan-grid");
@@ -611,6 +620,11 @@
     const n = (state.scope.options || []).length;
     where.append(el("span", n > 1 ? `${TEXT.willCover} · ${n}` : TEXT.willCover, "section-label"));
     where.append((state.scope.options || []).length ? scopeTiles() : (detailRows("environments") || el("span")));
+    // The one reach beyond those folders: projects your AI tools worked in, which can be on any drive. Found when
+    // the scan starts, so named here rather than listed.
+    const homeIn = (state.scope.options || []).some((o) => ["host", "windows"].includes(o.kind) &&
+                                                           !(state.scope.excluded || []).includes(o.id));
+    if (homeIn) where.append(el("p", TEXT.plusProjects, "why"));
     const depth = depthPanel();
     grid.append(where);
     if (depth) grid.append(depth);
@@ -630,7 +644,8 @@
     const out = new Set(state.scope.excluded || []);
     for (const o of state.scope.options) {
       const tile = el("label", null, "tile" + (out.has(o.id) ? " off" : "") + (o.required ? " fixed" : ""));
-      tile.title = [o.label, o.note, o.required ? TEXT.alwaysIncluded : TEXT.leaveOut].filter(Boolean).join("\n");
+      tile.title = [o.label, o.note, o.required ? TEXT.alwaysIncluded : TEXT.leaveOut, o.required ? null
+                    : TEXT.leftOutRead].filter(Boolean).join("\n");
       const tick = el("input");
       tick.type = "checkbox";
       tick.checked = !out.has(o.id);
@@ -648,7 +663,13 @@
       }
       tile.append(mark, envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform }),
                   el("span", o.kind === "windows" ? TEXT.windowsSide : o.name, "tile-name"),
-                  el("span", o.required ? TEXT.tileAlways : (TILE_KIND()[o.kind] || o.kind), "tile-kind"));
+                  el("span", TILE_KIND()[o.kind] || o.kind, "tile-kind"));
+      // The folder it reads, and only that: what it does not read is not listed.
+      if (o.reads) {
+        const reads = el("span", o.reads, "tile-reads");
+        reads.title = o.reads;
+        tile.append(reads);
+      }
       box.append(tile);
     }
     return box;
@@ -1519,7 +1540,8 @@
     const plat = { wsl: "WSL", linux: "Linux", macos: "macOS", windows: TEXT.windowsSide }[cov.platform];
     return [{ name: cov.platform, kind: "host", side: cov.platform,
               label: plat ? `${plat} (${TEXT.machineThis.toLowerCase()})` : TEXT.machineThis,
-              status: "scanned", files: cov.files, bytes: cov.bytes,
+              status: cov.host_left_out ? "skipped" : "scanned", reason: cov.host_left_out ? TEXT.leftOut : null,
+              files: cov.files, bytes: cov.bytes,
               rotate: (d.summary || {}).rotate, review: (d.summary || {}).review,
               other_homes: cov.other_homes || [] }].concat(windowsRow(d));
   }

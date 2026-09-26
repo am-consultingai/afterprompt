@@ -43,6 +43,15 @@ _WIN_CACHE = {}
 LEFT_OUT = "left out of this scan"
 
 
+def scanned_homes(cfg, sources):
+    """(side, home) for every home folder this scan reads: this machine's own unless it was left out, and the
+    Windows profile when there is one and it was not. Every stage that reads a home asks here."""
+    homes = [] if sources.get("host_left_out") else [(sources["platform"], cfg.home)]
+    if sources.get("windows_home"):
+        homes.append(("windows", sources["windows_home"]))
+    return homes
+
+
 def windows_home(cfg):
     key = (cfg.platform, cfg.windows_home_arg)
     if key in _WIN_CACHE:
@@ -75,6 +84,13 @@ def discover(cfg):
     win_path, win_source = windows_home(cfg)
     # On Windows the machine's own home is the "windows" side; there is no unix side to scan.
     homes = {"unix": None if cfg.platform == "windows" else cfg.home, "windows": win_path}
+    if cfg.skip_host:
+        # Left out on the Start screen. Nothing on this machine's own filesystem is read — not its AI history, not
+        # its credential files, not project folders on it — exactly as for any other environment left out.
+        if cfg.platform == "windows":
+            homes["windows"] = win_path = None
+        else:
+            homes["unix"] = None
     side_name = {"unix": cfg.platform, "windows": "windows"}
     roots, dbs, missing = [], [], []
     drop = [cfg.install_dir, cfg.base_dir]
@@ -125,6 +141,11 @@ def discover(cfg):
                         add_root(p, loc.tool, side, "file")
 
     projects = project_dirs(cfg, homes)
+    if cfg.skip_host:
+        # A project on a Windows drive belongs to the Windows side, which may still be in; one on this machine's own
+        # filesystem does not.
+        mount = platforms.automount_root() if cfg.platform == "wsl" else None
+        projects = [p for p in projects if mount and is_under(p, mount)]
     for p in projects:
         side = "windows" if win_path and is_under(p, win_path) else cfg.platform
         home = win_path if side == "windows" else cfg.home
@@ -173,7 +194,8 @@ def discover(cfg):
 
     installed = detect.installed([homes["unix"], homes["windows"]], cfg.platform)
     unknown = detect.unknown_tools([homes["unix"], homes["windows"]])
-    out = {"platform": cfg.platform, "home": cfg.home, "windows_home": win_path, "windows_home_source": win_source,
+    out = {"platform": cfg.platform, "home": cfg.home, "host_left_out": bool(cfg.skip_host),
+           "windows_home": win_path, "windows_home_source": win_source,
            "installed": installed, "unknown_tools": unknown, "roots": roots, "databases": dbs, "project_dirs": projects, "self_exclude": self_exclude,
            "missing": missing, "walk_truncated": walk_truncated}
     write_json(cfg.w("sources.json"), out)
@@ -205,10 +227,10 @@ def project_dirs(cfg, homes):
             if p:
                 found.add(os.path.normpath(p))
     cursor_users = []
-    if cfg.platform == "macos":
-        cursor_users.append(os.path.join(cfg.home, "Library/Application Support/Cursor/User"))
-    elif not native:
-        cursor_users.append(os.path.join(cfg.home, ".config/Cursor/User"))
+    if cfg.platform == "macos" and homes.get("unix"):
+        cursor_users.append(os.path.join(homes["unix"], "Library/Application Support/Cursor/User"))
+    elif not native and homes.get("unix"):
+        cursor_users.append(os.path.join(homes["unix"], ".config/Cursor/User"))
     if homes.get("windows"):
         cursor_users.append(os.path.join(homes["windows"], "AppData/Roaming/Cursor/User"))
     for cu in cursor_users:

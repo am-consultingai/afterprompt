@@ -46,6 +46,7 @@ class RunConfig:
     walk_budget: float = 180.0
     keep_work: bool = False
     include_keychain: bool = False
+    skip_host: bool = False        # left out on the Start screen: nothing on this machine's own filesystem is read
     rg: str = "rg"
     install_dir: str = ""
     platform: str = "linux"

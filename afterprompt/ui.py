@@ -183,6 +183,11 @@ class State:
         self._publish({"type": "scope"})
         return out
 
+    def nothing_in_scope(self):
+        """Every environment on offer left out: a scan would read nothing, so there is no scan to start."""
+        with self.lock:
+            return bool(self.scope) and all(o["id"] in self.excluded for o in self.scope)
+
     def offer_findings(self, path):
         """Findings the page may show before this scan ends: a partial pass taken mid-scan, or the ones the
         last scan left behind. The scan is not finished; there is simply something to look at already."""
@@ -435,7 +440,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"excluded": out})
         elif path == "/api/start":
             # The only endpoint that makes the machine do something. It takes no arguments: what the scan
-            # will do was decided in Settings before this was pressed.
+            # will do was decided in Settings and on the Start screen before this was pressed.
+            if not st.scan_started and st.nothing_in_scope():
+                self._send(409, {"error": "every environment is left out: there is nothing to scan"})
+                return
             self._send(200, {"started": True, "first": st.request_start(self.client_address[0])})
         elif path == "/api/reveal":
             h = body.get("hash") if isinstance(body, dict) else None
