@@ -12,7 +12,7 @@
 "use strict";
 (function () {
   const TEXT = {
-    connecting: "connecting", live: "scanning", done: "scan finished", lost: "reconnecting", refused: "refused",
+    connecting: "connecting", live: "scanning", ready: "ready to scan", done: "scan finished", lost: "reconnecting", refused: "refused",
     noKey: "no key",
     tabScan: "Scan", tabFindings: "Credentials", tabSettings: "Settings", tabAbout: "About",
     needKey: "Open the link printed in your terminal: it carries the key this page needs. The key is kept out of " +
@@ -49,7 +49,8 @@
     searchFor: "Find it in a file by searching for",
     searchWhy: "The first characters only — enough to land on the line, and no more of the value than this " +
                "page already shows.",
-    copyCmd: "Copy command", copyPath: "Copy path", copied: "Copied", copyFailed: "Press ⌘/Ctrl-C to copy",
+    copyCmd: "Copy command", copyPath: "Copy path", copy: "Copy", copySearch: "Copy search command",
+    opened: "Shown in your file manager", openFailed: "Could not open it", noServer: "Could not reach Afterprompt", copied: "Copied", copyFailed: "Press ⌘/Ctrl-C to copy",
     withCli: "From the vendor's own command line", openWith: "Open it",
     whatToDo: "What to do", about: "about", minutes: "min", openConsole: "Open", checkAudit: "Check the audit log",
     overlap: "can be rotated without downtime", breaksAtOnce: "revoking breaks callers at once",
@@ -218,7 +219,8 @@
     state.conn = kind;
     const pill = $("state");
     pill.dataset.state = ["live", "done", "lost"].includes(kind) ? kind : "connecting";
-    pill.textContent = TEXT[kind] || kind;
+    // Connected is not the same as scanning: until Start is pressed there is nothing running to report.
+    pill.textContent = kind === "live" && !state.started ? TEXT.ready : (TEXT[kind] || kind);
   }
 
   // ---- screens -----------------------------------------------------------
@@ -620,7 +622,7 @@
                    : icon(sev === "review" ? "key" : "alert", sev === "review" ? "warning" : "danger"));
         const band = section === "rotate" && impactOf(f);
         if (band) {
-          const dot = el("span", null, "band " + band);
+          const dot = el("span", null, "band-dot " + band);
           dot.title = impactText(band)[0];
           row.append(dot);
         }
@@ -734,19 +736,23 @@
     add(TEXT.exposedIn, (dd) => {
       dd.append(el("span", (f.tools || []).join(", ")));
       const prefix = prefixOf(f);
-      for (const loc of f.locations || []) {
+      const canOpen = (state.openable || {})[f.hash] || [];
+      (f.locations || []).forEach((loc, i) => {
         const line = el("div", null, "loc");
         line.append(el("span", loc.display + (loc.decoded ? " (decoded)" : ""), "mono"));
-        const rule = openRule(loc.display);
+        const path = stripLabel(loc.display);
+        const rule = openRule(path);
         if (rule && !loc.decoded) {
-          const cmd = command(rule, loc.display, prefix);
           const tools = el("div", null, "loc-tools");
-          tools.append(copyButton(cmd, TEXT.openWith), copyButton(loc.display, TEXT.copyPath),
-                       el("span", rule.what, "sub"));
+          if (canOpen.includes(i)) tools.append(revealButton(f.hash, i));
+          tools.append(copyButton(path, TEXT.copyPath));
+          // Windows paths get Explorer, which the Open button already is; the others get a search to run.
+          if (rule.id !== "windows") tools.append(copyButton(command(rule, path, prefix), TEXT.copySearch));
+          tools.append(el("span", rule.what, "sub"));
           line.append(tools);
         }
         dd.append(line);
-      }
+      });
     });
     add(TEXT.foundOn, (dd) => {
       const line = el("div", null, "env-inline");
@@ -783,6 +789,30 @@
         b.textContent = TEXT.copyFailed;
       }
       setTimeout(() => { b.textContent = label || TEXT.copyCmd; }, 1600);
+    });
+    return b;
+  }
+
+  // Triage labels a path with what kind of file it is; the label is not part of the path.
+  const stripLabel = (display) => String(display || "").replace(/ \(chat database\)$/, "");
+
+  // The server shows the file in the file manager. The page names the finding and which of its locations, never
+  // a path, so there is nothing here that could point the machine anywhere the scan did not already report.
+  function revealButton(hash, index) {
+    const b = el("button", TEXT.openWith, "copy primary");
+    b.type = "button";
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      let why = null;
+      try {
+        const r = await post("/api/reveal", { hash, index });
+        const body = await r.json();
+        if (!body.ok) why = body.why || TEXT.openFailed;
+      } catch (e) {
+        why = TEXT.noServer;
+      }
+      b.textContent = why ? why.charAt(0).toUpperCase() + why.slice(1) : TEXT.opened;
+      setTimeout(() => { b.textContent = TEXT.openWith; b.disabled = false; }, why ? 4000 : 1600);
     });
     return b;
   }
@@ -839,7 +869,7 @@
     const prefix = prefixOf(f);
     if (prefix) {
       const hint = el("div", null, "cmd");
-      hint.append(el("code", prefix), copyButton(prefix, TEXT.copyPath));
+      hint.append(el("code", prefix), copyButton(prefix, TEXT.copy));
       wrap.append(el("p", `${TEXT.searchFor}:`, "field-label"), hint, el("p", TEXT.searchWhy, "sub"));
     }
     return wrap;
@@ -1384,11 +1414,12 @@
   async function loadFindings(done) {
     const r = await api("/api/findings");
     if (!r.ok) return;
-    const { findings, checklist, statuses } = await r.json();
+    const { findings, checklist, statuses, openable } = await r.json();
     const before = state.selected;
     state.findings = findings;
     state.checklist = checklist || {};
     state.statuses = statuses || {};
+    state.openable = openable || {};
     applyViewSettings();
     const all = items().map((i) => i.f.hash);
     // Selection survives by id, never by index; if it is gone, take its nearest surviving neighbour.
@@ -1497,6 +1528,7 @@
       if (state.screen === "scan") render();
     } else if (ev.type === "started") {
       state.started = true;
+      if (state.conn === "live") setState("live");
       refresh();
     } else if (ev.type === "stage" || ev.type === "stages") {
       refresh();

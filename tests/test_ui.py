@@ -132,6 +132,30 @@ class LiveServerTests(TempDirTest):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["findings"]["rotate"][0]["masked"], "sk-ant…Ab12")
 
+    def test_reveal_names_a_finding_never_a_path(self):  # U-UI-9b
+        home = os.path.join(self.tmp, "home")
+        write(os.path.join(home, "s1.jsonl"), "x")
+        fp = os.path.join(self.tmp, "findings.json")
+        write_json(fp, {"platform": {"kind": "linux"}, "environments": [{"kind": "host", "side": "linux"}],
+                        "rotate": [{"hash": "abc123def4567890", "locations": [
+                            {"display": "~/s1.jsonl", "side": "linux"}]}], "review": []})
+        self.state.home = home
+        self.state.finish(fp)
+        self.assertEqual(json.loads(self.req("GET", "/api/findings")[2])["openable"], {"abc123def4567890": [0]})
+        with mock.patch("afterprompt.reveal.platforms.detect", return_value="linux"), \
+             mock.patch("afterprompt.reveal.shutil.which", return_value="/usr/bin/xdg-open"), \
+             mock.patch("afterprompt.reveal.subprocess.Popen") as popen:
+            self.assertEqual(self.req("POST", "/api/reveal", body={"hash": "abc123def4567890", "index": 0})[0], 200)
+            self.assertEqual(popen.call_args[0][0], ["/usr/bin/xdg-open", home])
+            # A path, a bad hash, an index past the end, no key: all refused, nothing started.
+            popen.reset_mock()
+            self.assertEqual(self.req("POST", "/api/reveal", body={"path": "/etc/passwd"})[0], 400)
+            self.assertEqual(self.req("POST", "/api/reveal", body={"hash": "../../etc", "index": 0})[0], 400)
+            self.assertEqual(self.req("POST", "/api/reveal", body={"hash": "abc123def4567890", "index": 5})[0], 409)
+            self.assertEqual(self.req("POST", "/api/reveal", body={"hash": "abc123def4567890", "index": 0},
+                                      token=False)[0], 401)
+            popen.assert_not_called()
+
     def test_checklist(self):  # U-UI-10
         ok = {"hash": "abc123def4567890", "done": True}
         self.assertEqual(self.req("POST", "/api/checklist", body=ok)[0], 200)
@@ -455,9 +479,25 @@ class PageTests(TempDirTest):
         self.assertIn("REF.rotation.open_with", js)
         self.assertIn("guide && guide.cli", js)
         self.assertIn("navigator.clipboard.writeText", js)
-        # Nothing that could make the machine do something.
+        # Nothing that could make the machine run something of the page's choosing.
         for forbidden in ("child_process", "shell", "exec(", "/api/open", "/api/run"):
             self.assertNotIn(forbidden, js, forbidden)
+        # "Open it" names a finding and an index, never a path; the server looks the path up itself.
+        self.assertIn('post("/api/reveal", { hash, index })', js)
+        self.assertEqual(js.count("/api/reveal"), 1)
+
+    def test_the_header_does_not_claim_a_scan_that_has_not_started(self):  # U-UI-55
+        js = self.js_without_comments()
+        self.assertIn('kind === "live" && !state.started ? TEXT.ready', js)
+        self.assertIn('ready: "ready to scan"', self.read("app.js"))
+
+    def test_a_copied_path_is_the_path(self):  # U-UI-54b
+        """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
+        js = self.js_without_comments()
+        self.assertIn("const path = stripLabel(loc.display);", js)
+        self.assertIn("copyButton(path, TEXT.copyPath)", js)
+        # The search hint copies a search term, and says so.
+        self.assertIn("copyButton(prefix, TEXT.copy)", js)
 
     def test_the_list_is_ordered_by_what_it_opens(self):  # U-UI-41
         """The browser view and the report must not disagree about what to do first."""
@@ -498,12 +538,20 @@ class PageTests(TempDirTest):
 
     def test_the_bands_are_drawn_from_tokens(self):  # U-UI-44
         css = self.read("app.css")
-        band = css[css.index(".band {"):css.index(".row.fold")]
-        for rule in (".band.money { background: var(--danger); }",
-                     ".band.data { background: var(--warning); }",
-                     ".band.access { background: var(--accent); }",
-                     ".band.service { background: var(--text-tertiary); }"):
+        band = css[css.index(".band-dot {"):css.index(".row.fold")]
+        for rule in (".band-dot.money { background: var(--danger); }",
+                     ".band-dot.data { background: var(--warning); }",
+                     ".band-dot.access { background: var(--accent); }",
+                     ".band-dot.service { background: var(--text-tertiary); }"):
             self.assertIn(rule, band)
+
+    def test_the_reach_pill_is_not_sized_like_the_dot(self):  # U-UI-44b
+        """The list's 8px dot and the detail pane's pill once shared .band, which squeezed the pill's words into
+        a column one letter wide. The dot has its own class, and nothing sizes a bare .band."""
+        css, js = self.read("app.css"), self.js_without_comments()
+        self.assertNotRegex(css, r"(^|\n)\.band\s*\{")
+        self.assertIn('el("span", null, "band-dot " + band)', js)
+        self.assertIn('"badge band " + band', js)
 
     def test_keyboard_contract(self):  # U-UI-24
         js = self.js_without_comments()

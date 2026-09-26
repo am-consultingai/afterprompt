@@ -204,6 +204,11 @@ requests naming another host are refused (DNS rebinding), cross-site requests ar
 ever sent, and the page is served with a strict Content-Security-Policy and loads nothing from the internet.
 Everything it shows was already masked for `findings.json`.
 
+**Open it** beside a location shows that file in your file manager (Explorer with the file selected, Finder's
+reveal, or the folder on Linux). The page names only the finding and which of its locations; the path is looked
+up by Afterprompt in its own findings, and a file in another environment (another WSL distribution, a container)
+is refused rather than guessed at. It never opens the file itself.
+
 ## Reading the report
 
 The report is written as `report.html`, `report.md` and `findings.json`, with three sections:

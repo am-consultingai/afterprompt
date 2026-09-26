@@ -224,7 +224,7 @@ class ReferenceDataTests(unittest.TestCase):
                     self.assertIn(token, ("path", "prefix"), f"{vendor}: unknown placeholder")
 
     def test_opening_a_file_is_a_command_we_hand_over(self):  # U-SET-22
-        """The page never opens anything: it says which tool, and gives the line to paste."""
+        """Per file type: which tool, and a line to paste. Showing the file is the server's job (reveal.py)."""
         r = self.load("rotation.json")
         rules = r["open_with"]
         self.assertTrue(rules and isinstance(rules, list))
@@ -239,6 +239,9 @@ class ReferenceDataTests(unittest.TestCase):
         sqlite = [x for x in rules if x["id"] == "sqlite"][0]
         self.assertTrue(re.compile(sqlite["match"]).search("state.vscdb"))
         self.assertIn("{prefix}", sqlite["run"])
+        # A Windows path is matched before its file type: from WSL a sqlite3 command on C:\\ cannot run.
+        first = next(x for x in rules if re.compile(x["match"]).search("C:\\Users\\me\\state.vscdb"))
+        self.assertEqual(first["id"], "windows")
 
     def test_every_finding_kind_has_generic_steps(self):  # U-SET-13
         r = self.load("rotation.json")

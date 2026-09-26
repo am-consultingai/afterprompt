@@ -260,11 +260,13 @@ button.phase-head .phase-note { margin-inline-end: 6px; }
    the loud ones, acting as you is the accent, one service is quiet. A square
    rather than a word, because a row has no room for a sentence; the word is on
    the card, and in the group heading when the list is grouped this way. */
-.band { flex: none; inline-size: 8px; block-size: 8px; border-radius: 2px; }
-.band.money { background: var(--danger); }
-.band.data { background: var(--warning); }
-.band.access { background: var(--accent); }
-.band.service { background: var(--text-tertiary); }
+/* The list's reach marker. Its own class: the detail pane's pill is .badge.band, and sharing .band once forced the
+   pill to this 8px box, which stacked its words one letter per line. */
+.band-dot { flex: none; inline-size: 8px; block-size: 8px; border-radius: 2px; }
+.band-dot.money { background: var(--danger); }
+.band-dot.data { background: var(--warning); }
+.band-dot.access { background: var(--accent); }
+.band-dot.service { background: var(--text-tertiary); }
 .badge.band.money { background: var(--danger-quiet); color: var(--danger); }
 .badge.band.data { background: var(--warning-quiet); color: var(--warning); }
 .badge.band.access { background: var(--accent-quiet); color: var(--accent); }
@@ -522,6 +524,8 @@ button.copy {
   cursor: pointer; flex: none;
 }
 button.copy:hover { border-color: var(--border-strong); color: var(--text-primary); }
+button.copy.primary { color: var(--accent); border-color: color-mix(in oklab, var(--border), var(--accent) 35%); }
+button.copy:disabled { cursor: default; opacity: 0.85; }
 .loc { margin-block-end: 10px; }
 .loc-tools { display: flex; align-items: center; gap: 8px; margin-block-start: 4px; flex-wrap: wrap; }
 .loc-tools .sub { margin: 0; font-size: var(--text-xs); }

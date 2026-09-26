@@ -698,16 +698,16 @@
   },
   "open_with": [
     {
-      "id": "sqlite",
-      "match": "\\.(vscdb|vscdb\\.backup|db|sqlite|sqlite3)(\\.backup)?$",
-      "what": "A SQLite database. Open it with a database viewer, or read it where it sits.",
-      "run": "sqlite3 \"{path}\" \"select value from ItemTable where value like '%{prefix}%' limit 1;\""
-    },
-    {
       "id": "windows",
       "match": "^[A-Za-z]:\\\\",
       "what": "On the Windows side. Show it in File Explorer, or search it in place.",
       "run": "explorer.exe /select,\"{path}\""
+    },
+    {
+      "id": "sqlite",
+      "match": "\\.(vscdb|vscdb\\.backup|db|sqlite|sqlite3)(\\.backup)?$",
+      "what": "A SQLite database. Open it with a database viewer, or read it where it sits.",
+      "run": "sqlite3 \"{path}\" \"select value from ItemTable where value like '%{prefix}%' limit 1;\""
     },
     {
       "id": "text",
