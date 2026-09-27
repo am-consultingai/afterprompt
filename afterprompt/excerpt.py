@@ -426,8 +426,17 @@ def read_database(path, f, loc, others, seconds=DB_SECONDS, clock=time.monotonic
         if timed_out:
             return refuse("db_timeout", seconds=int(seconds), size=size)
         return refuse("not_in_file") if not loc.get("records") else refuse("record_changed")
-    return {"ok": True, "kind": "database", "size": size, "total": total, "hits": hits,
-            "partial": timed_out, "seconds": int(seconds)}
+    out = {"ok": True, "kind": "database", "size": size, "total": total, "hits": hits,
+           "partial": timed_out, "seconds": int(seconds)}
+    # The scan counted every place; the reader can only open the records the scan noted. When those are fewer —
+    # a report from a version that noted only a few, or a location that reached the cap — say how many were
+    # counted and why fewer are here, rather than presenting the smaller number as the whole.
+    counted = loc.get("count") or 0
+    if records and counted > total:
+        out["counted"] = counted
+        out["noted"] = len(records)
+        out["capped"] = bool(loc.get("records_capped"))
+    return out
 
 
 def open_location(findings, value_hash, index, plat=None, home=None, cap=CAP, db_seconds=DB_SECONDS):

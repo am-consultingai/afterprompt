@@ -822,6 +822,14 @@ class PageTests(TempDirTest):
         self.assertIn("sameSteps(f, section)", folds)
         self.assertNotIn("function statusBlock", js)
 
+    def test_the_reader_says_when_it_shows_fewer_than_were_counted(self):  # U-UI-79
+        js = self.js_without_comments()
+        view = js[js.index("function readerView("):js.index("function hitView(")]
+        self.assertIn("if (out.counted) wrap.append(note(fill(out.capped ? TEXT.readerCapped : TEXT.readerFewer, out)",
+                      view)
+        for key in ("readerFewer:", "readerCapped:"):
+            self.assertIn(key, self.read("app.js"))
+
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
         js = self.js_without_comments()

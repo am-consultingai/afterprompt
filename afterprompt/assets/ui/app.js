@@ -154,6 +154,11 @@
     readerMasked: "Every value that looks like a secret is masked here, not only this one — this page never shows " +
                   "a full value. The file itself is not changed.",
     readerPartial: "The search stopped after {seconds} seconds; these are the places found by then.",
+    readerFewer: "Showing {total} of the {counted} places the scan counted in this database. The scan that " +
+                 "found them noted only {noted} of their records, and the reader can open only those. A new " +
+                 "scan notes every record.",
+    readerCapped: "Showing {total} of the {counted} places the scan counted. The scan notes up to {noted} records " +
+                  "per database, and this one has more.",
     legendThis: "this credential", legendOther: "another finding — open it", legendMasked: "masked",
     whoUser: "a message you sent", whoAssistant: "the assistant's reply", whoTool: "a tool's output",
     // Why a place matters, in one sentence: the value left the file it belongs in and went somewhere it does not.
@@ -2291,6 +2296,7 @@
     count.append(legend);
     wrap.append(count, el("p", TEXT.readerMasked, "why"));
     if (out.partial) wrap.append(note(fill(TEXT.readerPartial, out), "warning"));
+    if (out.counted) wrap.append(note(fill(out.capped ? TEXT.readerCapped : TEXT.readerFewer, out), "warning"));
     const list = el("div", null, "reader-hits");
     for (const h of out.hits || []) list.append(hitView(h));
     wrap.append(list, sheetActions(f, index, out, null));

@@ -243,7 +243,9 @@ def _jsonl(path):
 
 # A row of an extracted chat database, as databases.py writes it: "### <table> | key=<key> | value=…".
 RECORD = re.compile(rb"### (.+?) \| key=(.*?) \| ")
-RECORDS_KEPT = 5
+# Every record a value was found in, so the reader can show every place the count says there is. The cap only
+# keeps a pathological database from bloating findings.json, and a location that reaches it says so.
+RECORDS_KEPT = 1000
 
 
 ROW_INDEX = {}
@@ -312,21 +314,27 @@ def summarize_locations(hits, ext=None):
     c = collections.Counter()
     meta = {}
     records = collections.defaultdict(list)
+    capped = set()
     for loc in hits:
         k = (loc["display"], loc["decoded"])
         c[k] += 1
         meta[k] = loc
         # Which rows of a chat database, while the extracted dump is still on disk to say.
-        if ext and not loc["decoded"] and len(records[k]) < RECORDS_KEPT and loc.get("f") and is_under(loc["f"], ext):
+        if ext and not loc["decoded"] and loc.get("f") and is_under(loc["f"], ext):
             rec = record_at(loc["f"], loc.get("o"))
             if rec and rec not in records[k]:
-                records[k].append(rec)
+                if len(records[k]) < RECORDS_KEPT:
+                    records[k].append(rec)
+                else:
+                    capped.add(k)
     locs = []
     for (d, dec), n in c.most_common():
         row = {"display": d, "tool": meta[(d, dec)]["tool"], "side": meta[(d, dec)]["side"], "count": n,
                "decoded": dec}
         if records[(d, dec)]:
             row["records"] = records[(d, dec)]
+            if (d, dec) in capped:
+                row["records_capped"] = True
         locs.append(row)
     return locs
 

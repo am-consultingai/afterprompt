@@ -307,6 +307,19 @@ class DatabaseTests(Base):
         self.assertIn("KEY=" + f["masked"], text)
         self.assertNotIn("\\n", text)                       # no escape left unread, before or at the value
 
+    def test_fewer_records_than_places_is_said_not_hidden(self):
+        """The scan counted 310 places but noted 5 records: showing 5 as if it were all of them is the bug this
+        guards. The answer carries both numbers, and the page says why they differ."""
+        self.db([(f"bubbleId:{i}", {"text": f"k {KEY}"}) for i in range(8)])
+        f = self.finding([{"table": "cursorDiskKV", "key": f"bubbleId:{i}"} for i in range(3)])
+        f["locations"][0]["count"] = 8
+        out = self.open(self.report(f), f)
+        self.assertEqual((out["total"], out["counted"], out["noted"], out["capped"]), (3, 8, 3, False))
+        f["locations"][0]["records"] = [{"table": "cursorDiskKV", "key": f"bubbleId:{i}"} for i in range(8)]
+        out = self.open(self.report(f), f)
+        self.assertEqual(out["total"], 8)
+        self.assertNotIn("counted", out)                      # every place is here: nothing to explain
+
     def test_a_record_that_no_longer_holds_it(self):
         self.db([("bubbleId:b", {"text": "edited"})])
         f = self.finding([{"table": "cursorDiskKV", "key": "bubbleId:b"}])
@@ -369,6 +382,13 @@ class RecordTests(TempDirTest):
                          "side": "windows", "f": dump, "o": at})
         locs = triage.summarize_locations(hits, ext)
         self.assertEqual(locs[0]["count"], 9)
-        self.assertEqual([r["key"] for r in locs[0]["records"]], [f"bubbleId:{i}" for i in range(5)])
+        # Every record, so the reader can show every place the count says there is.
+        self.assertEqual([r["key"] for r in locs[0]["records"]], [f"bubbleId:{i}" for i in range(9)])
+        self.assertNotIn("records_capped", locs[0])
+        # Past the cap it keeps what it can and says so.
+        from unittest import mock
+        with mock.patch.object(triage, "RECORDS_KEPT", 4):
+            capped = triage.summarize_locations(hits, ext)[0]
+        self.assertEqual((len(capped["records"]), capped["records_capped"]), (4, True))
         # Outside the extracted dumps there is no record to note.
         self.assertNotIn("records", triage.summarize_locations(hits, os.path.join(self.tmp, "elsewhere"))[0])
