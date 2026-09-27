@@ -35,7 +35,7 @@
     stopFailed: "Could not stop the scan — it may have just finished.",
     scanReadyShort: "Reads the history your AI tools keep here and checks it for credentials. Nothing leaves " +
                     "this machine, and nothing is read until you press Start.",
-    scanDoneShort: "Everything it found is on the Credentials screen.", seeCredentials: "See the credentials",
+    scanDoneShort: "Everything it found is on the Credentials screen. Start scan runs another.",
     stageFind: "Find", stageRead: "Read", stageLook: "Look", stageDecide: "Decide",
     stageFindWhat: "AI tools and environments", stageReadWhat: "chats and history files",
     stageLookWhat: "{n} credential patterns", stageDecideWhat: "what to rotate, and the report",
@@ -641,8 +641,8 @@
     const running = state.started && !state.finished;
     const head = el("div", null, "scan-head");
     const words = el("div", null, "grow");
-    const title = state.stopping ? TEXT.scanStopping : state.finished ? TEXT.scanDone
-      : running ? TEXT.scanRunning : TEXT.scanReady;
+    const title = state.stopping ? TEXT.scanStopping : running ? TEXT.scanRunning
+      : state.finished ? TEXT.scanDone : TEXT.scanReady;
     words.append(el("h2", title, "page-title"));
     // What it is doing now, and how far, in one line: the stage's panel below has the bar.
     const now = running && grouped(state.stages).map(stageState).find((x) => x.cur);
@@ -684,8 +684,10 @@
     wrap.append(grid);
 
     // What it does: four stages, the steps of each one a click away; while it runs, each ring fills.
-    if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), pipeline(state.started));
-    if (state.started) {
+    // Live while it runs, and after it finishes, until the next Start: the finished scan's rings stay full.
+    const shown = state.started || state.finished;
+    if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), pipeline(shown));
+    if (shown) {
       if (state.finished) wrap.append(envStrip());
       const details = el("details", null, "console-box");
       details.append(el("summary", TEXT.showConsole));
@@ -698,15 +700,13 @@
     return wrap;
   }
 
-  // Start before, Stop during, the credentials after: one button in one place, whatever the scan is doing.
+  // Start, or Stop while a scan runs: one button in one place, and nothing else. After a scan finishes it is
+  // Start again, for the next one.
   function scanButton(running, empty) {
     const b = el("button", null, "primary");
     b.classList.add("go-big");
     b.type = "button";
-    if (state.finished) {
-      b.append(icon("key"), el("span", TEXT.seeCredentials));
-      b.addEventListener("click", () => show("findings"));
-    } else if (running || state.stopping) {
+    if (running || state.stopping) {
       b.classList.add("stop");
       b.disabled = !!state.stopping;
       b.append(state.stopping ? icon("spinner", null, true) : icon("square"),
@@ -771,7 +771,7 @@
       const tick = el("input");
       tick.type = "checkbox";
       tick.checked = !out.has(o.id);
-      tick.disabled = !!o.required || state.started || state.starting;
+      tick.disabled = !!o.required || (state.started && !state.finished) || state.starting;
       tick.setAttribute("aria-label", o.label);
       tick.addEventListener("change", () => setScope(o.id, tick.checked));
       // The machine it runs on is always in: a filled tick, not a disabled box, which browsers draw grey and which
@@ -831,7 +831,7 @@
       const b = el("button", null);
       b.type = "button";
       b.setAttribute("aria-pressed", String(setting("mode") === c.value));
-      b.disabled = state.started || state.starting;
+      b.disabled = (state.started && !state.finished) || state.starting;
       b.append(icon(c.value === "deep" ? "layers" : "pulse"), el("span", c.label));
       b.title = c.value === "deep" ? TEXT.deepWhy : TEXT.quickWhy;
       b.addEventListener("click", () => setViewSetting("mode", c.value));
@@ -863,6 +863,8 @@
       return;
     }
     state.started = true;
+    state.finished = false;          // a new scan: the last one's finished state gives way at once
+    state.openStage = undefined;
     state.starting = false;
     state.notice = null;
     render();
@@ -2222,8 +2224,15 @@
     } else if (ev.type === "detail") {
       state.details[ev.stage] = ev.rows || [];
       if (state.screen === "scan") render();
+    } else if (ev.type === "ready") {
+      // A scan finished and the page is back at Start for another: its results stay, its rings stay full.
+      state.started = false;
+      state.starting = false;
+      render();
+      renderGo();
     } else if (ev.type === "started") {
       state.started = true;
+      state.finished = false;
       if (state.conn === "live") setState("live");
       refresh();
     } else if (ev.type === "scope") {

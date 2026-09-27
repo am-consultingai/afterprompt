@@ -185,7 +185,9 @@ the machine Afterprompt runs on included. Beyond those folders the scan reads on
 tools have worked in (for credential files); it does not search whole drives.
 While it runs, the same screen shows the steps filling in, and Start becomes **Stop scan**: a stopped scan
 is thrown away — nothing it found is shown, its work files are deleted — and the page goes back to Start, with
-the last complete scan's results unchanged. Only a scan that finishes updates the results.
+the last complete scan's results unchanged. Only a scan that finishes updates the results, and when one
+does the screen goes back to Start (its steps still ticked) so another can be run from the same page. The
+process ends when the page's tab is closed.
 A rail down the left edge holds the Start button and the four screens:
 
 - **Scan** — before the press, the Start screen. After it, one line per step, each staying on screen with what

@@ -152,6 +152,12 @@ class State:
         with self.lock:
             first = not self.scan_started
             self.scan_started = True
+            if first and self.finished:
+                # A new scan after a finished one: the last scan's steps and what they found give way to this
+                # one's. The environments this scan will cover stay; they were found for it.
+                self.finished = False
+                self.done, self.current, self.summaries, self.progress = set(), None, {}, {}
+                self.details = {k: v for k, v in self.details.items() if k == "environments"}
         if first:
             log(f"start requested by {who or 'unknown'}")
             self._publish({"type": "started"})
@@ -234,6 +240,16 @@ class State:
             self.finished = True
             self.findings_path = findings_path
         self._publish({"type": "finished"})
+
+    def ready_for_another(self):
+        """After a finished scan: the Start screen again, the finished scan's steps still on it, and Start
+        pressable for a new one. Its findings are the list's until another scan finishes."""
+        with self.lock:
+            self.scan_started = False
+            self.stop_requested = False
+            self.stoppable = True
+            self._begin.clear()
+        self._publish({"type": "ready"})
 
     def snapshot(self):
         with self.lock:

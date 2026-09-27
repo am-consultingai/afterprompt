@@ -639,7 +639,7 @@ class PageTests(TempDirTest):
         # How deep is the choice itself, saved as the setting it is, and the rest of the settings one click away.
         plan = js[js.index("function depthPanel()"):js.index("async function startScan()")]
         for key in ('f.key === "mode"', 'setViewSetting("mode", c.value)', 'label("containers")', 'show("settings")',
-                    "b.disabled = state.started || state.starting;"):
+                    "b.disabled = (state.started && !state.finished) || state.starting;"):
             self.assertIn(key, plan)
         for key in ("quickWhy:", "deepWhy:", "planContainers:", "changeInSettings:"):
             self.assertIn(key, self.read("app.js"))
@@ -763,7 +763,8 @@ class PageTests(TempDirTest):
         js = self.js_without_comments()
         scope = js[js.index("function scopeTiles()"):js.index("async function setScope(")]
         self.assertIn('tick.type = "checkbox";', scope)
-        self.assertIn("tick.disabled = !!o.required || state.started || state.starting;", scope)
+        # Locked while a scan runs, and open again once it has finished, for the next one.
+        self.assertIn("tick.disabled = !!o.required || (state.started && !state.finished) || state.starting;", scope)
         self.assertIn("envMark({ name: o.name, label: o.label, kind: o.kind, platform: o.platform })", scope)
         self.assertIn('post("/api/scope", { id, include })', js)
         cli_src = self.read_module("cli.py")
@@ -872,6 +873,14 @@ class PageTests(TempDirTest):
         self.assertIn('dock.append(note(state.notice', screen)          # not wrap.append: it would push things down
         self.assertNotIn("wrap.append(note(", screen)
         self.assertIn("empty ? TEXT.nothingToScan :", screen)           # said in the line that is already there
+
+    def test_the_one_button_is_start_or_stop(self):  # U-UI-87
+        js = self.js_without_comments()
+        button = js[js.index("function scanButton("):js.index("function confirmStop(")]
+        self.assertIn("if (running || state.stopping) {", button)
+        self.assertNotIn("seeCredentials", button)
+        self.assertNotIn('show("findings")', button)
+        self.assertIn('ev.type === "ready"', js)                      # after a finish, Start again
 
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
@@ -1124,6 +1133,64 @@ class StopTests(TempDirTest):
         self.assertFalse(seen["after"]["started"])
         self.assertFalse(seen["after"]["findings_ready"])            # and nothing from it is offered
         self.assertEqual(seen["findings"], 404)
+
+
+@requires_rg
+class AnotherScanTests(TempDirTest):
+    def test_a_finished_scan_leaves_the_page_ready_for_another(self):  # U-UI-88
+        """A finished scan used to leave the page on "See the credentials" with nothing else pressable. Now the page
+        goes back to Start; a second scan runs from it; closing the page ends the process with the last answer."""
+        fx = Fixture(self.tmp, "linux")
+        out = io.StringIO()
+        seen = {"finished": 0}
+
+        def call(method, path, port, token, body=None):
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            h = {"Authorization": f"Bearer {token}"}
+            if body is not None:
+                h["Content-Type"] = "application/json"
+            c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+            r = c.getresponse()
+            data = r.read()
+            c.close()
+            return r.status, (json.loads(data) if data else None)
+
+        def browser():
+            for _ in range(600):
+                m = re.search(r"Browser view: http://127\.0\.0\.1:(\d+)/#token=([\w-]+)", out.getvalue())
+                if m and "Waiting for Start scan" in out.getvalue():
+                    break
+                time.sleep(0.05)
+            port, token = int(m.group(1)), m.group(2)
+            for round_ in range(2):
+                call("POST", "/api/heartbeat", port, token, {})
+                self.assertEqual(call("POST", "/api/start", port, token, {})[0], 200)
+                for _ in range(1200):
+                    call("POST", "/api/heartbeat", port, token, {})
+                    st = call("GET", "/api/status", port, token)[1]
+                    if st["finished"] and not st["started"]:              # finished, and back at Start
+                        break
+                    time.sleep(0.05)
+                seen["finished"] += 1
+                seen[f"stages{round_}"] = all(x["done"] for x in st["stages"])
+            # Then the page goes away: no more heartbeats.
+
+        t = threading.Thread(target=browser, daemon=True)
+        t.start()
+        import contextlib
+        with mock.patch.dict(os.environ, fx.env()), mock.patch.object(ui, "HEARTBEAT_GRACE", 1.0), \
+                contextlib.redirect_stdout(out):
+            code = cli.main(["--ui"])
+        t.join(10)
+        self.assertEqual(seen["finished"], 2)
+        self.assertTrue(seen["stages0"] and seen["stages1"])
+        self.assertEqual(code, cli.EXIT_ROTATE)                                # the last scan's answer
+        runs = os.path.join(fx.base, "runs")
+        finished = [r for r in os.listdir(runs)
+                    if (read_json_file(os.path.join(runs, r, "run.json")) or {}).get("finished")]
+        self.assertEqual(len(finished), 2)
+        self.assertEqual(len(os.listdir(runs)), 2)                            # no empty run left to "resume"
+        self.assertFalse(os.path.exists(os.path.join(fx.base, "current")))
 
 
 class StopStateTests(TempDirTest):

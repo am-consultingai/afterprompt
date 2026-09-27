@@ -671,14 +671,27 @@ def run(argv, emit):
 
     # A Stop from the browser view ends that scan and comes back here: the same page, the same link, the Start
     # screen again, and a new run when Start is pressed. The view belongs to this call, not to the module.
+    # The same holds after a scan finishes: the page goes back to Start, and another scan can be run from it.
     held = {}
     code = run_once(args, base, emit, foreign, held)
-    while code is STOPPED:
+    while code is STOPPED or code is AGAIN:
         code = run_once(args, base, emit, foreign, held)
     return code
 
 
 STOPPED = object()
+AGAIN = object()
+
+
+def discard_unused(base, run_dir):
+    """A run set up for a scan that was never started: nothing in it, and nothing to resume next time."""
+    shutil.rmtree(run_dir, ignore_errors=True)
+    rid, current = read_current(base)
+    if current and os.path.normpath(current) == os.path.normpath(run_dir):
+        try:
+            os.remove(os.path.join(base, "current"))
+        except OSError:
+            pass
 
 
 def the_view(base, held):
@@ -792,16 +805,24 @@ def run_once(args, base, emit, foreign, held):
             # The flag is the gate, not the wait. Event.wait() can return early — a signal delivered to the
             # process is enough — and a scan that begins because of that is a machine-wide read nobody asked
             # for. It waits in slices and only leaves when someone has actually pressed.
+            from afterprompt import ui as ui_mod
             while not view.state.scan_started:
                 view.state.wait_for_start(0.5)
+                # After a finished scan the page stays up for another; once its tab is closed there is no one
+                # to press Start, and the finished scan's answer is what this run ends with.
+                if "last_code" in held and ui_mod.should_stop(view.state):
+                    discard_unused(base, run_dir)
+                    stop_ui(view)
+                    return held["last_code"]
             log("the gate opened: scan_started is set")
         except KeyboardInterrupt:
             if view.state.stop_requested:
                 return discard_stopped(view, base, run_dir)
+            discard_unused(base, run_dir)
             say("")
-            say("Nothing was scanned.")
+            say("Nothing more was scanned." if "last_code" in held else "Nothing was scanned.")
             stop_ui(view)
-            return EXIT_INTERRUPTED
+            return held.get("last_code", EXIT_INTERRUPTED)
         with view.state.lock:
             left_out = set(view.state.excluded)
         if left_out:
@@ -914,8 +935,8 @@ def run_once(args, base, emit, foreign, held):
         view.state.finish(os.path.join(cfg.report_dir, "findings.json"))
         exposures.adopt_checklist(base)      # a tick from an older version meant rotated
         view.state.start_watchdog()
-        say("The browser view stays open until you close its tab (or press Ctrl-C).")
-        from afterprompt import ui
-        ui.wait_until_done(view)
-        set_console_sink(None)
+        say("The browser view stays open for another scan until you close its tab (or press Ctrl-C).")
+        held["last_code"] = code
+        view.state.ready_for_another()
+        return AGAIN
     return code
