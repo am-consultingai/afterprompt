@@ -169,3 +169,35 @@ class StatusTests(TempDirTest):
         self.assertEqual(items["f" * 16]["status"], "rotated")
         self.assertIsNone(items["f" * 16]["updated"])
         self.assertNotIn("seen", items["f" * 16])
+
+
+
+class StepTests(TempDirTest):
+    """The fix is three steps a person ticks; the status follows from them rather than being set beside them."""
+
+    H = "0123456789abcdef"
+
+    def test_the_status_follows_the_ticks(self):
+        all3 = ["revoke", "replace", "clean"]
+        self.assertEqual(exposures.set_step(self.tmp, self.H, "revoke", True, all3)["status"], "rotating")
+        self.assertEqual(exposures.set_step(self.tmp, self.H, "replace", True, all3)["status"], "rotating")
+        row = exposures.set_step(self.tmp, self.H, "clean", True, all3)
+        self.assertEqual(row["status"], "rotated")
+        self.assertEqual(row["steps"], {"revoke": True, "replace": True, "clean": True})
+        self.assertEqual(exposures.set_step(self.tmp, self.H, "clean", False, all3)["status"], "rotating")
+        self.assertEqual(exposures.load(self.tmp)[self.H]["steps"]["clean"], False)       # kept on disk
+
+    def test_only_the_steps_that_apply_count(self):
+        """Stored nowhere here, there is nothing to replace: revoking and cleaning up is the whole fix."""
+        two = ["revoke", "clean"]
+        exposures.set_step(self.tmp, self.H, "revoke", True, two)
+        self.assertEqual(exposures.set_step(self.tmp, self.H, "clean", True, two)["status"], "rotated")
+        self.assertIsNone(exposures.set_step(self.tmp, self.H, "replace", True, two))    # not a step it showed
+        self.assertIsNone(exposures.set_step(self.tmp, self.H, "delete everything", True, ["delete everything"]))
+        self.assertIsNone(exposures.set_step(self.tmp, "../x", "revoke", True, two))
+
+    def test_ignored_stays_ignored_until_a_step_is_ticked(self):
+        exposures.set_status(self.tmp, self.H, "ignored")
+        self.assertEqual(exposures.set_step(self.tmp, self.H, "revoke", False, ["revoke"])["status"], "ignored")
+        self.assertEqual(exposures.set_step(self.tmp, self.H, "revoke", True, ["revoke", "clean"])["status"],
+                         "rotating")

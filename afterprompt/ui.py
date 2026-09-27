@@ -231,6 +231,12 @@ class State:
     def statuses(self):
         return exposures.load(self.base_dir)
 
+    def set_step(self, value_hash, step, done, applies):
+        row = exposures.set_step(self.base_dir, value_hash, step, done, applies)
+        if row is not None:
+            self._publish({"type": "status", "hash": value_hash, "row": row})
+        return row
+
     def set_status(self, value_hash, value):
         row = exposures.set_status(self.base_dir, value_hash, value)
         if row is not None:
@@ -476,6 +482,15 @@ class Handler(BaseHTTPRequestHandler):
             if row is None:
                 self._send(400, {"error": "hash must be a value hash and status one of " +
                                           ", ".join(exposures.STATUSES)})
+            else:
+                self._send(200, {"hash": h, "row": row, "statuses": st.statuses()})
+        elif path == "/api/step":
+            h = body.get("hash") if isinstance(body, dict) else None
+            ok = isinstance(h, str) and isinstance(body.get("step"), str) and isinstance(body.get("done"), bool) \
+                and isinstance(body.get("applies"), list)
+            row = st.set_step(h, body["step"], body["done"], body["applies"]) if ok else None
+            if row is None:
+                self._send(400, {"error": "hash must be a value hash, step one the card shows, done true or false"})
             else:
                 self._send(200, {"hash": h, "row": row, "statuses": st.statuses()})
         elif path == "/api/recheck":

@@ -164,6 +164,18 @@
     whyTool: "A tool the agent ran returned this: its output was sent to the AI model as part of the " +
              "conversation, and a copy is kept in this history.",
     toolRan: "The agent ran",
+    statSure: "how sure", statReach: "if someone uses it", statWhere: "where it leaked", inWord: "in",
+    notRated: "Not rated", notRatedWhy: "Worth a look; how far it reaches is not known.",
+    occurrencesWhy: "How many times the value appears across the files it was found in.",
+    fixIt: "Fix it", stepDone: "Done", stepRevoke: "Revoke", stepReplace: "Replace", stepClean: "Clean up",
+    revokeUnknown: "At the service that issued it", copyCli: "Copy the command",
+    fileHoldsIt: "file here holds it", filesHoldIt: "files here hold it", moreFiles: "more",
+    placeInHistory: "place in AI history", placesInHistory: "places in AI history",
+    stillThere: "Still there", goneNow: "Gone from those files",
+    theGuide: "The full guide", stepsWord: "steps", sameFixFor: "Same fix for", otherOne: "other credential",
+    others: "other credentials",
+    ignoreIt: "Ignore", reopen: "Reopen", ignoreWhy: "Not a credential of yours, or nothing to do about it. " +
+              "Kept on this machine, so the next scan remembers.", reopenWhy: "Put it back on the list to rotate.",
     windowsSide: "Windows", windowsRead: "read from WSL, as part of this machine",
     // The scanner's own words for an environment with nothing in it, matched in reports older than its flag.
     emptyReason: "no AI tool history in it",
@@ -240,6 +252,10 @@
     info: "M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8ZM8 7.3v3.9M8 4.9v.2",
     play: "M5.6 3.4v9.2l7-4.6z",
     layers: "M8 2 14 5.2 8 8.4 2 5.2ZM2 8l6 3.2L14 8M2 10.8 8 14l6-3.2",
+    coin: "M8 2.4a5.6 5.6 0 1 0 0 11.2A5.6 5.6 0 0 0 8 2.4Zm1.7 3.5c-.3-.5-.9-.9-1.7-.9-1 0-1.7.6-1.7 1.3 0 1.8 3.4 1 3.4 2.8 0 .8-.8 1.3-1.7 1.3-.8 0-1.5-.4-1.8-1M8 4v1M8 11v1",
+    user: "M8 8.2a2.7 2.7 0 1 0 0-5.4 2.7 2.7 0 0 0 0 5.4Zm-4.9 5.4c.5-2.5 2.4-3.8 4.9-3.8s4.4 1.3 4.9 3.8",
+    folder: "M2.2 4.3h4l1.3 1.5h6.3v7H2.2z",
+    copy: "M5.6 5.6h7v7h-7zM3.4 10.4v-7h7",
     shield: "M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6ZM5.8 8l1.6 1.6 2.9-3.1",
   };
 
@@ -276,6 +292,13 @@
     cell.append(svg);
     return cell;
   }
+  // Every mark's art — vendor, environment, tool — is a filled glyph on a 24 box, drawn in one ink colour here.
+  function markSvg(art) {
+    const svg = svgEl("svg", { viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true" });
+    svg.append(svgEl("path", { d: art.path }));
+    return svg;
+  }
+
   /* A vendor mark: one ink colour in a uniform box, never a brand-coloured logotype. Vendors whose marks are not
      redistributable are drawn as a monogram instead — identification, not endorsement. */
   const isVendor = (name) => Object.values(REF.vendors.patterns || {}).includes(name);
@@ -287,9 +310,7 @@
     }
     const art = (REF.vendors.icons || {})[vendor];
     if (art) {
-      const svg = svgEl("svg", { viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true" });
-      svg.append(svgEl("path", { d: art.path }));
-      cell.append(svg);
+      cell.append(markSvg(art));
     } else {
       cell.append(el("span", (vendor || "?").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase(), "mono-mark"));
     }
@@ -1100,8 +1121,8 @@
   }
 
   // ---- the credential card
-  // One column, one card wide: the name and where it stands, how sure and how far it reaches, then the card that
-  // says what to do, then the evidence under small headings.
+  // Pictures first: how bad (four tiles), what to do (three steps you tick), where it leaked (one line a place).
+  // The long sentences are tooltips; the vendor's full guide and "the same fix for others" fold away.
   function renderDetail(pane) {
     const box = el("div", null, "detail-col");
     pane.append(box);
@@ -1112,80 +1133,256 @@
       return;
     }
     const { f, section } = found;
-    const sev = severityOf(f, section);
     const vendor = vendorOf(f);
+    box.append(cardHead(f, vendor));
+    box.append(statStrip(f, section));
+    box.append(fixSteps(f, section, vendor));
+    box.append(locations(f));
+    box.append(folds(f, section, vendor));
+  }
+
+  const STATUS_TONE = { open: "lost", rotating: "live", rotated: "done", ignored: "connecting" };
+  function cardHead(f, vendor) {
     const head = el("div", null, "detail-head");
     if (vendor) head.append(vendorMark(vendor));
     head.append(el("h2", f.label), el("code", f.masked));
-    const where = el("span", TEXT[STATUS_TEXT[statusOf(f)]], "status-line");
-    where.dataset.state = { rotated: "done", ignored: "connecting", rotating: "live" }[statusOf(f)] || "lost";
-    head.append(where);
-    box.append(head);
+    const st = statusOf(f);
+    const pill = el("span", TEXT[STATUS_TEXT[st]], "status-line");
+    pill.dataset.state = STATUS_TONE[st] || "lost";
+    const ignore = el("button", st === "ignored" ? TEXT.reopen : TEXT.ignoreIt, "linkish");
+    ignore.type = "button";
+    ignore.title = st === "ignored" ? TEXT.reopenWhy : TEXT.ignoreWhy;
+    ignore.addEventListener("click", () => setStatus(f, st === "ignored" ? "open" : "ignored"));
+    head.append(pill, ignore);
+    return head;
+  }
 
-    // How sure we are is one question; what it opens is the other, and it is the one that sets the order.
-    const badge = el("div", null, "badges");
+  // Four answers to "how bad", each an icon, a word or two, and the sentence behind it as the tooltip.
+  const BAND_ICON = { money: "coin", data: "database", access: "user", service: "key" };
+  function statStrip(f, section) {
+    const strip = el("div", null, "stats");
+    const tile = (art, tone, big, small, why) => {
+      const t = el("div", null, "stat");
+      if (tone) t.dataset.tone = tone;
+      t.title = why || "";
+      const words = el("div", null, "stat-words");
+      words.append(el("b", big), el("span", small));
+      t.append(icon(art, tone || "quiet"), words);
+      strip.append(t);
+      return t;
+    };
+    const sev = severityOf(f, section);
     const kind = { live: [TEXT.liveCredential, TEXT.liveCredentialWhy, "danger"],
                    vendor: [TEXT.vendorFormat, TEXT.vendorFormatWhy, "danger"],
                    structural: [TEXT.structural, TEXT.structuralWhy, "warning"],
                    review: [TEXT.weaker, TEXT.weakerWhy, "warning"] }[sev];
-    const b = el("span", kind[0], "badge");
-    b.dataset.tone = kind[2];
-    badge.append(b);
+    tile("shield", kind[2], kind[0], TEXT.statSure, kind[1]);
     const band = section === "rotate" && impactOf(f);
-    if (band) badge.append(el("span", impactText(band)[0], "badge band " + band));
-    box.append(badge);
-    box.append(el("p", band ? `${kind[1]} ${impactText(band)[1]}` : kind[1], "sub"));
-
-    box.append(doThis(f, section, vendor));
-
-    box.append(el("span", TEXT.whereFound, "section-label"));
-    box.append(locations(f));
-
-    const facts = el("dl", null, "facts");
-    const add = (term, build) => {
-      const row = el("div", null, "fact");
-      const dd = el("dd");
-      build(dd);
-      row.append(el("dt", term), dd);
-      facts.append(row);
-    };
-    add(TEXT.foundOn, (dd) => {
-      const line = el("div", null, "env-inline");
-      for (const m of machinesOf(f)) line.append(envMark(m), el("span", m.label || m.name));
-      dd.append(line);
-    });
-    if ((f.tools || []).length) add(TEXT.exposedIn, (dd) => dd.append(el("span", f.tools.join(", "))));
-    if ((f.still_on_disk || []).length) {
-      add(TEXT.stillOnDisk, (dd) => {
-        for (const x of f.still_on_disk) dd.append(el("span", `${x.store} (${x.key})`, "mono"));
-      });
+    if (band) {
+      tile(BAND_ICON[band], { money: "danger", data: "warning", access: "accent" }[band] || null,
+           impactText(band)[0], TEXT.statReach, impactText(band)[1]);
+    } else {
+      tile("key", null, TEXT.notRated, TEXT.statReach, TEXT.notRatedWhy);
     }
-    add(TEXT.occurrences, (dd) => dd.append(el("span", `${f.occurrences} ${TEXT.ofTotal} ${f.files} ${TEXT.inFiles}`)));
-    box.append(facts);
-    box.append(statusBlock(f));
-    box.append(actions(f, section, vendor));
-    box.append(sameSteps(f, section));
+    const where = machinesOf(f);
+    const t = tile("machine", null, where.length === 1 ? (where[0].label || where[0].name)
+                                                       : `${where.length} ${TEXT.environments.toLowerCase()}`,
+                   TEXT.statWhere, where.map((m) => m.label || m.name).join("\n"));
+    // The environments' own marks in place of the generic machine icon.
+    const marks = el("span", null, "stat-marks");
+    for (const m of where.slice(0, 3)) marks.append(envMark(m));
+    t.replaceChild(marks, t.firstChild);
+    tile("file", null, (f.occurrences || 0).toLocaleString(), `${TEXT.inWord} ${f.files} ${TEXT.inFiles}`,
+         TEXT.occurrencesWhy);
+    return strip;
   }
 
-  /* Every place it was found, one row each: the path, what kind of file, and the three things to do with it —
-     show it in the file manager, copy the path, copy a search that lands on the line. */
+  // The fix as three steps, each ticked when done; the status follows from the ticks. A step that does not apply
+  // to this credential (it is stored nowhere here, so there is nothing to replace) is not shown.
+  function fixSteps(f, section, vendor) {
+    const wrap = el("section", null, "fix");
+    const kind = genericKey(f, section);
+    const guide = vendorGuide(vendor, kind);
+    const generic = (REF.rotation.generic || {})[kind] || {};
+    const head = el("div", null, "fix-head");
+    head.append(el("h3", TEXT.fixIt, "section-title"));
+    const mins = (guide && guide.minutes) || generic.minutes;
+    if (mins) head.append(el("span", `${TEXT.about} ${mins} ${TEXT.minutes}`, "field-label"));
+    if (guide && guide.downtime) {
+      head.append(el("span", guide.downtime === "overlap" ? TEXT.overlap
+        : kind === "session_cookie" ? TEXT.endsSession : TEXT.breaksAtOnce, "downtime"));
+    }
+    wrap.append(head);
+    if (generic.headline) wrap.append(el("p", generic.headline, "why"));
+
+    const disk = f.still_on_disk || [];
+    const applies = ["revoke"].concat(disk.length ? ["replace"] : [], ["clean"]);
+    const ticked = ((state.statuses[f.hash] || {}).steps) || {};
+    const grid = el("div", null, "steps-grid");
+    const step = (key, n, art, title, body) => {
+      const card = el("div", null, "step" + (ticked[key] ? " done" : ""));
+      const top = el("div", null, "step-top");
+      top.append(el("span", String(n), "step-n"), icon(art), el("b", title));
+      card.append(top);
+      for (const node of body) if (node) card.append(node);
+      const tick = el("label", null, "step-tick");
+      const box = el("input");
+      box.type = "checkbox";
+      box.checked = !!ticked[key];
+      box.addEventListener("change", () => setStep(f, key, box.checked, applies));
+      tick.append(box, el("span", TEXT.stepDone));
+      card.append(tick);
+      grid.append(card);
+    };
+
+    // 1. Revoke, at the vendor: the link straight to the page, and its command where it has one.
+    const link = (f.revoke && f.revoke.url) || (guide && guide.console && guide.console.url);
+    const where = (f.revoke && f.revoke.where) || (guide && guide.console && guide.console.where);
+    let go = null;
+    if (link && /^https:\/\//.test(link)) {
+      go = el("a", null, "button");
+      go.href = link;
+      go.target = "_blank";
+      go.rel = "noreferrer noopener";
+      go.append(el("span", where || TEXT.revokeHere), icon("external"));
+      go.title = `${TEXT.revokeHere}: ${where || link}`;
+    }
+    const cli = guide && guide.cli;
+    let cmd = null;
+    if (cli) {
+      cmd = copyButton(command(cli, "", prefixOf(f) || ""), TEXT.copyCli);
+      cmd.title = cli.what;
+    }
+    step("revoke", 1, "cross", TEXT.stepRevoke, [go || el("span", where || TEXT.revokeUnknown, "why"), cmd]);
+
+    // 2. Replace it wherever it is still used.
+    if (disk.length) {
+      const first = disk[0];
+      const chip = el("div", null, "file-chip");
+      const name = String(first.store).split(/[\\/]/).pop();
+      chip.append(icon("file", "quiet"), el("code", name), copyButton(first.store, TEXT.copyPath, "copy"));
+      chip.title = disk.map((x) => `${x.store} (${x.key})`).join("\n");
+      const more = disk.length > 1 ? el("span", `+${disk.length - 1} ${TEXT.moreFiles}`, "why") : null;
+      if (more) more.title = chip.title;
+      step("replace", 2, "doc", TEXT.stepReplace,
+           [el("span", `${disk.length} ${disk.length === 1 ? TEXT.fileHoldsIt : TEXT.filesHoldIt}`, "why"), chip, more]);
+    }
+
+    // 3. Clean the history it leaked into — and what the watchdog last saw there, beside the tick.
+    const seen = seenOf(f);
+    const state_ = seen ? seen.state : null;
+    const line = el("div", null, "seen-line");
+    line.title = TEXT.watchdogWhy;
+    line.append(icon(state_ === "present" ? "alert" : state_ === "gone" ? "check" : "dot",
+                     state_ === "present" ? "warning" : state_ === "gone" ? "success" : "quiet"),
+                el("span", state_ === "present" ? TEXT.stillThere : state_ === "gone" ? TEXT.goneNow : TEXT.seenUnknown));
+    const when = seen && ago(seen.checked);
+    if (when) line.append(el("span", `· ${when}`, "why"));
+    const again = el("button", state.checking[f.hash] ? TEXT.checking : TEXT.checkNow, "linkish");
+    again.type = "button";
+    again.disabled = !!state.checking[f.hash];
+    again.addEventListener("click", () => recheck(f));
+    line.append(again);
+    const places = (f.locations || []).length;
+    step("clean", disk.length ? 3 : 2, "broom", TEXT.stepClean,
+         [el("span", `${places} ${places === 1 ? TEXT.placeInHistory : TEXT.placesInHistory}`, "why"), line]);
+    wrap.append(grid);
+    if (statusOf(f) === "rotated" && state_ === "present") wrap.append(note(TEXT.rotatedButPresent, "warning"));
+    return wrap;
+  }
+
+  async function setStep(f, step, done, applies) {
+    const before = state.statuses[f.hash];
+    const steps = Object.assign({}, (before || {}).steps, { [step]: done });
+    state.statuses[f.hash] = Object.assign({}, before, { steps });      // at once; the save follows
+    render();
+    const res = await post("/api/step", { hash: f.hash, step, done, applies }).catch(() => null);
+    if (!res || !res.ok) {
+      state.statuses[f.hash] = before;
+      state.notice = TEXT.tickFailed;
+    } else {
+      state.statuses = (await res.json()).statuses || state.statuses;
+      state.notice = null;
+    }
+    render();
+  }
+
+  // What the vendor says in full, and everything else this same fix applies to: there when wanted, folded away.
+  function folds(f, section, vendor) {
+    const wrap = el("div", null, "folds");
+    const guide = el("details", null, "fold");
+    const kind = genericKey(f, section);
+    const g = vendorGuide(vendor, kind);
+    const n = ((g && g.steps) || ((REF.rotation.generic || {})[kind] || {}).steps || []).length +
+              (REF.rotation.universal || []).length;
+    guide.append(el("summary", `${vendor && g ? vendor : TEXT.theGuide} · ${n} ${TEXT.stepsWord}`));
+    guide.append(actions(f, section, vendor));
+    wrap.append(guide);
+    const rest = siblings(f, section);
+    if (rest.length) {
+      const same = el("details", null, "fold");
+      same.append(el("summary", `${TEXT.sameFixFor} ${rest.length} ${rest.length === 1 ? TEXT.otherOne : TEXT.others}`));
+      same.append(sameSteps(f, section));
+      wrap.append(same);
+    }
+    return wrap;
+  }
+
+  /* Every place it was found, one line each: which tool, on which environment, the file, how many times, and
+     four things to do with it as icons — read it here, show it in its folder, copy the path, copy a search. */
+  function toolMark(tool) {
+    const cell = el("span", null, "mark");
+    const art = (REF.vendors.icons || {})[((REF.vendors.tools || {}).marks || {})[tool]];
+    if (art) {
+      cell.append(markSvg(art));
+    } else {
+      cell.append(el("span", (tool || "?").replace(/[^A-Za-z0-9 ]/g, "").split(" ").map((w) => w[0]).join("")
+        .slice(0, 2).toUpperCase() || "?", "mono-mark"));
+    }
+    cell.title = tool || "";
+    return cell;
+  }
+
+  // A long path keeps its start (whose, which drive) and its end (which file), and loses the middle.
+  function shortPath(path) {
+    if (path.length <= 64) return path;
+    const sep = path.includes("\\") ? "\\" : "/";
+    const parts = path.split(sep);
+    if (parts.length <= 5) return path;
+    const head = parts.slice(0, parts[0] === "~" || parts[0] === "" ? 2 : 3).join(sep);
+    return `${head}${sep}…${sep}${parts.slice(-2).join(sep)}`;
+  }
+
   function locations(f) {
-    const list = el("div", null, "loc-list");
+    const wrap = el("section", null, "leaks");
+    const head = el("div", null, "fix-head");
+    head.append(el("h3", TEXT.whereFound, "section-title"));
     const prefix = prefixOf(f);
+    if (prefix) {
+      const hint = el("span", null, "search-chip");
+      hint.title = TEXT.searchWhy;
+      hint.append(icon("search", "quiet"), el("code", prefix), copyButton(prefix, TEXT.copy, "copy"));
+      head.append(hint);
+    }
+    wrap.append(head);
+    const list = el("div", null, "loc-list");
     const canOpen = (state.openable || {})[f.hash] || [];
+    const rows = machineRows();
     (f.locations || []).forEach((loc, i) => {
       const line = el("div", null, "loc");
-      const top = el("div", null, "loc-top");
       const path = stripLabel(loc.display);
       const isDb = path !== loc.display;
-      top.append(icon(isDb ? "database" : loc.side ? "file" : "chat"));
+      const env = rows.find((m) => machineSide(m) === loc.side);
+      line.append(toolMark(loc.tool || (loc.display.split(" ")[0])));
+      if (env) line.append(envMark(env));
       const words = el("div", null, "loc-path");
-      words.append(document.createTextNode(path + (loc.decoded ? " (decoded)" : "")));
-      const bits = [loc.tool, isDb ? loc.display.slice(path.length + 2, -1) : null,
-                    loc.count > 1 ? `×${loc.count}` : null].filter(Boolean);
+      const short = shortPath(path);
+      words.append(document.createTextNode(short + (loc.decoded ? " (decoded)" : "")));
+      words.title = path;
+      const bits = [loc.tool, isDb ? loc.display.slice(path.length + 2, -1) : null].filter(Boolean);
       if (bits.length) words.append(el("span", bits.join(" · "), "loc-kind"));
-      top.append(words);
-      line.append(top);
+      line.append(words);
+      if (loc.count > 1) line.append(el("span", `×${loc.count}`, "pip"));
       // Open it is offered on every place, including the ones it will refuse: the refusal says why, which is
       // more use than a missing button.
       const tools = el("div", null, "loc-tools");
@@ -1195,16 +1392,16 @@
       tools.append(open);
       const rule = openRule(path);
       if (rule && !loc.decoded && loc.side) {
-        if (canOpen.includes(i)) tools.append(revealButton(f.hash, i));
-        tools.append(copyButton(path, TEXT.copyPath));
+        if (canOpen.includes(i)) tools.append(revealButton(f.hash, i, "folder"));
+        tools.append(copyButton(path, TEXT.copyPath, "copy"));
         // Windows paths get Explorer, which Show in folder already is; the others get a search to run.
-        if (rule.id !== "windows") tools.append(copyButton(command(rule, path, prefix), TEXT.copySearch));
-        tools.append(el("span", rule.what, "sub"));
+        if (rule.id !== "windows") tools.append(copyButton(command(rule, path, prefix), TEXT.copySearch, "search"));
       }
       line.append(tools);
       list.append(line);
     });
-    return list;
+    wrap.append(list);
+    return wrap;
   }
 
   function prefixOf(f) {
@@ -1214,17 +1411,26 @@
     return head.length >= 4 ? head : null;
   }
 
-  function copyButton(text, label) {
-    const b = el("button", label || TEXT.copyCmd, "copy");
+  // A copy button: its words, or — where there is no room for words — an icon with the words as its tooltip.
+  function copyButton(text, label, art) {
+    const words = label || TEXT.copyCmd;
+    const b = el("button", art ? null : words, "copy" + (art ? " icon-only" : ""));
     b.type = "button";
+    if (art) {
+      b.title = words;
+      b.setAttribute("aria-label", words);
+      b.append(icon(art));
+    }
+    const say = (t) => { if (art) b.title = t; else b.textContent = t; };
     b.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(text);
-        b.textContent = TEXT.copied;
+        say(TEXT.copied);
+        if (art) b.classList.add("flash");
       } catch (e) {
-        b.textContent = TEXT.copyFailed;
+        say(TEXT.copyFailed);
       }
-      setTimeout(() => { b.textContent = label || TEXT.copyCmd; }, 1600);
+      setTimeout(() => { say(words); b.classList.remove("flash"); }, 1600);
     });
     return b;
   }
@@ -1234,9 +1440,14 @@
 
   // The server shows the file in the file manager. The page names the finding and which of its locations, never
   // a path, so there is nothing here that could point the machine anywhere the scan did not already report.
-  function revealButton(hash, index) {
-    const b = el("button", TEXT.showInFolder, "copy");
+  function revealButton(hash, index, art) {
+    const b = el("button", art ? null : TEXT.showInFolder, "copy" + (art ? " icon-only" : ""));
     b.type = "button";
+    if (art) {
+      b.title = TEXT.showInFolder;
+      b.setAttribute("aria-label", TEXT.showInFolder);
+      b.append(icon(art));
+    }
     b.addEventListener("click", async () => {
       b.disabled = true;
       let why = null;
@@ -1247,8 +1458,14 @@
       } catch (e) {
         why = TEXT.noServer;
       }
-      b.textContent = why ? why.charAt(0).toUpperCase() + why.slice(1) : TEXT.opened;
-      setTimeout(() => { b.textContent = TEXT.showInFolder; b.disabled = false; }, why ? 4000 : 1600);
+      const said = why ? why.charAt(0).toUpperCase() + why.slice(1) : TEXT.opened;
+      if (art) b.title = said; else b.textContent = said;
+      // An icon has no room for the reason, so a refusal is said on the page as well as in the tooltip.
+      if (art && why) { state.notice = said; render(); }
+      setTimeout(() => {
+        if (art) b.title = TEXT.showInFolder; else b.textContent = TEXT.showInFolder;
+        b.disabled = false;
+      }, why ? 4000 : 1600);
     });
     return b;
   }
@@ -1264,51 +1481,6 @@
 
   function command(rule, path, prefix) {
     return String(rule.run).replace("{path}", path).replace("{prefix}", prefix || "");
-  }
-
-  /* The frame at the top of a card. Everything below it is evidence; this is the instruction. */
-  function doThis(f, section, vendor) {
-    const wrap = el("section", null, "do-this");
-    wrap.append(el("h3", TEXT.doThis));
-    const kind = genericKey(f, section);
-    const generic = (REF.rotation.generic || {})[kind] || {};
-    const guide = vendorGuide(vendor, kind);
-    if (generic.headline) wrap.append(el("p", generic.headline, "do-headline"));
-
-    const row = el("div", null, "do-actions");
-    const link = (f.revoke && f.revoke.url) || (guide && guide.console && guide.console.url);
-    const where = (f.revoke && f.revoke.where) || (guide && guide.console && guide.console.where);
-    if (link) {
-      const a = el("a", `${TEXT.revokeHere}: ${where}`, "do-link");
-      a.href = link;
-      a.target = "_blank";
-      a.rel = "noreferrer noopener";
-      row.append(a, icon("external", "quiet"));
-    } else if (where) {
-      row.append(el("span", where, "sub"));
-    }
-    wrap.append(row);
-
-    if ((f.still_on_disk || []).length) {
-      wrap.append(el("p", `${TEXT.replaceIt} ${f.still_on_disk[0].store} (${f.still_on_disk[0].key})`, "sub"));
-    }
-
-    // The vendor's own command, where it has one. Handed over, never run.
-    const cli = guide && guide.cli;
-    if (cli) {
-      const line = command(cli, "", prefixOf(f) || "");
-      const cmd = el("div", null, "cmd");
-      cmd.append(el("code", line), copyButton(line));
-      wrap.append(el("p", TEXT.withCli, "field-label"), cmd, el("p", cli.what, "sub"));
-    }
-
-    const prefix = prefixOf(f);
-    if (prefix) {
-      const hint = el("div", null, "cmd");
-      hint.append(el("code", prefix), copyButton(prefix, TEXT.copy));
-      wrap.append(el("p", `${TEXT.searchFor}:`, "field-label"), hint, el("p", TEXT.searchWhy, "sub"));
-    }
-    return wrap;
   }
 
   /* What to do, from rotation.json: the vendor's own steps when we have them, the generic ones for the category
@@ -1402,50 +1574,6 @@
     if (mins < 1) return TEXT.justNow;
     if (mins < 60) return `${mins} ${TEXT.minutesAgo}`;
     return `${Math.round(mins / 60)} ${TEXT.hoursAgo}`;
-  }
-
-  /* Two separate facts, side by side: what you decided, and what the machine can still see. */
-  function statusBlock(f) {
-    const wrap = el("section", null, "status");
-    const head = el("div", null, "status-head");
-    head.append(el("h3", TEXT.status));
-    wrap.append(head);
-
-    const choices = el("div", null, "choices");
-    choices.setAttribute("role", "group");
-    const now = statusOf(f);
-    for (const value of ["open", "rotating", "rotated", "ignored"]) {
-      const b = el("button", TEXT[STATUS_TEXT[value]], "choice");
-      b.type = "button";
-      b.setAttribute("aria-pressed", String(value === now));
-      b.addEventListener("click", () => setStatus(f, value));
-      choices.append(b);
-    }
-    wrap.append(choices, el("p", TEXT.statusWhy, "why"));
-
-    const seen = seenOf(f);
-    const line = el("div", null, "seen");
-    const state_ = seen ? seen.state : null;
-    line.append(icon(state_ === "present" ? "alert" : state_ === "gone" ? "check" : "dot",
-                     state_ === "present" ? "warning" : state_ === "gone" ? "success" : "quiet"));
-    const words = el("div", null, "grow");
-    const what = state_ === "present" ? TEXT.seenPresent : state_ === "gone" ? TEXT.seenGone : TEXT.seenUnknown;
-    words.append(el("div", what));
-    if (seen && seen.state === "present" && (seen.in || []).length) {
-      for (const where of seen.in) words.append(el("div", where, "mono"));
-    }
-    const when = seen && ago(seen.checked);
-    if (when) words.append(el("div", `${TEXT.seenChecked} ${when}`, "why"));
-    if (seen && seen.why) words.append(el("div", seen.why, "why"));
-    const again = el("button", state.checking[f.hash] ? TEXT.checking : TEXT.checkNow, "button");
-    again.type = "button";
-    again.disabled = !!state.checking[f.hash];
-    again.addEventListener("click", () => recheck(f));
-    line.append(words, again);
-    wrap.append(line);
-    if (now === "rotated" && state_ === "present") wrap.append(note(TEXT.rotatedButPresent, "warning"));
-    wrap.append(el("p", TEXT.watchdogWhy, "why"));
-    return wrap;
   }
 
   async function setStatus(f, value) {
@@ -1693,9 +1821,7 @@
                      "mono-mark"));
       return cell;
     }
-    const svg = svgEl("svg", { viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true" });
-    svg.append(svgEl("path", { d: art.path }));
-    cell.append(svg);
+    cell.append(markSvg(art));
     cell.title = art.title || key;
     return cell;
   }

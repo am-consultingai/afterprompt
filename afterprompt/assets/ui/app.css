@@ -920,3 +920,71 @@ button.go-big .ic, button.go-big .ic svg { inline-size: 18px; block-size: 18px; 
   .stage:nth-child(3)::before { display: none; }
 }
 .scan-screen > .progress { padding-inline-start: 0; max-inline-size: var(--measure); }
+
+/* --- the credential card: four tiles, three steps, one line a place ------------------------------------ */
+.detail-head .linkish { font-size: var(--text-sm); }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-block-start: 16px; }
+@media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat {
+  display: flex; align-items: center; gap: 10px; min-inline-size: 0;
+  padding: 12px 14px; background: var(--surface-raised);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-card); cursor: help;
+}
+.stat > .ic, .stat > .ic svg { inline-size: 22px; block-size: 22px; }
+.stat[data-tone="danger"] { background: var(--danger-quiet); border-color: transparent; }
+.stat[data-tone="warning"] { background: var(--warning-quiet); border-color: transparent; }
+.stat[data-tone="accent"] { background: var(--accent-quiet); border-color: transparent; }
+.stat-words { display: grid; min-inline-size: 0; }
+.stat-words b { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.stat[data-tone="danger"] b { color: var(--danger); }
+.stat[data-tone="warning"] b { color: var(--warning); }
+.stat[data-tone="accent"] b { color: var(--accent); }
+.stat-words span { font-size: var(--text-xs); color: var(--text-tertiary); }
+.stat-marks { display: flex; flex: none; }
+.stat-marks .mark { inline-size: 26px; block-size: 26px; border: 2px solid var(--surface-raised); }
+.stat-marks .mark + .mark { margin-inline-start: -8px; }
+.stat-marks .mark svg { inline-size: 16px; block-size: 16px; }
+
+.fix { margin-block-start: 26px; }
+.fix-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-block-end: 8px; }
+.fix-head h3 { margin: 0; }
+.fix > .why { margin-block: -2px 10px; max-inline-size: var(--measure); }
+.steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.step {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px; background: var(--surface-raised);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-card); box-shadow: var(--shadow-sm);
+}
+.step.done { background: var(--success-quiet); border-color: transparent; box-shadow: none; }
+.step-top { display: flex; align-items: center; gap: 8px; }
+.step-n {
+  display: grid; place-items: center; inline-size: 22px; block-size: 22px; border-radius: 50%;
+  background: var(--surface-3); font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary);
+}
+.step.done .step-n { background: var(--success); color: var(--surface-0); }
+.step-top b { font-weight: 600; }
+.step .button { align-self: flex-start; }
+.step-tick { margin-block-start: auto; display: flex; align-items: center; gap: 8px; padding-block-start: 6px;
+  font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; }
+.file-chip { display: flex; align-items: center; gap: 6px; min-inline-size: 0; }
+.file-chip code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
+.seen-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--text-sm); }
+
+.leaks { margin-block-start: 26px; }
+.search-chip { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; cursor: help; }
+.search-chip code { font-size: var(--text-xs); background: var(--surface-2); padding: 1px 6px;
+  border-radius: var(--radius-control); }
+.leaks .loc { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.leaks .loc > .mark { inline-size: 24px; block-size: 24px; }
+.leaks .loc > .mark svg { inline-size: 14px; block-size: 14px; }
+.leaks .loc-path { font-size: var(--text-xs); }
+.leaks .loc-tools { padding: 0; margin-inline-start: auto; flex-wrap: nowrap; }
+button.copy.icon-only { display: grid; place-items: center; inline-size: 28px; block-size: 26px; padding: 0; }
+button.copy.icon-only.flash { background: var(--success-quiet); color: var(--success); }
+
+.folds { display: grid; gap: 6px; margin-block-start: 22px; }
+.fold { border: 1px solid var(--border-subtle); border-radius: var(--radius-card); background: var(--surface-raised); }
+.fold > summary { padding: 10px 14px; cursor: pointer; font-weight: var(--weight-label); color: var(--text-secondary); }
+.fold[open] > summary { border-block-end: 1px solid var(--border-subtle); }
+.fold > .actions, .fold > .siblings { padding: 4px 14px 14px; margin: 0; }
+.fold .actions-head { margin-block-start: 8px; }

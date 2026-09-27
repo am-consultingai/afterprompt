@@ -220,6 +220,23 @@ class LiveServerTests(TempDirTest):
         self.req("POST", "/api/scope", body={"id": "windows", "include": True})
         self.assertEqual(self.req("POST", "/api/start", body={})[0], 200)
 
+    def test_a_step_is_ticked_through_the_api(self):  # U-UI-78
+        h = "abc123def4567890"
+        status, _, body = self.req("POST", "/api/step", body={"hash": h, "step": "revoke", "done": True,
+                                                             "applies": ["revoke", "clean"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["row"]["status"], "rotating")
+        self.assertEqual(json.loads(self.req("GET", "/api/status")[0] and self.req("POST", "/api/step", body={
+            "hash": h, "step": "clean", "done": True, "applies": ["revoke", "clean"]})[2])["row"]["status"], "rotated")
+        for bad in ({"hash": "../x", "step": "revoke", "done": True, "applies": ["revoke"]},
+                    {"hash": h, "step": "revoke", "done": "yes", "applies": ["revoke"]},
+                    {"hash": h, "step": "revoke", "done": True},
+                    {"hash": h, "step": "rm", "done": True, "applies": ["rm"]}):
+            with self.subTest(body=bad):
+                self.assertEqual(self.req("POST", "/api/step", body=bad)[0], 400)
+        self.assertEqual(self.req("POST", "/api/step", body={"hash": h, "step": "revoke", "done": True,
+                                                            "applies": ["revoke"]}, token=False)[0], 401)
+
     def test_checklist(self):  # U-UI-10
         ok = {"hash": "abc123def4567890", "done": True}
         self.assertEqual(self.req("POST", "/api/checklist", body=ok)[0], 200)
@@ -381,7 +398,7 @@ class PageTests(TempDirTest):
         self.assertIn('"stroke-width": "1.5"', js)
         # The only 24-box art is the marks — a vendor's and an environment's — which are filled glyphs, not
         # strokes, and are drawn in a fixed cell rather than scaled from a 24px stroke icon.
-        self.assertEqual(js.count('"0 0 24 24"'), 2)
+        self.assertEqual(js.count('"0 0 24 24"'), 1)                   # one helper draws every mark
         self.assertIn('fill: "currentColor"', js)
         css = self.read("app.css")
         self.assertIn("place-items: center; inline-size: 16px; block-size: 16px", css)
@@ -526,10 +543,11 @@ class PageTests(TempDirTest):
     def test_the_card_opens_with_the_instruction(self):  # U-UI-52
         """The thing to do used to be below the badges, the facts and the fold."""
         js = self.js_without_comments()
-        self.assertIn("box.append(doThis(f, section, vendor));", js)
-        card = js[js.index("function renderDetail"):js.index("function doThis")]
-        self.assertLess(card.index("doThis(f, section, vendor)"), card.index("const facts = el("))
-        for key in ("doThis:", "revokeHere:", "replaceIt:", "searchFor:", "withCli:", "openWith:"):
+        card = js[js.index("function renderDetail"):js.index("function cardHead(")]
+        # How bad, then what to do, then the evidence: the fix comes before the places it leaked.
+        self.assertLess(card.index("statStrip(f, section)"), card.index("fixSteps(f, section, vendor)"))
+        self.assertLess(card.index("fixSteps(f, section, vendor)"), card.index("locations(f)"))
+        for key in ("revokeHere:", "searchWhy:", "openWith:", "stepRevoke:", "stepReplace:", "stepClean:"):
             self.assertIn(key, self.read("app.js"))
 
     def test_the_search_hint_reveals_nothing_new(self):  # U-UI-53
@@ -791,13 +809,26 @@ class PageTests(TempDirTest):
         self.assertIn("TEXT.plusProjects", ready)
         self.assertIn('status: cov.host_left_out ? "skipped" : "scanned"', js)
 
+    def test_the_fix_is_three_steps_and_the_status_follows(self):  # U-UI-77
+        js = self.js_without_comments()
+        fix = js[js.index("function fixSteps("):js.index("async function setStep(")]
+        self.assertIn('const applies = ["revoke"].concat(disk.length ? ["replace"] : [], ["clean"]);', fix)
+        self.assertIn("setStep(f, key, box.checked, applies)", fix)
+        self.assertIn("recheck(f)", fix)                                     # the watchdog's answer sits by step 3
+        self.assertIn('post("/api/step", { hash: f.hash, step, done, applies })', js)
+        # The long guide and the same fix for others are there, folded away.
+        folds = js[js.index("function folds("):js.index("function toolMark(")]
+        self.assertIn("actions(f, section, vendor)", folds)
+        self.assertIn("sameSteps(f, section)", folds)
+        self.assertNotIn("function statusBlock", js)
+
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
         js = self.js_without_comments()
         self.assertIn("const path = stripLabel(loc.display);", js)
-        self.assertIn("copyButton(path, TEXT.copyPath)", js)
+        self.assertIn('copyButton(path, TEXT.copyPath, "copy")', js)
         # The search hint copies a search term, and says so.
-        self.assertIn("copyButton(prefix, TEXT.copy)", js)
+        self.assertIn('copyButton(prefix, TEXT.copy, "copy")', js)
 
     def test_the_list_is_ordered_by_what_it_opens(self):  # U-UI-41
         """The browser view and the report must not disagree about what to do first."""
@@ -851,7 +882,9 @@ class PageTests(TempDirTest):
         css, js = self.read("app.css"), self.js_without_comments()
         self.assertNotRegex(css, r"(^|\n)\.band\s*\{")
         self.assertIn('el("span", null, "band-dot " + band)', js)
-        self.assertIn('"badge band " + band', js)
+        # On the card, how far it reaches is a tile of its own: an icon per band, the word, the sentence as tooltip.
+        strip = js[js.index("function statStrip("):js.index("function fixSteps(")]
+        self.assertIn("tile(BAND_ICON[band]", strip)
 
     def test_keyboard_contract(self):  # U-UI-24
         js = self.js_without_comments()

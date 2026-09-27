@@ -192,7 +192,9 @@ A rail down the left edge holds the Start button and the four screens:
   stored data, act as you, one service), with the first three named at the top. Grouped by vendor, or by what
   it opens, or by the AI tool it leaked into; only non-empty groups are shown and each is collapsible. Many
   values of one kind from one place fold into a single row that opens, so one noisy transcript cannot fill the
-  list. Choosing one shows where it leaked (and on which environment: under WSL the Windows profile is named as one,
+  list. Choosing one shows four tiles (how sure, what someone could do with it, where it leaked, how often), the fix as
+three steps you tick — revoke, replace, clean up — with the status following from the ticks, and one line per
+place it leaked; the vendor's full guide folds away beneath. Choosing one shows where it leaked (and on which environment: under WSL the Windows profile is named as one,
 beside the distribution; containers with no AI tool history are folded into one line), whether a copy is still on disk, and **what to do about it**:
   numbered steps from that vendor's own documentation, a link straight to the page where you revoke it, its
   audit log where one exists, and a tick that is remembered by value hash so the next scan still knows you have

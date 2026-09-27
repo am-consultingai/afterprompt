@@ -22,6 +22,9 @@ OPEN, ROTATING, ROTATED, IGNORED = "open", "rotating", "rotated", "ignored"
 STATUSES = (OPEN, ROTATING, ROTATED, IGNORED)
 DEFAULT = OPEN
 HASH = 16                      # sha256[:16], the same key the report uses
+# The fix, as the card shows it: revoke at the vendor, replace it where it is used, clean the history it leaked
+# into. Each is ticked by a person; the status follows from them (see set_step).
+STEPS = ("revoke", "replace", "clean")
 
 
 def path(base_dir):
@@ -49,6 +52,9 @@ def load(base_dir):
                                 "checked": int(seen["checked"]) if str(seen.get("checked", "")).isdigit() else None,
                                 "in": [p for p in (seen.get("in") or []) if isinstance(p, str)][:20],
                                 "why": seen.get("why") if isinstance(seen.get("why"), str) else None}
+            steps = row.get("steps")
+            if isinstance(steps, dict):
+                item["steps"] = {s: bool(steps.get(s)) for s in STEPS if s in steps}
             out[key] = item
     return out
 
@@ -64,6 +70,30 @@ def set_status(base_dir, key, status, now=None):
     items = load(base_dir)
     row = items.get(key) or {}
     row["status"] = status
+    row["updated"] = int(now or time.time())
+    items[key] = row
+    save(base_dir, items)
+    return row
+
+
+def set_step(base_dir, key, step, done, applies, now=None):
+    """Tick or untick one step of the fix, and let the status follow: nothing ticked is open, some is rotating,
+    every step that applies to this credential is rotated. `applies` is which steps the card showed — a credential
+    stored nowhere on this machine has nothing to replace. Ignored stays ignored until a step is ticked, since
+    ticking one is doing something about it. Returns the new record, or None for a request that makes no sense."""
+    applies = [s for s in STEPS if s in (applies or ())]
+    if not valid_hash(key) or step not in applies:
+        return None
+    items = load(base_dir)
+    row = items.get(key) or {"status": DEFAULT}
+    steps = dict(row.get("steps") or {})
+    steps[step] = bool(done)
+    row["steps"] = steps
+    ticked = [s for s in applies if steps.get(s)]
+    if not ticked:
+        row["status"] = IGNORED if row.get("status") == IGNORED else OPEN
+    else:
+        row["status"] = ROTATED if len(ticked) == len(applies) else ROTATING
     row["updated"] = int(now or time.time())
     items[key] = row
     save(base_dir, items)

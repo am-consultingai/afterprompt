@@ -410,6 +410,16 @@
  "not_from_simple_icons": {
   "Windows": "The Windows logo (four squares), a trademark of Microsoft Corporation, drawn in one ink colour to identify the Windows side of a WSL machine. Simple Icons does not carry it at Microsoft's request; it is included here by the project owner's decision. See assets/NOTICE.md."
  },
+ "tools": {
+  "about": "Which vendor's mark stands for an AI tool on the page. A tool not listed is drawn as its initials.",
+  "marks": {
+   "Claude Code": "Anthropic",
+   "Claude Desktop": "Anthropic",
+   "Gemini CLI": "Google",
+   "Google Antigravity": "Google",
+   "GitHub Copilot": "GitHub"
+  }
+ },
  "environments": {
   "about": "Which mark to draw for an environment. The name comes from WSL, Docker or the platform; a name that matches nothing is drawn as a monogram. The patterns are matched case-insensitively and carry no inline flags: JavaScript has no (?i).",
   "match": [
