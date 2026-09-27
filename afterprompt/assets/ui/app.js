@@ -648,16 +648,23 @@
     const now = running && grouped(state.stages).map(stageState).find((x) => x.cur);
     const count = now && now.p ? (now.p.total ? ` · ${now.p.done.toLocaleString()} ${TEXT.ofTotal} ` +
                                                  now.p.total.toLocaleString() : ` · ${now.p.done.toLocaleString()}`) : "";
-    words.append(el("p", now ? now.cur.label + count : running ? TEXT.scanRunningSub
-      : state.finished ? TEXT.scanDoneShort : TEXT.scanReadyShort, "sub"));
-    // Every environment left out is nothing to scan: the button says so by being off, and a line says why.
+    // Every environment left out is nothing to scan: the button says so by being off, and the line under the
+    // title says why — in the same box, so nothing below it moves.
     const empty = !state.started && (state.scope.options || []).length > 0 &&
                   state.scope.options.every((o) => (state.scope.excluded || []).includes(o.id));
+    const sub = el("p", empty ? TEXT.nothingToScan : now ? now.cur.label + count : running ? TEXT.scanRunningSub
+      : state.finished ? TEXT.scanDoneShort : TEXT.scanReadyShort, "sub");
+    if (empty) sub.dataset.tone = "warning";
+    words.append(sub);
     head.append(words, scanButton(running, empty));
     wrap.append(head);
-    if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
-    if (state.notice) wrap.append(note(state.notice, state.noticeTone || "warning"));
-    if (empty) wrap.append(note(TEXT.nothingToScan, "warning"));
+    // Anything said in passing floats over the page, out of its flow: a message appearing must not move what
+    // the eye has already placed.
+    const dock = el("div", null, "toast-dock");
+    dock.setAttribute("role", "status");
+    if (state.conn === "lost") dock.append(note(TEXT.connectionLost, "warning"));
+    if (state.notice) dock.append(note(state.notice, state.noticeTone || "warning"));
+    wrap.append(dock);
 
     // Where it looks, and how deep: side by side, and locked once the scan has started.
     const grid = el("div", null, "scan-grid");

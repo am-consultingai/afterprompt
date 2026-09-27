@@ -994,3 +994,28 @@ button.copy.icon-only.flash { background: var(--success-quiet); color: var(--suc
 button.primary.stop { background: var(--danger); color: var(--surface-0); }
 button.primary.stop:hover { background: color-mix(in oklab, var(--danger), var(--ink) 12%); }
 button.primary.stop:disabled { background: var(--danger-quiet); color: var(--danger); }
+
+
+/* --- the Scan screen holds still ------------------------------------------------------------------------
+   Everything on it is in the same place before, during and after a scan; only words change, inside boxes that
+   keep their size. The eye has already placed each thing, and moving it makes it look again. */
+.scan-head { align-items: flex-start; }
+.scan-head .sub {
+  block-size: calc(2 * 1.55em); overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.scan-head .sub[data-tone="warning"] { color: var(--warning); }
+.scan-head button.go-big { inline-size: 184px; justify-content: center; margin-block-start: 14px; flex: none; }
+.stage-words { inline-size: 100%; }
+.stage-name { display: block; }
+.stage-what {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  block-size: calc(2 * 1.55em); max-inline-size: none; padding-inline: 8px;
+}
+.toast-dock {
+  position: fixed; inset-block-end: 20px; inset-inline-start: 50%; transform: translateX(-50%);
+  display: grid; gap: 8px; z-index: 5; inline-size: min(560px, calc(100vw - 32px)); pointer-events: none;
+}
+.toast-dock:empty { display: none; }
+.toast-dock .note { margin: 0; box-shadow: var(--shadow-lg); pointer-events: auto; max-inline-size: none; }
+:dir(rtl) .toast-dock { transform: translateX(50%); }

@@ -854,6 +854,25 @@ class PageTests(TempDirTest):
         self.assertIn("pip.title = fill(TEXT.pipTimes, { n: loc.count, max: READER_SHOWS });", js)
         self.assertIn("const all = out.counted || out.total;", view)   # the heading never shows the smaller number
 
+    def test_the_scan_screen_holds_still(self):  # U-UI-86
+        """Starting a scan moved the tiles, depth and pipeline 22px (the line under the title went from two lines to
+        one), resized the button to its words and shifted the stage captions. Measured in a browser after the fix:
+        27 boxes, none moved. These are the rules that hold it: boxes whose text changes keep a fixed size, and a
+        message floats rather than being inserted into the flow."""
+        css, js = self.read("app.css"), self.js_without_comments()
+        still = css[css.index("the Scan screen holds still"):]
+        self.assertIn("block-size: calc(2 * 1.55em);", still[still.index(".scan-head .sub"):])
+        self.assertIn(".scan-head button.go-big { inline-size: 184px;", still)
+        self.assertIn(".scan-head { align-items: flex-start; }", still)
+        what = still[still.index(".stage-what"):]
+        self.assertIn("block-size: calc(2 * 1.55em);", what[:what.index("}")])
+        self.assertIn(".stage-words { inline-size: 100%; }", still)
+        self.assertIn("position: fixed;", still[still.index(".toast-dock"):])
+        screen = js[js.index("function renderScanScreen(wrap)"):js.index("function scanButton(")]
+        self.assertIn('dock.append(note(state.notice', screen)          # not wrap.append: it would push things down
+        self.assertNotIn("wrap.append(note(", screen)
+        self.assertIn("empty ? TEXT.nothingToScan :", screen)           # said in the line that is already there
+
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
         js = self.js_without_comments()
