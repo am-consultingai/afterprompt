@@ -83,7 +83,10 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-sm); }
   transition: background-color var(--duration-hover) var(--ease-out);
 }
 .go:hover { background: var(--accent-hover); }
-.go:disabled { background: var(--accent-quiet); color: var(--accent); cursor: default; }
+.go[data-state="running"] { background: var(--accent-quiet); color: var(--accent); }
+.go[data-state="done"] { background: var(--success); color: var(--surface-0); }
+/* On the Scan screen the button is the current screen: a ring, like the selected icon below it. */
+.go[aria-current="true"] { box-shadow: 0 0 0 3px var(--surface-2), 0 0 0 5px var(--accent); }
 
 .tabs { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-block-start: 6px; }
 .tab {

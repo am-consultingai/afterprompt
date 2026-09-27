@@ -589,10 +589,13 @@ class PageTests(TempDirTest):
         self.assertIn('b.setAttribute("aria-label", TEXT[key]);', tabs)
         self.assertIn('b.setAttribute("aria-current"', tabs)
         self.assertIn("state.findings.summary.rotate", tabs)
-        # The one action: a play button until pressed, a spinner while it runs, gone once the scan has finished.
+        # The round button is the way to the Scan screen, and only that: it never starts a scan, which is the Start
+        # button's job on a screen that shows what will be read. Its face says where the scan is.
         go = js[js.index("function renderGo()"):js.index("function show(")]
-        self.assertIn("state.finished) return;", go)
-        self.assertIn('running ? icon("spinner", null, true) : icon("play")', go)
+        self.assertIn('go.addEventListener("click", () => show("scan"));', go)
+        self.assertNotIn("startScan", go)
+        self.assertIn('state.finished ? icon("check") : running ? icon("spinner", null, true) : icon("play")', go)
+        self.assertIn('if (id === "scan") continue;', tabs)            # no second way there on the rail
 
     def test_finished_is_the_scanners_word_not_the_findings(self):  # U-UI-58
         """The last scan's findings are loaded before this one starts, so they cannot mean it has finished."""

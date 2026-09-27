@@ -346,6 +346,7 @@
     const tabs = $("tabs");
     tabs.replaceChildren();
     for (const [id, key, art] of SCREENS) {
+      if (id === "scan") continue;              // the round button above is the way there
       const b = el("button", null, "tab");
       b.type = "button";
       b.title = TEXT[key];
@@ -368,19 +369,22 @@
     renderGo();
   }
 
+  // The round button is the way to the Scan screen, and its face says where the scan is: play before, spinning
+  // while it runs, a tick once it has finished. It only goes there. The scan itself starts from the Start button
+  // on that screen, where what it will read is in view — never from a click on the rail.
   function renderGo() {
     const box = $("go");
     box.replaceChildren();
-    // Before the press it starts the scan; during it, it spins; once the scan has finished there is nothing to do.
-    if (!token || state.finished) return;
+    if (!token) return;
     const go = el("button", null, "go");
     go.type = "button";
-    const running = state.started || state.starting;
-    go.title = running ? TEXT.scanRunning : TEXT.scanStart;
+    const running = (state.started || state.starting) && !state.finished;
+    go.title = state.finished ? TEXT.scanDone : running ? TEXT.scanRunning : TEXT.tabScan;
     go.setAttribute("aria-label", go.title);
-    go.disabled = running;
-    go.append(running ? icon("spinner", null, true) : icon("play"));
-    go.addEventListener("click", () => { show("scan"); startScan(); });
+    go.setAttribute("aria-current", String(state.screen === "scan"));
+    go.dataset.state = state.finished ? "done" : running ? "running" : "ready";
+    go.append(state.finished ? icon("check") : running ? icon("spinner", null, true) : icon("play"));
+    go.addEventListener("click", () => show("scan"));
     box.append(go);
   }
 
