@@ -535,6 +535,7 @@ button.phase-head .phase-note { margin-inline-end: 6px; }
   max-inline-size: var(--measure);
   color: var(--text-primary);
 }
+.note[data-tone="info"] { background: var(--accent-quiet); border-color: color-mix(in oklab, var(--surface-0), var(--accent) 25%); }
 .note[data-tone="danger"] { background: var(--danger-quiet); border-color: color-mix(in oklab, var(--surface-0), var(--danger) 30%); }
 
 /* Content swaps fade in only — never out and in, which doubles the perceived wait. */

@@ -33,7 +33,7 @@ from afterprompt.util import entropy, mask, sha16
 from afterprompt.vendor import value_part
 
 CAP = watch.CAP                 # a text file larger than this is not read into memory for a view
-MAX_HITS = 20                   # places shown; the count says how many there were
+MAX_HITS = 5                    # places shown; the page says how many there were, and that it shows these few
 AROUND = 200                    # bytes of the value's own line kept on each side of it
 CONTEXT = 240                   # bytes kept of the line before and the line after
 SCAN_MARGIN = 400               # extra bytes searched for secrets beyond a window, so none is cut unseen

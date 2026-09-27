@@ -830,6 +830,19 @@ class PageTests(TempDirTest):
         for key in ("readerFewer:", "readerCapped:"):
             self.assertIn(key, self.read("app.js"))
 
+    def test_the_reader_says_it_shows_a_few_of_many(self):  # U-UI-80
+        """x310 beside a list of five read as five being all of it. The page says how many it shows, of how many,
+        in words; the badge's tooltip says it too; and the page and the reader agree on the number."""
+        from afterprompt import excerpt
+        js = self.js_without_comments()
+        self.assertIn(f"const READER_SHOWS = {excerpt.MAX_HITS};", js)
+        self.assertEqual(excerpt.MAX_HITS, 5)
+        view = js[js.index("function readerView("):js.index("function hitView(")]
+        self.assertIn('else if (shown < out.total) wrap.append(note(fill(TEXT.showingFirst, { shown, total: out.total })',
+                      view)
+        self.assertIn("pip.title = fill(TEXT.pipTimes, { n: loc.count, max: READER_SHOWS });", js)
+        self.assertIn("const all = out.counted || out.total;", view)   # the heading never shows the smaller number
+
     def test_a_copied_path_is_the_path(self):  # U-UI-54b
         """Triage labels a database " (chat database)"; Copy path must not hand that label over as part of it."""
         js = self.js_without_comments()

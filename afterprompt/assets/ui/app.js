@@ -150,6 +150,10 @@
     searchingDb: "Searching the chat database for it. The scan that found this did not note which record holds " +
                  "it, so this can take up to ten seconds.",
     readerPlaces: "places in this file", readerPlace: "place in this file", readerShowing: "showing the first",
+    foundTimes: "Found {total} times in this file", foundOnce: "Found once in this file",
+    showingFirst: "Showing the first {shown} of the {total} places, to keep this short. All {total} are counted, " +
+                  "and every one is this same credential.",
+    pipTimes: "Found {n} times here. Open it shows the first {max}.",
     readerLine: "Line", readerRecord: "Record", readerCut: "…",
     readerMasked: "Every value that looks like a secret is masked here, not only this one — this page never shows " +
                   "a full value. The file itself is not changed.",
@@ -461,7 +465,8 @@
   function note(text, tone) {
     const n = el("div", null, "note");
     if (tone) n.dataset.tone = tone;
-    n.append(icon(tone === "danger" ? "cross" : "alert", tone), el("p", text));
+    n.append(tone === "info" ? icon("info", "accent") : icon(tone === "danger" ? "cross" : "alert", tone),
+             el("p", text));
     return n;
   }
 
@@ -1358,6 +1363,8 @@
     return `${head}${sep}…${sep}${parts.slice(-2).join(sep)}`;
   }
 
+  const READER_SHOWS = 5;               // excerpt.MAX_HITS: how many places Open it shows; a test keeps them equal
+
   function locations(f) {
     const wrap = el("section", null, "leaks");
     const head = el("div", null, "fix-head");
@@ -1387,7 +1394,11 @@
       const bits = [loc.tool, isDb ? loc.display.slice(path.length + 2, -1) : null].filter(Boolean);
       if (bits.length) words.append(el("span", bits.join(" · "), "loc-kind"));
       line.append(words);
-      if (loc.count > 1) line.append(el("span", `×${loc.count}`, "pip"));
+      if (loc.count > 1) {
+        const pip = el("span", `×${loc.count}`, "pip");
+        pip.title = fill(TEXT.pipTimes, { n: loc.count, max: READER_SHOWS });
+        line.append(pip);
+      }
       // Open it is offered on every place, including the ones it will refuse: the refusal says why, which is
       // more use than a missing button.
       const tools = el("div", null, "loc-tools");
@@ -2286,8 +2297,9 @@
     wrap.append(sheetHead(f, out, f.label));
     const count = el("div", null, "reader-count");
     const shown = (out.hits || []).length;
-    count.append(el("b", `${out.total} ${out.total === 1 ? TEXT.readerPlace : TEXT.readerPlaces}`));
-    if (shown < out.total) count.append(el("span", `${TEXT.readerShowing} ${shown}`));
+    // The heading is the scan's count — the number the list showed — even when fewer can be opened here.
+    const all = out.counted || out.total;
+    count.append(el("b", fill(all === 1 ? TEXT.foundOnce : TEXT.foundTimes, { total: all.toLocaleString() })));
     const legend = el("span", null, "legend");
     for (const [cls, words] of [["hl-target", TEXT.legendThis], ["hl-other", TEXT.legendOther],
                                 ["hl-masked", TEXT.legendMasked]]) {
@@ -2296,7 +2308,10 @@
     count.append(legend);
     wrap.append(count, el("p", TEXT.readerMasked, "why"));
     if (out.partial) wrap.append(note(fill(TEXT.readerPartial, out), "warning"));
+    // Fewer shown than counted is said in so many words, never left to a number: "x310" beside a list of five
+    // once read as five being all of it. A report that noted too few records says why instead.
     if (out.counted) wrap.append(note(fill(out.capped ? TEXT.readerCapped : TEXT.readerFewer, out), "warning"));
+    else if (shown < out.total) wrap.append(note(fill(TEXT.showingFirst, { shown, total: out.total }), "info"));
     const list = el("div", null, "reader-hits");
     for (const h of out.hits || []) list.append(hitView(h));
     wrap.append(list, sheetActions(f, index, out, null));
