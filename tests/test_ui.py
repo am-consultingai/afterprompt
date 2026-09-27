@@ -1,4 +1,5 @@
 """U1/U2/U3/U5/U6: the loopback UI. Every defence is asserted on its own, including DNS rebinding."""
+import glob
 import http.client
 import io
 import json
@@ -15,10 +16,18 @@ from unittest import mock
 
 from afterprompt import cli, ui
 from afterprompt.util import write_json
-from tests.helpers import Fixture, TempDirTest, requires_rg, write
+from tests.helpers import Fixture, TempDirTest, make_cfg, requires_rg, write
 
 PORT = 50505
 TOKEN = "t" * 43
+
+
+def read_json_file(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
 
 
 class RuleTests(TempDirTest):
@@ -525,7 +534,9 @@ class PageTests(TempDirTest):
     def test_the_page_offers_the_button_and_the_cli_waits(self):  # U-UI-47
         js = self.js_without_comments()
         # The scan screen is a control before it is a view.
-        self.assertIn("if (!state.started) return box.append(renderReady(wrap));", js)
+        # The Start button sits on the one Scan screen, which is the same before, during and after the scan.
+        self.assertIn("box.append(renderScanScreen(", js)
+        self.assertIn("b.addEventListener(\"click\", startScan);", js)
         # Findings from the last scan do not hide the button: this scan has still read nothing.
         self.assertNotIn("!state.started && !state.findings", js)
         self.assertIn('post("/api/start", {})', js)
@@ -618,7 +629,7 @@ class PageTests(TempDirTest):
     def test_finished_is_the_scanners_word_not_the_findings(self):  # U-UI-58
         """The last scan's findings are loaded before this one starts, so they cannot mean it has finished."""
         js = self.js_without_comments()
-        self.assertIn("const running = !state.finished;", js)
+        self.assertIn("const running = state.started && !state.finished;", js)
         self.assertNotIn("const running = !state.findings;", js)
         self.assertIn("state.finished = !!ev.finished;", js)
         self.assertIn("state.finished = !!s.finished;", js)
@@ -740,7 +751,7 @@ class PageTests(TempDirTest):
 
     def test_the_start_screen_shows_where_it_will_look(self):  # U-UI-69
         js = self.js_without_comments()
-        ready = js[js.index("function renderReady(wrap)"):js.index("const TILE_KIND")]
+        ready = js[js.index("function renderScanScreen(wrap)"):js.index("const TILE_KIND")]
         self.assertIn('(state.scope.options || []).length ? scopeTiles() : (detailRows("environments")', ready)
         self.assertLess(ready.index("TEXT.willCover"), ready.index("TEXT.scanSteps"))
         cli_src = self.read_module("cli.py")
@@ -804,8 +815,8 @@ class PageTests(TempDirTest):
         js = self.js_without_comments()
         tiles = js[js.index("function scopeTiles()"):js.index("async function setScope(")]
         self.assertIn('const reads = el("span", o.reads, "tile-reads");', tiles)
-        ready = js[js.index("function renderReady(wrap)"):js.index("const TILE_KIND")]
-        self.assertIn("go.disabled = !!state.starting || empty;", ready)
+        ready = js[js.index("function renderScanScreen(wrap)"):js.index("const TILE_KIND")]
+        self.assertIn("b.disabled = !!state.starting || empty;", ready)
         self.assertIn("TEXT.plusProjects", ready)
         self.assertIn('status: cov.host_left_out ? "skipped" : "scanned"', js)
 
@@ -1019,6 +1030,134 @@ class CliTests(TempDirTest):
         run = os.path.join(fx.base, "runs", os.listdir(os.path.join(fx.base, "runs"))[0])
         with open(os.path.join(run, "run.log"), encoding="utf-8") as fh:
             self.assertNotIn(seen["token"], fh.read())                      # the key is never written down
+
+
+@requires_rg
+class StopTests(TempDirTest):
+    """Stop from the page: the scan ends, is thrown away, nothing from it is shown, and the page is back at Start."""
+
+    def test_stopping_a_scan_discards_it_and_waits_for_start_again(self):  # U-UI-81
+        import _thread
+        fx = Fixture(self.tmp, "linux")
+        out = io.StringIO()
+        seen = {}
+        real_stage = cli.run_stage
+
+        def slow_stage(cfg, name, ctx):
+            if name == "manifest":                  # long enough to be stopped in the middle of
+                for _ in range(200):
+                    time.sleep(0.05)
+            return real_stage(cfg, name, ctx)
+
+        def call(method, path, port, token, body=None):
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            h = {"Authorization": f"Bearer {token}"}
+            if body is not None:
+                h["Content-Type"] = "application/json"
+            c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+            r = c.getresponse()
+            data = r.read()
+            c.close()
+            return r.status, (json.loads(data) if data else None)
+
+        def browser():
+            for _ in range(600):
+                m = re.search(r"Browser view: http://127\.0\.0\.1:(\d+)/#token=([\w-]+)", out.getvalue())
+                if m and "Waiting for Start scan" in out.getvalue():
+                    break
+                time.sleep(0.05)
+            port, token = int(m.group(1)), m.group(2)
+            self.assertEqual(call("POST", "/api/stop", port, token, {})[0], 409)      # nothing running yet
+            call("POST", "/api/start", port, token, {})
+            for _ in range(400):                                                      # into the slow step
+                st = call("GET", "/api/status", port, token)[1]
+                if any(x["current"] and x["name"] == "manifest" for x in st["stages"]):
+                    break
+                time.sleep(0.05)
+            runs = os.path.join(fx.base, "runs")
+            seen["during"] = os.listdir(runs)
+            seen["stop"] = call("POST", "/api/stop", port, token, {})[0]
+            for _ in range(400):                                                      # back at Start
+                st = call("GET", "/api/status", port, token)[1]
+                if not st["started"] and "Waiting for Start scan" in out.getvalue().split("Stopped.")[-1]:
+                    break
+                time.sleep(0.05)
+            seen["after"] = st
+            # No run holds anything the stopped scan did: its step markers and work files went with it. (The run
+            # waiting for the next Start may reuse the folder name, being created in the same second.)
+            seen["runs_after"] = [r for r in os.listdir(runs)
+                                  if glob.glob(os.path.join(runs, r, "work", "state", "*.done"))
+                                  or os.path.exists(os.path.join(runs, r, "work", "sources.json"))]
+            seen["findings"] = call("GET", "/api/findings", port, token)[0]
+            _thread.interrupt_main()                                 # Ctrl-C at the Start screen: nothing scanned
+
+        t = threading.Thread(target=browser, daemon=True)
+        t.start()
+        import contextlib
+        with mock.patch.dict(os.environ, fx.env()), mock.patch.object(cli, "run_stage", slow_stage), \
+                contextlib.redirect_stdout(out):
+            code = cli.main(["--ui"])
+        t.join(10)
+        self.assertEqual(seen["stop"], 200)
+        self.assertEqual(code, cli.EXIT_INTERRUPTED)
+        self.assertIn("Stopped. That scan is discarded", out.getvalue())
+        self.assertEqual(seen["runs_after"], [])                     # the stopped run's folder is gone
+        self.assertFalse(seen["after"]["started"])
+        self.assertFalse(seen["after"]["findings_ready"])            # and nothing from it is offered
+        self.assertEqual(seen["findings"], 404)
+
+
+class StopStateTests(TempDirTest):
+    def test_only_a_running_scan_can_be_stopped(self):  # U-UI-82
+        st = ui.State(self.tmp)
+        with mock.patch("_thread.interrupt_main") as interrupt, \
+                mock.patch("afterprompt.util.stop_everything") as kill:
+            self.assertFalse(st.request_stop())                      # not started
+            st.request_start()
+            self.assertTrue(st.request_stop())
+            self.assertFalse(st.request_stop())                      # once
+            interrupt.assert_called_once()
+            kill.assert_called_once()
+            st.reset_after_stop(None)
+            self.assertFalse(st.scan_started or st.stop_requested)
+            st.request_start()
+            st.stoppable = False                                     # the result is being written
+            self.assertFalse(st.request_stop())
+
+    def test_the_last_complete_findings_come_back_after_a_stop(self):  # U-UI-83
+        st = ui.State(self.tmp)
+        old = os.path.join(self.tmp, "old.json")
+        write_json(old, {"rotate": [], "review": []})
+        st.offer_findings(os.path.join(self.tmp, "partial.json"))
+        st.reset_after_stop(old)
+        self.assertEqual(st.findings_path, old)
+        st.reset_after_stop(os.path.join(self.tmp, "missing.json"))
+        self.assertIsNone(st.findings_path)
+
+
+class StopChildrenTests(TempDirTest):
+    def test_stop_ends_what_the_scan_started(self):  # U-UI-84
+        from afterprompt import util
+        p = util.track(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]))
+        try:
+            util.stop_everything()
+            self.assertIsNotNone(p.wait(timeout=10))
+            self.assertTrue(util.STOPPING.is_set())
+        finally:
+            util.untrack(p)
+            util.STOPPING.clear()
+            if p.poll() is None:
+                p.kill()
+
+    def test_a_pool_does_not_retry_after_a_stop(self):  # U-UI-85
+        from afterprompt import pool, util
+        util.STOPPING.set()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                pool.run_pool(str, [(1, "a")], "t", lambda it: False, lambda it, why: None,
+                              make_cfg(self.tmp))
+        finally:
+            util.STOPPING.clear()
 
 
 class LogoAndAboutTests(TempDirTest):

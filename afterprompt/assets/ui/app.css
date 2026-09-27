@@ -989,3 +989,8 @@ button.copy.icon-only.flash { background: var(--success-quiet); color: var(--suc
 .fold[open] > summary { border-block-end: 1px solid var(--border-subtle); }
 .fold > .actions, .fold > .siblings { padding: 4px 14px 14px; margin: 0; }
 .fold .actions-head { margin-block-start: 8px; }
+
+/* Stop is the one red button: it ends and discards the scan, so it looks like it. */
+button.primary.stop { background: var(--danger); color: var(--surface-0); }
+button.primary.stop:hover { background: color-mix(in oklab, var(--danger), var(--ink) 12%); }
+button.primary.stop:disabled { background: var(--danger-quiet); color: var(--danger); }

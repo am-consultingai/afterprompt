@@ -94,6 +94,8 @@ class State:
         # Which environments the next scan covers: offered before Start, chosen on the page, applied at Start.
         self.scope = []
         self.excluded = set()
+        self.stop_requested = False
+        self.stoppable = True           # closed once the last step is done: the result is being written
         self.last_beat = None
         self.started = time.monotonic()
 
@@ -155,6 +157,35 @@ class State:
             self._publish({"type": "started"})
         self._begin.set()
         return first
+
+    def request_stop(self, who=None):
+        """Stop the running scan. Its child processes are ended and the main thread is interrupted, the same as
+        Ctrl-C; the CLI then throws the unfinished run away (nothing from it is shown or kept) and waits for Start
+        again. False when there is no running scan to stop."""
+        import _thread
+        from afterprompt import util
+        with self.lock:
+            if not self.scan_started or self.finished or self.stop_requested or not self.stoppable:
+                return False
+            self.stop_requested = True
+        log(f"stop requested by {who or 'unknown'}")
+        self._publish({"type": "stopping"})
+        util.stop_everything()
+        _thread.interrupt_main()
+        return True
+
+    def reset_after_stop(self, findings_path):
+        """Back to the Start screen, with the last complete scan's findings — never the stopped one's."""
+        with self.lock:
+            self.scan_started = False
+            self.stop_requested = False
+            self.stoppable = True
+            self._begin.clear()
+            self.stages, self.current, self.done = [], None, set()
+            self.summaries, self.details, self.progress = {}, {}, {}
+            self.finished = False
+            self.findings_path = findings_path if findings_path and os.path.exists(findings_path) else None
+        self._publish({"type": "stopped"})
 
     def wait_for_start(self, timeout=None):
         """Block until the page asks. False means the wait timed out and nothing was asked for."""
@@ -444,6 +475,12 @@ class Handler(BaseHTTPRequestHandler):
                            {"error": "the scan has started" if st.scan_started else "not an environment to choose"})
             else:
                 self._send(200, {"excluded": out})
+        elif path == "/api/stop":
+            # Takes no arguments, like Start: there is one scan, and this ends it.
+            if st.request_stop(self.client_address[0]):
+                self._send(200, {"stopping": True})
+            else:
+                self._send(409, {"error": "there is no running scan to stop"})
         elif path == "/api/start":
             # The only endpoint that makes the machine do something. It takes no arguments: what the scan
             # will do was decided in Settings and on the Start screen before this was pressed.

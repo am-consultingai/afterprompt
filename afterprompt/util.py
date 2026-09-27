@@ -6,9 +6,43 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 
 _LOG = {"path": None, "quiet": False, "sink": None}
+
+# ---- stopping a scan from the browser view
+# Ctrl-C in a terminal reaches every process the scan started; a Stop pressed on the page reaches only this one.
+# So what the scan starts is tracked here, and stop_everything() ends it: ripgrep, a worker pool's processes, the
+# helpers scanning other environments. STOPPING tells a loop between items that it should not start another.
+STOPPING = threading.Event()
+_CHILDREN = set()
+_CHILDREN_LOCK = threading.Lock()
+
+
+def track(child):
+    """Register a subprocess.Popen or a ProcessPoolExecutor so a Stop can end it. Returns it."""
+    with _CHILDREN_LOCK:
+        _CHILDREN.add(child)
+    return child
+
+
+def untrack(child):
+    with _CHILDREN_LOCK:
+        _CHILDREN.discard(child)
+
+
+def stop_everything():
+    STOPPING.set()
+    with _CHILDREN_LOCK:
+        children = list(_CHILDREN)
+    for child in children:
+        procs = list(getattr(child, "_processes", None).values()) if getattr(child, "_processes", None) else []
+        for p in procs or [child]:
+            try:
+                p.kill()
+            except (OSError, AttributeError, ValueError):
+                pass
 
 
 def set_log(path, quiet=False):

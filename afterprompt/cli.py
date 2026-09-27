@@ -460,19 +460,6 @@ ENV_STATUS_NOTE = {"absent": "none on this machine", "not_installed": "not insta
                    "found_not_scanned": "found, not scanned", "scanned": "scanned"}
 
 
-def partial_findings(cfg, ctx, meta):
-    """A findings file built mid-scan, from what has been found so far.
-
-    Nothing here is provisional in the sense of being wrong: it is the same triage over fewer inputs, so a
-    credential it shows was found, and the ones still to come are added when the scan reaches them."""
-    from afterprompt import report, triage
-    triage.build(cfg, ctx["sources"])
-    data = report.build_findings(cfg, ctx["sources"], meta)
-    path = cfg.w("partial-findings.json")
-    write_json(path, data)
-    return path
-
-
 READS = {"wsl": "its home folder", "docker": "its AI tool folders", "podman": "its AI tool folders"}
 
 
@@ -682,6 +669,47 @@ def run(argv, emit):
     if args.worker and args.values_only:
         return values_only(args, base, emit)
 
+    # A Stop from the browser view ends that scan and comes back here: the same page, the same link, the Start
+    # screen again, and a new run when Start is pressed. The view belongs to this call, not to the module.
+    held = {}
+    code = run_once(args, base, emit, foreign, held)
+    while code is STOPPED:
+        code = run_once(args, base, emit, foreign, held)
+    return code
+
+
+STOPPED = object()
+
+
+def the_view(base, held):
+    """The browser view, started once per run() and kept across a stopped scan and the next one."""
+    if "view" not in held:
+        held["view"] = start_ui(base)
+    return held["view"]
+
+
+def discard_stopped(view, base, run_dir):
+    """A stopped scan is thrown away: its findings are never shown (the last complete scan's stay), and its work
+    files — which can hold plaintext copies of chat data — are deleted rather than left for a resume."""
+    from afterprompt import util
+    set_log(None)
+    for _ in range(10):            # a killed worker can hold a file open for a moment, on Windows especially
+        shutil.rmtree(run_dir, ignore_errors=True)
+        if not os.path.exists(run_dir):
+            break
+        time.sleep(0.3)
+    try:
+        os.remove(os.path.join(base, "current"))
+    except OSError:
+        pass
+    util.STOPPING.clear()
+    view.state.reset_after_stop(last_findings(base))
+    say("")
+    say("Stopped. That scan is discarded: nothing from it is shown, and its work files are deleted.")
+    return STOPPED
+
+
+def run_once(args, base, emit, foreign, held):
     rid, run_dir = read_current(base)
     probe = config.from_args(args, run_dir or os.path.join(base, "runs", "probe"))
     fp = probe.fingerprint()
@@ -745,7 +773,7 @@ def run(argv, emit):
 
     stages = stage_list(cfg.deep, len(env_list) > 1, worker=cfg.worker)
     ctx = {"meta": meta, "envs": env_list, "worker_args": worker_args(cfg, args), "foreign": foreign}
-    view = start_ui(base) if args.ui and not emit else None
+    view = the_view(base, held) if args.ui and not emit else None
     if view:
         view.state.set_stages(stages, DESCRIPTIONS)
         progress.set_sink(lambda stage, done, total, note:
@@ -768,6 +796,8 @@ def run(argv, emit):
                 view.state.wait_for_start(0.5)
             log("the gate opened: scan_started is set")
         except KeyboardInterrupt:
+            if view.state.stop_requested:
+                return discard_stopped(view, base, run_dir)
             say("")
             say("Nothing was scanned.")
             stop_ui(view)
@@ -819,29 +849,33 @@ def run(argv, emit):
             if line:
                 say(f"      {line}")
             log(f"=== stage {name} end ({info['elapsed_s']}s)")
-            if view and name in ("known", "prompts"):
-                # The live-credential check is the certain half of the answer, and it is done here. Triage it
-                # now and hand the page something real to read while the rest of the scan runs.
-                try:
-                    view.state.offer_findings(partial_findings(cfg, ctx, meta))
-                except Exception as err:  # noqa: BLE001 - a preview is never worth failing a scan for
-                    log(f"partial findings after {name} failed: {type(err).__name__}: {err}")
             if cfg.stop_after == name:
                 say(f"Stopped after {name} (AFTERPROMPT_STOP_AFTER).")
                 return EXIT_INTERRUPTED
     except KeyboardInterrupt:
+        if view and view.state.stop_requested:
+            return discard_stopped(view, base, run_dir)
         stop_ui(view)
         say("")
         say("Interrupted. Run ./afterprompt.sh again with the same options to resume, or ./afterprompt.sh --fresh to start over.")
         say(f"Work files, which may include plaintext copies of chat data, remain in {cfg.work_dir} until then.")
         return EXIT_INTERRUPTED
     except Exception as err:  # noqa: BLE001 - reported and logged
+        # Ending the workers can surface as their failure rather than as the interrupt; a Stop is a Stop.
+        if view and view.state.stop_requested:
+            return discard_stopped(view, base, run_dir)
         stop_ui(view)
         log("".join(traceback.format_exc()))
         say(f"The scan failed during '{DESCRIPTIONS.get(current, current)}': {type(err).__name__}: {err}")
         say(f"Details: {os.path.join(run_dir, 'run.log')}. Run ./afterprompt.sh again to retry from this step.")
         return EXIT_FAILED
 
+    if view:
+        # Every step is done and the result is being written: from here a Stop would only lose it.
+        with view.state.lock:
+            view.state.stoppable = False
+        if view.state.stop_requested:
+            return discard_stopped(view, base, run_dir)
     meta["finished"] = datetime.datetime.now().isoformat(timespec="seconds")
     write_json(meta_path, meta)
     try:

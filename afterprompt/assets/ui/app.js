@@ -26,6 +26,13 @@
                   "reads the credentials already set up here, and looks for one inside the other. It stays on " +
                   "this machine: nothing is uploaded, and it starts when you press the button.",
     scanSteps: "What it does", willCover: "Where it looks",
+    scanStop: "Stop scan", scanStopping: "Stopping…", keepScanning: "Keep scanning",
+    stopTitle: "Stop this scan?",
+    stopWhat: "It stops now and is discarded: nothing it has found so far is shown, and its work files, which " +
+              "can hold plaintext copies of chat data, are deleted. Your last complete results stay as they are. " +
+              "You can start a new scan afterwards.",
+    scanStopped: "Scan stopped and discarded. The results shown are from your last complete scan.",
+    stopFailed: "Could not stop the scan — it may have just finished.",
     scanReadyShort: "Reads the history your AI tools keep here and checks it for credentials. Nothing leaves " +
                     "this machine, and nothing is read until you press Start.",
     scanDoneShort: "Everything it found is on the Credentials screen.", seeCredentials: "See the credentials",
@@ -260,6 +267,7 @@
     gear: "M8 5.7a2.3 2.3 0 1 0 0 4.6 2.3 2.3 0 0 0 0-4.6ZM8 1.6v1.7M8 12.7v1.7M1.6 8h1.7M12.7 8h1.7M3.5 3.5l1.2 1.2M11.3 11.3l1.2 1.2M3.5 12.5l1.2-1.2M11.3 4.7l1.2-1.2",
     info: "M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8ZM8 7.3v3.9M8 4.9v.2",
     play: "M5.6 3.4v9.2l7-4.6z",
+    square: "M4.5 4.5h7v7h-7z",
     layers: "M8 2 14 5.2 8 8.4 2 5.2ZM2 8l6 3.2L14 8M2 10.8 8 14l6-3.2",
     coin: "M8 2.4a5.6 5.6 0 1 0 0 11.2A5.6 5.6 0 0 0 8 2.4Zm1.7 3.5c-.3-.5-.9-.9-1.7-.9-1 0-1.7.6-1.7 1.3 0 1.8 3.4 1 3.4 2.8 0 .8-.8 1.3-1.7 1.3-.8 0-1.5-.4-1.8-1M8 4v1M8 11v1",
     user: "M8 8.2a2.7 2.7 0 1 0 0-5.4 2.7 2.7 0 0 0 0 5.4Zm-4.9 5.4c.5-2.5 2.4-3.8 4.9-3.8s4.4 1.3 4.9 3.8",
@@ -626,29 +634,32 @@
     wrap.append(head);
   }
 
-  function renderReady(wrap) {
+  // One screen before, during and after a scan: the same head, the same tiles and depth (locked once it has
+  // started), the same pipeline — which fills as the scan runs. Only the title, the button and the rings change.
+  function renderScanScreen(wrap) {
     wrap.classList.add("scan-screen");
+    const running = state.started && !state.finished;
     const head = el("div", null, "scan-head");
     const words = el("div", null, "grow");
-    words.append(el("h2", TEXT.scanReady, "page-title"), el("p", TEXT.scanReadyShort, "sub"));
-    const go = el("button", null, "primary");
-    go.classList.add("go-big");
-    go.type = "button";
+    const title = state.stopping ? TEXT.scanStopping : state.finished ? TEXT.scanDone
+      : running ? TEXT.scanRunning : TEXT.scanReady;
+    words.append(el("h2", title, "page-title"));
+    // What it is doing now, and how far, in one line: the stage's panel below has the bar.
+    const now = running && grouped(state.stages).map(stageState).find((x) => x.cur);
+    const count = now && now.p ? (now.p.total ? ` · ${now.p.done.toLocaleString()} ${TEXT.ofTotal} ` +
+                                                 now.p.total.toLocaleString() : ` · ${now.p.done.toLocaleString()}`) : "";
+    words.append(el("p", now ? now.cur.label + count : running ? TEXT.scanRunningSub
+      : state.finished ? TEXT.scanDoneShort : TEXT.scanReadyShort, "sub"));
     // Every environment left out is nothing to scan: the button says so by being off, and a line says why.
-    const empty = (state.scope.options || []).length > 0 &&
+    const empty = !state.started && (state.scope.options || []).length > 0 &&
                   state.scope.options.every((o) => (state.scope.excluded || []).includes(o.id));
-    go.disabled = !!state.starting || empty;
-    if (empty) go.title = TEXT.nothingToScan;
-    go.append(state.starting ? icon("spinner", null, true) : icon("play"),
-              el("span", state.starting ? TEXT.scanStarting : TEXT.scanStart));
-    go.addEventListener("click", startScan);
-    head.append(words, go);
+    head.append(words, scanButton(running, empty));
     wrap.append(head);
     if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
-    if (state.notice) wrap.append(note(state.notice, "warning"));
+    if (state.notice) wrap.append(note(state.notice, state.noticeTone || "warning"));
     if (empty) wrap.append(note(TEXT.nothingToScan, "warning"));
 
-    // Where it will look, and how deep: side by side, the two things to decide before pressing.
+    // Where it looks, and how deep: side by side, and locked once the scan has started.
     const grid = el("div", null, "scan-grid");
     const where = el("section", null, "scan-where");
     // How many there are, since past a handful the row scrolls and some are out of sight.
@@ -665,9 +676,78 @@
     if (depth) grid.append(depth);
     wrap.append(grid);
 
-    // What it does: four stages, the steps of each one a click away.
-    if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), pipeline(false));
+    // What it does: four stages, the steps of each one a click away; while it runs, each ring fills.
+    if (state.stages.length) wrap.append(el("span", TEXT.scanSteps, "section-label"), pipeline(state.started));
+    if (state.started) {
+      if (state.finished) wrap.append(envStrip());
+      const details = el("details", null, "console-box");
+      details.append(el("summary", TEXT.showConsole));
+      const pre = el("pre", state.lines.join("\n"), "console");
+      pre.setAttribute("aria-label", TEXT.console);
+      details.append(pre);
+      wrap.append(details);
+      requestAnimationFrame(() => { pre.scrollTop = pre.scrollHeight; });
+    }
     return wrap;
+  }
+
+  // Start before, Stop during, the credentials after: one button in one place, whatever the scan is doing.
+  function scanButton(running, empty) {
+    const b = el("button", null, "primary");
+    b.classList.add("go-big");
+    b.type = "button";
+    if (state.finished) {
+      b.append(icon("key"), el("span", TEXT.seeCredentials));
+      b.addEventListener("click", () => show("findings"));
+    } else if (running || state.stopping) {
+      b.classList.add("stop");
+      b.disabled = !!state.stopping;
+      b.append(state.stopping ? icon("spinner", null, true) : icon("square"),
+               el("span", state.stopping ? TEXT.scanStopping : TEXT.scanStop));
+      b.addEventListener("click", confirmStop);
+    } else {
+      b.disabled = !!state.starting || empty;
+      if (empty) b.title = TEXT.nothingToScan;
+      b.append(state.starting ? icon("spinner", null, true) : icon("play"),
+               el("span", state.starting ? TEXT.scanStarting : TEXT.scanStart));
+      b.addEventListener("click", startScan);
+    }
+    return b;
+  }
+
+  // Stopping throws the scan away, so it asks first, in words that say what will and will not happen.
+  function confirmStop(ev) {
+    sheet.back = ev && ev.currentTarget;
+    const wrap = el("div", null, "refusal-body");
+    const top = el("div", null, "refusal-top");
+    top.append(icon("alert", "warning"));
+    wrap.append(top, el("h2", TEXT.stopTitle, "sheet-title"), el("p", TEXT.stopWhat, "refusal-text"));
+    const row = el("div", null, "sheet-actions");
+    const keep = el("button", TEXT.keepScanning, "button");
+    keep.type = "button";
+    keep.dataset.autofocus = "";
+    keep.addEventListener("click", closeSheet);
+    const stop = el("button", null, "primary");
+    stop.classList.add("stop");
+    stop.type = "button";
+    stop.append(el("span", TEXT.scanStop));
+    stop.addEventListener("click", () => { closeSheet(); stopScan(); });
+    row.append(keep, stop);
+    wrap.append(row);
+    showSheet(wrap, "refusal");
+  }
+
+  async function stopScan() {
+    if (!state.started || state.finished || state.stopping) return;
+    state.stopping = true;
+    render();
+    renderGo();
+    const r = await post("/api/stop", {}).catch(() => null);
+    if (!r || !r.ok) {
+      state.stopping = false;
+      state.notice = TEXT.stopFailed;
+      render();
+    }
   }
 
   // An environment as a tile: its mark, large; its name; a tick to leave it out. The long description is the
@@ -765,6 +845,8 @@
   async function startScan() {
     if (state.started || state.starting) return;
     state.starting = true;
+    state.notice = null;
+    state.noticeTone = null;
     render();
     const r = await post("/api/start", {}).catch(() => null);
     if (!r || !r.ok) {
@@ -780,45 +862,7 @@
   }
 
   function renderScan(box) {
-    const wrap = el("section", null, "column");
-    // Before the scan: the page is a control, not a view. Findings from the last run may already be loaded
-    // — that is what the Credentials screen is for — but this scan has still read nothing.
-    if (!state.started) return box.append(renderReady(wrap));
-    // Findings may be on screen before this scan ends (the last scan's, or a partial pass), so they are not what
-    // says it has finished; the scanner is.
-    const running = !state.finished;
-    wrap.classList.add("scan-screen");
-    const head = el("div", null, "scan-head");
-    const words = el("div", null, "grow");
-    words.append(el("h2", running ? TEXT.scanRunning : TEXT.scanDone, "page-title"));
-    // What it is doing now, and how far, in one line: the stage's panel below has the bar.
-    const now = running && grouped(state.stages).map(stageState).find((x) => x.cur);
-    const count = now && now.p ? (now.p.total ? ` · ${now.p.done.toLocaleString()} ${TEXT.ofTotal} ` +
-                                                 now.p.total.toLocaleString() : ` · ${now.p.done.toLocaleString()}`) : "";
-    words.append(el("p", now ? now.cur.label + count : running ? TEXT.scanRunningSub : TEXT.scanDoneShort, "sub"));
-    head.append(words);
-    if (!running) {
-      const see = el("button", null, "primary");
-      see.classList.add("go-big");
-      see.type = "button";
-      see.append(icon("key"), el("span", TEXT.seeCredentials));
-      see.addEventListener("click", () => show("findings"));
-      head.append(see);
-    }
-    wrap.append(head);
-    if (state.conn === "lost") wrap.append(note(TEXT.connectionLost, "warning"));
-
-    wrap.append(pipeline(true));
-    if (!running) wrap.append(envStrip());
-
-    const details = el("details", null, "console-box");
-    details.append(el("summary", TEXT.showConsole));
-    const pre = el("pre", state.lines.join("\n"), "console");
-    pre.setAttribute("aria-label", TEXT.console);
-    details.append(pre);
-    wrap.append(details);
-    box.append(wrap);
-    pre.scrollTop = pre.scrollHeight;
+    box.append(renderScanScreen(el("section", null, "column")));
   }
 
   /* A bar when the total is knowable, a counter when it is not — same line either way, so nothing jumps when a
@@ -2176,6 +2220,23 @@
       if (state.conn === "live") setState("live");
       refresh();
     } else if (ev.type === "scope") {
+      refresh();
+    } else if (ev.type === "stopping") {
+      state.stopping = true;
+      render();
+      renderGo();
+    } else if (ev.type === "stopped") {
+      // Back to the Start screen. The stopped scan's findings were never shown and are not now: the list keeps
+      // the last complete scan's.
+      state.stopping = false;
+      state.started = false;
+      state.finished = false;
+      state.openStage = undefined;
+      state.openStep = {};
+      state.progress = {};
+      state.details = {};
+      state.notice = TEXT.scanStopped;
+      state.noticeTone = "info";
       refresh();
     } else if (ev.type === "stage" || ev.type === "stages") {
       refresh();

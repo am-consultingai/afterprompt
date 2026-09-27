@@ -6,7 +6,7 @@ import os
 import subprocess
 
 from afterprompt import stores
-from afterprompt.util import log, sha16
+from afterprompt.util import log, sha16, track
 
 RG = ["-uuu", "-a", "-o", "-b", "-N", "-H", "--no-heading", "--no-messages", "--field-match-separator", "\x01"]
 
@@ -31,6 +31,7 @@ def search(cfg, values, pref, paths):
             # an rg still writing fail with EPIPE instead of blocking on a full pipe.
             with subprocess.Popen([cfg.rg] + RG + ["-F", "-g", "!*.part", "-f", "-", "--"] + paths,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as proc:
+                track(proc)          # a Stop from the browser view ends it rather than waiting for it
 
                 def feed():
                     try:

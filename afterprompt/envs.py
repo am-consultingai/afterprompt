@@ -16,7 +16,7 @@ import threading
 from dataclasses import asdict, dataclass
 
 from afterprompt import platforms, worker
-from afterprompt.util import log, read_json, write_json
+from afterprompt.util import log, read_json, track, write_json
 
 # Where the host copies the scanner inside a distro: its own ~/.afterprompt, like a run there would use.
 ENGINE_DIR = "$HOME/.afterprompt/engine"
@@ -389,6 +389,7 @@ def run_worker(cmd, env, stderr_path, say, stdin=None):
         with open(stderr_path, "wb") as err, \
                 subprocess.Popen(cmd, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                                  stdout=subprocess.PIPE, stderr=err, env=env) as p:
+            track(p)                 # a Stop from the browser view ends the helper, not just this process
             if stdin is not None:
                 def feed():
                     try:

@@ -183,6 +183,9 @@ each WSL distribution and running container), each with its own mark, the folder
 out of this scan. Leaving one out means nothing in it is read: not its AI history and not its credential files —
 the machine Afterprompt runs on included. Beyond those folders the scan reads only the project folders your AI
 tools have worked in (for credential files); it does not search whole drives.
+While it runs, the same screen shows the steps filling in, and Start becomes **Stop scan**: a stopped scan
+is thrown away — nothing it found is shown, its work files are deleted — and the page goes back to Start, with
+the last complete scan's results unchanged. Only a scan that finishes updates the results.
 A rail down the left edge holds the Start button and the four screens:
 
 - **Scan** — before the press, the Start screen. After it, one line per step, each staying on screen with what

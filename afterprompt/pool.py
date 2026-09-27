@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 
 from afterprompt import progress
-from afterprompt.util import log
+from afterprompt.util import STOPPING, log, track, untrack
 
 WORKER = {}
 
@@ -100,7 +100,13 @@ class Watchdog(threading.Thread):
 
 def _executor(cfg, n):
     ctx = multiprocessing.get_context(cfg.mp_start)
-    return ProcessPoolExecutor(n, mp_context=ctx, initializer=worker_init, initargs=(cfg.worker_dict(),))
+    return track(ProcessPoolExecutor(n, mp_context=ctx, initializer=worker_init, initargs=(cfg.worker_dict(),)))
+
+
+def _stopped():
+    """A Stop from the browser view ends the workers; the loop must not read that as a crash and retry."""
+    if STOPPING.is_set():
+        raise KeyboardInterrupt
 
 
 def run_pool(fn, items, label, is_done, on_crash, cfg, should_stop=None):
@@ -117,6 +123,7 @@ def run_pool(fn, items, label, is_done, on_crash, cfg, should_stop=None):
         f"{cfg.mem_cap_bytes / 1024 ** 3:.1f} GB cap each")
     stopping = False
     for rnd in range(1, 4):
+        _stopped()
         if not pending or stopping:
             break
         t0 = time.monotonic()
@@ -130,6 +137,7 @@ def run_pool(fn, items, label, is_done, on_crash, cfg, should_stop=None):
             wd.start()
             try:
                 for fut in as_completed(futs):
+                    _stopped()
                     done_n += 1
                     if fut.cancelled():
                         continue
@@ -150,12 +158,15 @@ def run_pool(fn, items, label, is_done, on_crash, cfg, should_stop=None):
                                 skipped.append(futs[f])
             finally:
                 wd.stop.set()
+                untrack(ex)
+        _stopped()
         pending = [it for it in pending if not is_done(it) and it not in skipped and it[0] not in recorded]
         if broke:
             log(f"  {label}: worker pool crashed in round {rnd}; {len(pending)} items left")
     if stopping:
         return skipped
     for it in pending:
+        _stopped()
         try:
             with _executor(cfg, 1) as ex:
                 fut = ex.submit(fn, it)
